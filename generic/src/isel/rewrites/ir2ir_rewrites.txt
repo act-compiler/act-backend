@@ -1,0 +1,10 @@
+0: (add (dot ?a ?b) ?d) => (concat_1 (add (dot (slice_?0 ?a) ?b) (slice_?0 ?d)) (add (dot (slice_?1 ?a) ?b) (slice_?1 ?d)))
+1: (slice_? (convert_? ?x)) => (convert_? (slice_? ?x))
+2: (?x) => (dot ?x eye_?)
+3: (?x) => (reshape_? (reshape_? ?x))
+4: (?x) => (bitcvt (bitcvt ?x))
+5: (add ?x ?y) => (convert_? (add (convert_? ?x) (convert_? ?y)))
+6: (convert_i32 (convert_?i8 ?x)) => (?x)
+7: (?x) => (copy ?x)
+8: (broadcast_? ?x) => ?x
+9: (reshape_? (reshape_? ?x)) => ?x

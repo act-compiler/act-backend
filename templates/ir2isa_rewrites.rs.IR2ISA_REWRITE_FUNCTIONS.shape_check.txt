@@ -1,0 +1,3 @@
+    if lhs_metadata[{{index}}] != (TensorInfo { shape: {{shape_vec}}, dtype: {{dtype}}, is_const: false, }) {
+        return false;
+    }
