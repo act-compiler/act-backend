@@ -120,43 +120,56 @@ MetaData::MetaData(
 bool assembly_dump(char *outpath,
                    const std::vector<Instruction *> &instructions,
                    const MetaData &metadata) {
+  std::string indent1 = "    ";
+  std::string indent2 = indent1 + indent1;
+  std::string indent3 = indent2 + indent1;
+  std::string indent4 = indent3 + indent1;
+
+  // Process hlo_name and pii_number from outpath.
+  // Accept any path with a filename stem; use parent directory as hlo_name
+  // when available, otherwise fall back to metadata.module_name.
+  std::string path_str(outpath);
+  size_t lslash = path_str.find_last_of('/');
+  size_t fname_start = (lslash == std::string::npos) ? 0 : lslash + 1;
+  if (fname_start >= path_str.size()) {
+    std::cerr
+        << "Warning: output path " << outpath
+        << " has no filename component. Defaulting to no solution."
+        << std::endl;
+    return false;
+  }
+
+  size_t ldot = path_str.find_last_of('.');
+  size_t stem_end = path_str.size();
+  if (ldot != std::string::npos && ldot > fname_start) {
+    stem_end = ldot;
+  }
+
+  if (stem_end <= fname_start) {
+    std::cerr
+        << "Warning: output path " << outpath
+        << " does not contain a valid filename stem. "
+           "Defaulting to no solution."
+        << std::endl;
+    return false;
+  }
+
+  std::string pii_number = path_str.substr(fname_start, stem_end - fname_start);
+  std::string hlo_name = metadata.module_name;
+  if (lslash != std::string::npos && lslash > 0) {
+    size_t l2slash = path_str.find_last_of('/', lslash - 1);
+    size_t parent_start = (l2slash == std::string::npos) ? 0 : l2slash + 1;
+    if (lslash > parent_start) {
+      hlo_name = path_str.substr(parent_start, lslash - parent_start);
+    }
+  }
+
   std::ofstream outfile(outpath);
   if (!outfile) {
     std::cerr << "Warning: failed to open output file: " << outpath
               << "; defaulting to no solution." << std::endl;
     return false;
   }
-
-  std::string indent1 = "    ";
-  std::string indent2 = indent1 + indent1;
-  std::string indent3 = indent2 + indent1;
-  std::string indent4 = indent3 + indent1;
-
-  // Process hlo_name and pii_number from outpath
-  // outpath = */<hlo_name>/<pii_number>.py
-  std::string path_str(outpath);
-  size_t lslash = path_str.find_last_of('/');
-  size_t ldot = path_str.find_last_of('.');
-  if (lslash == std::string::npos || ldot == std::string::npos ||
-      ldot <= lslash + 1) {
-    std::cerr
-        << "Warning: output path " << outpath
-        << " is not in the expected format. '*/<hlo_name>/<pii_number>.py'. "
-           "Defaulting to no solution."
-        << std::endl;
-    return false;
-  }
-  std::string pii_number = path_str.substr(lslash + 1, ldot - lslash - 1);
-  size_t l2slash = path_str.find_last_of('/', lslash - 1);
-  if (l2slash == std::string::npos || lslash <= l2slash + 1) {
-    std::cerr
-        << "Warning: output path " << outpath
-        << " is not in the expected format. '*/<hlo_name>/<pii_number>.py'. "
-           "Defaulting to no solution."
-        << std::endl;
-    return false;
-  }
-  std::string hlo_name = path_str.substr(l2slash + 1, lslash - l2slash - 1);
 
   // Process kernel function name
   std::string kernel_name = metadata.module_name;
