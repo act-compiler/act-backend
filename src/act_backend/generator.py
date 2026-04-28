@@ -28,7 +28,7 @@ from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
 @dataclass
 class InstructionMetadata:
     name: str
-    semantics: str
+    semantics_ast: object
     has_comp_attrs: bool
     rhs_size: int
 
@@ -37,10 +37,10 @@ def _get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetad
     """Extract instruction metadata needed for rewrite rule generation"""
     metadata_list = []
     for instruction in accelerator.instructions:
-        if instruction.instr_semantics:
+        if instruction.instr_semantics_ast:
             metadata = InstructionMetadata(
                 name=instruction.instruction,
-                semantics=instruction.instr_semantics,
+                semantics_ast=instruction.instr_semantics_ast,
                 has_comp_attrs=len(instruction.comp_attr) > 0,
                 rhs_size=len(instruction.instr_inputs) + 1
             )
@@ -54,10 +54,10 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
 
     Args:
         accelerator: TAIDL Accelerator object
-        base_dir: Base directory of the project. Defaults to cwd.
+        base_dir: Base directory of the project. Defaults to accelerator.base_dir.
     """
     if base_dir is None:
-        base_dir = os.getcwd()
+        base_dir = accelerator.base_dir
 
     # Setup directories
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)

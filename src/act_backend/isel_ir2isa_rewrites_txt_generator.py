@@ -1,6 +1,5 @@
 import os
-from antlr4 import *
-from taidl.antlr4 import IDLV2Lexer, IDLV2Parser, IDLV2Visitor
+from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
 from .template_loader import get_backend_template_loader
 
 
@@ -152,27 +151,11 @@ class RewriteRuleVisitor(IDLV2Visitor):
             return (value_text, value_type)
 
 
-def extract_pattern_from_semantics(semantics_text):
-    try:
-        input_stream = InputStream(semantics_text)
-        lexer = IDLV2Lexer(input_stream)
-        stream = CommonTokenStream(lexer)
-        parser = IDLV2Parser(stream)
-        tree = parser.module()
-
-        visitor = RewriteRuleVisitor()
-        pattern = visitor.visit(tree)
-        parameter_vars = visitor.get_parameter_variables()
-
-        return pattern, parameter_vars
-    except Exception as e:
-        print(f"Error parsing semantics: {e}")
-        return None, None
-
-
 def generate_rewrite_rule(metadata, templates):
     """Generate a single rewrite rule using template"""
-    lhs_pattern, parameter_vars = extract_pattern_from_semantics(metadata.semantics)
+    visitor = RewriteRuleVisitor()
+    lhs_pattern = visitor.visit(metadata.semantics_ast)
+    parameter_vars = visitor.get_parameter_variables()
     kebab_name = metadata.name.replace('_', '-')
 
     # Fallback for unparseable semantics

@@ -1,7 +1,6 @@
 import os
 import re
-from antlr4 import *
-from taidl.antlr4 import IDLV2Lexer, IDLV2Parser, IDLV2Visitor
+from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
 from .template_loader import get_backend_template_loader
 
 
@@ -171,20 +170,6 @@ class RustGeneratorVisitor(IDLV2Visitor):
             return ("", "UNKNOWN")
 
 
-def parse_semantics(semantics_text):
-    try:
-        input_stream = InputStream(semantics_text)
-        lexer = IDLV2Lexer(input_stream)
-        stream = CommonTokenStream(lexer)
-        parser = IDLV2Parser(stream)
-        tree = parser.module()
-
-        visitor = RustGeneratorVisitor()
-        result = visitor.visit(tree)
-        return result
-    except Exception as e:
-        print(f"Error parsing semantics: {e}")
-        return None
 
 
 def map_dtype_to_rust(dtype):
@@ -397,7 +382,8 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
 
 
 def generate_ir2isa_rust_functions(metadata, templates):
-    semantics_data = parse_semantics(metadata.semantics)
+    visitor = RustGeneratorVisitor()
+    semantics_data = visitor.visit(metadata.semantics_ast)
     if not semantics_data:
         return f"// Failed to parse semantics for {metadata.name}\n"
 
