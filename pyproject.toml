@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "act-backend"
-version = "2.0.0"
+version = "1.0"
 description = "ACT: Compiler Backend Generator for Tensor Accelerator ISAs"
 requires-python = ">=3.10"
 license = "Apache-2.0"
