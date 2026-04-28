@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "act-backend"
+version = "2.0.0"
+description = "ACT: Compiler Backend Generator for Tensor Accelerator ISAs"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    {name = "ACT Compiler Team"},
+]
+readme = "README.md"
+dependencies = [
+    "taidl @ git+https://github.com/act-compiler/taidl.git@v2.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"act_backend.templates" = ["*.txt"]
+"act_backend.generic" = ["**/*"]
