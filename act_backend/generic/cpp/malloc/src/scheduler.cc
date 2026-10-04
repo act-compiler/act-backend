@@ -2,9 +2,8 @@
 
 namespace scheduler {
 
-std::vector<Instruction *>
-topological(const std::vector<Instruction *> &instructions, Instruction *root,
-            const std::vector<std::string> &buffers) {
+std::vector<Instruction *> topological(const std::vector<Instruction *> &instructions,
+                                       Instruction *root, const std::vector<std::string> &buffers) {
   EsunCache esun_cache;
 
   std::unordered_map<Instruction *, double> cost_map;
@@ -111,9 +110,7 @@ void dfs(Instruction *instr, std::unordered_map<Instruction *, bool> &visited,
 
   // descending order of cost
   std::sort(next_candidates.begin(), next_candidates.end(),
-            [&](Instruction *a, Instruction *b) {
-              return cost_map.at(a) > cost_map.at(b);
-            });
+            [&](Instruction *a, Instruction *b) { return cost_map.at(a) > cost_map.at(b); });
 
   for (auto *next : next_candidates) {
     dfs(next, visited, order, cost_map);

@@ -6,10 +6,13 @@ def generate_buffer_names(data_models, templates):
     """Generate buffer names using templates"""
     buffer_names = []
     for dm in data_models:
-        if dm.var_name != "d0":
+        if dm.var_name != 'd0':
             buffer_name = dm.var_name.upper()
-            buffer_names.append(templates.render("act_malloc.cc.BUFFER_NAMES.name.txt",
-                                                 buffer_name=f'"{buffer_name}"'))
+            buffer_names.append(
+                templates.render(
+                    'act_malloc.cc.BUFFER_NAMES.name.txt', buffer_name=f'"{buffer_name}"'
+                )
+            )
     return ', '.join(buffer_names)
 
 

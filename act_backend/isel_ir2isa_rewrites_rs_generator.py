@@ -29,7 +29,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
         return {
             'assignments': self.assignments,
             'root_assignment': self.root_assignment,
-            'comp_attributes': list(self.comp_attributes)
+            'comp_attributes': list(self.comp_attributes),
         }
 
     def visitInstruction(self, ctx):
@@ -66,7 +66,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
             'lhs': lhs_name,
             'dtype': lhs_type,
             'shape': lhs_shape,
-            'operands': operand_names
+            'operands': operand_names,
         }
 
         self.variable_definitions[lhs_name] = len(self.assignments)
@@ -78,7 +78,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
         return assignment
 
     def _duplicate_variable_recursive(self, var_name):
-        dup_name = f"{var_name}_dup"
+        dup_name = f'{var_name}_dup'
 
         if dup_name in self.variable_definitions:
             return
@@ -93,7 +93,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
             'lhs': dup_name,
             'dtype': original['dtype'],
             'shape': original['shape'],
-            'operands': original['operands']
+            'operands': original['operands'],
         }
         self.variable_definitions[dup_name] = len(self.assignments)
         self.assignments.append(duplicate)
@@ -167,9 +167,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
 
             return (value_text, value_type)
         else:
-            return ("", "UNKNOWN")
-
-
+            return ('', 'UNKNOWN')
 
 
 def map_dtype_to_rust(dtype):
@@ -178,11 +176,11 @@ def map_dtype_to_rust(dtype):
         'u8': 'Dtype::U8',
         's32': 'Dtype::I32',
         'u32': 'Dtype::U32',
-        'bf16': 'Dtype::BF16'
+        'bf16': 'Dtype::BF16',
     }
 
     rust_type = dtype_map.get(dtype)
-    assert (rust_type != None)
+    assert rust_type != None
     return rust_type
 
 
@@ -219,7 +217,7 @@ def parse_comp_attr_expression(shape_expr, comp_attr):
 def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
     # Generate computational attribute extraction code from ROOT assignment
     if not comp_attr or not root_assignment:
-        return ""
+        return ''
 
     comp_attr, factors = parse_comp_attr_expression(root_assignment['shape'], comp_attr)
     root_index = num_assignments - 1  # ROOT is always the last assignment
@@ -229,14 +227,14 @@ def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
         division_factor = 1
         for factor in factors:
             division_factor *= factor
-        return f"    let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {division_factor};\n"
+        return f'    let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {division_factor};\n'
     else:
-        return f"    let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n"
+        return f'    let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
 
 
 def generate_precond_function(instruction_name, semantics_data, rhs_size, templates):
     if not semantics_data:
-        return ""
+        return ''
 
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
@@ -271,28 +269,30 @@ def generate_precond_function(instruction_name, semantics_data, rhs_size, templa
         else:
             dims = [shape_expr]
 
-        shape_vec = f"vec![{', '.join(dims)}]"
+        shape_vec = f'vec![{", ".join(dims)}]'
 
-        shape_check = templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_check.txt",
-                                       index=str(i),
-                                       shape_vec=shape_vec,
-                                       dtype=dtype_rust
-                                       )
+        shape_check = templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_check.txt',
+            index=str(i),
+            shape_vec=shape_vec,
+            dtype=dtype_rust,
+        )
         shape_checks.append(shape_check)
 
     shape_checks_code = '\n'.join(shape_checks)
 
-    return templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.precond.txt",
-                            instruction_name=instruction_name,
-                            num_assignments=str(num_assignments),
-                            comp_attr_code=comp_attr_code,
-                            shape_checks=shape_checks_code
-                            )
+    return templates.render(
+        'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.precond.txt',
+        instruction_name=instruction_name,
+        num_assignments=str(num_assignments),
+        comp_attr_code=comp_attr_code,
+        shape_checks=shape_checks_code,
+    )
 
 
 def generate_metadata_function(instruction_name, semantics_data, rhs_size, templates):
     if not semantics_data:
-        return ""
+        return ''
 
     assignments = semantics_data['assignments']
     comp_attrs = semantics_data['comp_attributes']
@@ -307,26 +307,29 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
     if comp_attr:
         # Use unified comp_attr extraction logic - same as precond function
         comp_attr_extraction = generate_comp_attr_extraction(
-            root_assignment, comp_attr, num_assignments)
+            root_assignment, comp_attr, num_assignments
+        )
 
-        return templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt",
-                                instruction_name=instruction_name,
-                                num_assignments=str(num_assignments),
-                                comp_attr=comp_attr,
-                                comp_attr_extraction=comp_attr_extraction.strip(),
-                                rhs_size=str(rhs_size)
-                                )
+        return templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',
+            instruction_name=instruction_name,
+            num_assignments=str(num_assignments),
+            comp_attr=comp_attr,
+            comp_attr_extraction=comp_attr_extraction.strip(),
+            rhs_size=str(rhs_size),
+        )
     else:
-        return templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_no_attr.txt",
-                                instruction_name=instruction_name,
-                                num_assignments=str(num_assignments),
-                                rhs_size=str(rhs_size)
-                                )
+        return templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_no_attr.txt',
+            instruction_name=instruction_name,
+            num_assignments=str(num_assignments),
+            rhs_size=str(rhs_size),
+        )
 
 
 def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, templates):
     if not semantics_data:
-        return ""
+        return ''
 
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
@@ -340,13 +343,15 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
 
     # Generate metadata extraction - use unified logic same as other functions
     if comp_attr:
-        metadata_code = "    let lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n" + generate_comp_attr_extraction(
-            root_assignment, comp_attr, num_assignments)
+        metadata_code = (
+            '    let lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n'
+            + generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
+        )
     else:
-        metadata_code = "    let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n"
+        metadata_code = '    let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n'
 
     # Generate shape setting
-    shape_setting = ""
+    shape_setting = ''
     if root_assignment:
         dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
         shape_expr = root_assignment['shape']
@@ -365,35 +370,39 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         else:
             dims = [shape_expr]
 
-        shape_vec = f"vec![{', '.join(dims)}]"
+        shape_vec = f'vec![{", ".join(dims)}]'
 
-        shape_setting = templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt",
-                                         shape_vec=shape_vec,
-                                         dtype=dtype_rust
-                                         )
+        shape_setting = templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
+            shape_vec=shape_vec,
+            dtype=dtype_rust,
+        )
 
-    return templates.render("ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt",
-                            instruction_name=instruction_name,
-                            num_assignments=str(num_assignments),
-                            rhs_size=str(rhs_size),
-                            metadata_code=metadata_code,
-                            shape_setting=shape_setting
-                            )
+    return templates.render(
+        'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt',
+        instruction_name=instruction_name,
+        num_assignments=str(num_assignments),
+        rhs_size=str(rhs_size),
+        metadata_code=metadata_code,
+        shape_setting=shape_setting,
+    )
 
 
 def generate_ir2isa_rust_functions(metadata, templates):
     visitor = RustGeneratorVisitor()
     semantics_data = visitor.visit(metadata.semantics_ast)
     if not semantics_data:
-        return f"// Failed to parse semantics for {metadata.name}\n"
+        return f'// Failed to parse semantics for {metadata.name}\n'
 
     precond = generate_precond_function(metadata.name, semantics_data, metadata.rhs_size, templates)
     metadata_func = generate_metadata_function(
-        metadata.name, semantics_data, metadata.rhs_size, templates)
+        metadata.name, semantics_data, metadata.rhs_size, templates
+    )
     set_shapes = generate_set_shapes_function(
-        metadata.name, semantics_data, metadata.rhs_size, templates)
+        metadata.name, semantics_data, metadata.rhs_size, templates
+    )
 
-    return f"{precond}\n\n{metadata_func}\n\n{set_shapes}\n\n"
+    return f'{precond}\n\n{metadata_func}\n\n{set_shapes}\n\n'
 
 
 def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_list):

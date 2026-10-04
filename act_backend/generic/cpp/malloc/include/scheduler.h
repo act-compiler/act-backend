@@ -10,14 +10,13 @@
 #include "storage.h"
 #include "tensor.h"
 
-using EsunCache =
-    std::unordered_map<Instruction *, std::unordered_map<std::string, int64>>;
+using EsunCache = std::unordered_map<Instruction *, std::unordered_map<std::string, int64>>;
 
 namespace scheduler {
 
-std::vector<Instruction *>
-topological(const std::vector<Instruction *> &instructions, Instruction *root,
-            const std::vector<std::string> &buffer_name);
+std::vector<Instruction *> topological(const std::vector<Instruction *> &instructions,
+                                       Instruction *root,
+                                       const std::vector<std::string> &buffer_name);
 
 } // namespace scheduler
 

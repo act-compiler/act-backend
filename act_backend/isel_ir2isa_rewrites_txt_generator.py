@@ -5,12 +5,18 @@ from .template_loader import get_backend_template_loader
 
 class RewriteRuleVisitor(IDLV2Visitor):
     OP_MAP = {
-        'reshape': 'reshape_?', 'convert': 'convert_?', 'slice': 'slice_?',
-        'transpose': 'transpose_?', 'broadcast': 'broadcast_?', 'concat': 'concat_?',
-        'constant': 'constant_?', 'eye': 'eye_?',
+        'reshape': 'reshape_?',
+        'convert': 'convert_?',
+        'slice': 'slice_?',
+        'transpose': 'transpose_?',
+        'broadcast': 'broadcast_?',
+        'concat': 'concat_?',
+        'constant': 'constant_?',
+        'eye': 'eye_?',
         'bitcast_convert': 'bitcvt',
         'reduce_add': 'reduce_?',
-        'shift_left': 'shift-left', 'shift_right_logical': 'shift-right-logical',
+        'shift_left': 'shift-left',
+        'shift_right_logical': 'shift-right-logical',
     }
 
     def __init__(self):
@@ -24,7 +30,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
         self.variable_usage_count = set()
 
     def get_next_variable(self):
-        var_name = f"?{chr(ord('a') + self.variable_counter)}"
+        var_name = f'?{chr(ord("a") + self.variable_counter)}'
         self.variable_counter += 1
         return var_name
 
@@ -89,7 +95,11 @@ class RewriteRuleVisitor(IDLV2Visitor):
                         operand_patterns.append(var)
 
         rewrite_op_name = self.OP_MAP.get(op_name, op_name)
-        pattern = f"({rewrite_op_name} {' '.join(operand_patterns)})" if operand_patterns else f"({rewrite_op_name})"
+        pattern = (
+            f'({rewrite_op_name} {" ".join(operand_patterns)})'
+            if operand_patterns
+            else f'({rewrite_op_name})'
+        )
 
         self.variable_definitions[lhs_name] = pattern
         self.pattern_stack.append(pattern)
@@ -163,25 +173,29 @@ def generate_rewrite_rule(metadata, templates):
         # Use fixed padding for fallback
         padding = ' ' * (19 - len(kebab_name))
         return templates.render(
-            "ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt",
+            'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
             kebab_name=kebab_name,
             padding=padding,
-            lhs_pattern="(?fallback)",
-            rhs=f"({kebab_name} ?args)"
+            lhs_pattern='(?fallback)',
+            rhs=f'({kebab_name} ?args)',
         )
 
     # Generate RHS with or without _? suffix
-    rhs = f"({kebab_name}_? {' '.join(parameter_vars)})" if metadata.has_comp_attrs else f"({kebab_name} {' '.join(parameter_vars)})"
+    rhs = (
+        f'({kebab_name}_? {" ".join(parameter_vars)})'
+        if metadata.has_comp_attrs
+        else f'({kebab_name} {" ".join(parameter_vars)})'
+    )
 
     # Calculate padding to align the '=>' at column 20
     padding = ' ' * (19 - len(kebab_name))
 
     return templates.render(
-        "ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt",
+        'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
         kebab_name=kebab_name,
         padding=padding,
         lhs_pattern=lhs_pattern,
-        rhs=rhs
+        rhs=rhs,
     )
 
 

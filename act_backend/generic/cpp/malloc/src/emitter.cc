@@ -41,10 +41,9 @@ std::string MetaDataInfo::str() const {
   return oss.str();
 }
 
-MetaData::MetaData(
-    std::ifstream &metadata_path,
-    const std::unordered_map<std::string, Tensor *> &tensor_map,
-    const std::unordered_map<Tensor *, std::string> &known_constants)
+MetaData::MetaData(std::ifstream &metadata_path,
+                   const std::unordered_map<std::string, Tensor *> &tensor_map,
+                   const std::unordered_map<Tensor *, std::string> &known_constants)
     : max_hbm_size(HBM_SIZE) {
   try {
     if (!metadata_path)
@@ -62,8 +61,7 @@ MetaData::MetaData(
 
     if (j.contains("input") && j["input"].is_array()) {
       for (const auto &entry : j["input"]) {
-        input_info.emplace_back(
-            MetaDataInfo(const_cast<nlohmann::json &>(entry)));
+        input_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
       }
     } else
       throw std::runtime_error("input is required in metadata.json");
@@ -73,14 +71,12 @@ MetaData::MetaData(
         throw std::runtime_error("supports only one output in metadata.json");
 
       for (const auto &entry : j["output"]) {
-        output_info.emplace_back(
-            MetaDataInfo(const_cast<nlohmann::json &>(entry)));
+        output_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
       }
     } else
       throw std::runtime_error("output is required in metadata.json");
   } catch (const std::exception &e) {
-    std::cerr << "Warning: failed to parse metadata.json: " << e.what()
-              << std::endl;
+    std::cerr << "Warning: failed to parse metadata.json: " << e.what() << std::endl;
     assert(false && "nlohmann json parse error");
   }
 
@@ -92,16 +88,15 @@ MetaData::MetaData(
                   << " not found in known constants." << std::endl;
         assert(false && "unknown constant tensor");
       }
-      if (known_constants.at(tensor) !=
-          "reshape[shape='256'](bitcvt(eye[ttype='16,16,I8']()))") {
+      if (known_constants.at(tensor) != "reshape[shape='256'](bitcvt(eye[ttype='16,16,I8']()))") {
         std::cerr << "Warning: only constant tensor with value reshape(eye) is "
                      "supported now, continue anyway."
                   << std::endl;
       }
 
-      constant_info.emplace_back(MetaDataInfo(
-          tensor->get_offsets()[0]->Min(), tensor->get_sizes(), "jnp.uint8",
-          "jnp.reshape(jnp.eye(16, dtype=jnp.int8).astype(jnp.uint8), (256,))"));
+      constant_info.emplace_back(
+          MetaDataInfo(tensor->get_offsets()[0]->Min(), tensor->get_sizes(), "jnp.uint8",
+                       "jnp.reshape(jnp.eye(16, dtype=jnp.int8).astype(jnp.uint8), (256,))"));
     }
   }
 
@@ -117,8 +112,7 @@ MetaData::MetaData(
   }
 }
 
-bool assembly_dump(char *outpath,
-                   const std::vector<Instruction *> &instructions,
+bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions,
                    const MetaData &metadata) {
   std::string indent1 = "    ";
   std::string indent2 = indent1 + indent1;
@@ -132,10 +126,8 @@ bool assembly_dump(char *outpath,
   size_t lslash = path_str.find_last_of('/');
   size_t fname_start = (lslash == std::string::npos) ? 0 : lslash + 1;
   if (fname_start >= path_str.size()) {
-    std::cerr
-        << "Warning: output path " << outpath
-        << " has no filename component. Defaulting to no solution."
-        << std::endl;
+    std::cerr << "Warning: output path " << outpath
+              << " has no filename component. Defaulting to no solution." << std::endl;
     return false;
   }
 
@@ -146,11 +138,10 @@ bool assembly_dump(char *outpath,
   }
 
   if (stem_end <= fname_start) {
-    std::cerr
-        << "Warning: output path " << outpath
-        << " does not contain a valid filename stem. "
-           "Defaulting to no solution."
-        << std::endl;
+    std::cerr << "Warning: output path " << outpath
+              << " does not contain a valid filename stem. "
+                 "Defaulting to no solution."
+              << std::endl;
     return false;
   }
 
@@ -185,8 +176,7 @@ bool assembly_dump(char *outpath,
   // Kernel function metadata
   outfile << "def " << kernel_name << "(kernel, api):" << std::endl;
 
-  outfile << indent1 << "@kernel(hbm=" << metadata.max_hbm_size << ","
-          << std::endl;
+  outfile << indent1 << "@kernel(hbm=" << metadata.max_hbm_size << "," << std::endl;
 
   outfile << indent3 << "input=[" << std::endl;
   for (const auto &info : metadata.input_info) {

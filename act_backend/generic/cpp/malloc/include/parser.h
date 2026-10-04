@@ -24,11 +24,10 @@ struct ParsedLine {
 
 ParsedLine parse_line(const std::string &line);
 
-Instruction *
-create_instruction(const ParsedLine &pl,
-                   std::unordered_map<std::string, Tensor *> &tensor_map,
-                   std::unordered_map<Tensor *, int64> &known_offsets,
-                   std::unordered_map<Tensor *, std::string> &known_constants);
+Instruction *create_instruction(const ParsedLine &pl,
+                                std::unordered_map<std::string, Tensor *> &tensor_map,
+                                std::unordered_map<Tensor *, int64> &known_offsets,
+                                std::unordered_map<Tensor *, std::string> &known_constants);
 
 } // namespace parser
 
