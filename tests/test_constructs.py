@@ -86,19 +86,24 @@ def test_backend_compiles_with_the_constructs(work_dir, tmp_path):
     assert sum(instruction_calls(output_path).values()) == 9
 
 
-def test_concatenate_is_selected(work_dir, tmp_path):
-    kernel = tmp_path / 'joined.hlo'
-    kernel.write_text(JOINED)
-    output = tmp_path / 'joined.py'
+def compiled_calls(work_dir, tmp_path, kernel):
+    """Compile a kernel's text; return each call of its assembly, a name and its arguments"""
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(kernel)
+    output = tmp_path / 'kernel.py'
     backend = os.path.join(work_dir, 'backends', 'QKV')
     log = str(tmp_path / 'log')
-    arguments = ['--input', str(kernel), '--output', str(output), '--log', log]
+    arguments = ['--input', str(path), '--output', str(output), '--log', log]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True)
     assert run.returncode == 0, run.stderr
-    calls = [
+    return [
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
         for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', output.read_text())
     ]
+
+
+def test_concatenate_is_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, JOINED)
     # Each half is loaded, the two are joined in the kernel's order, and the rows normalised
     names = [name for name, _ in calls]
     assert names == ['load_rm', 'load_rm', 'join', 'softmax', 'mov', 'store_rm']
