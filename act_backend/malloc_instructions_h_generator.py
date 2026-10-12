@@ -46,22 +46,9 @@ def generate_instruction_class(instruction, templates):
     get_h_cases = ''
     h_index = 0
 
-    # Process outputs
-    for output in instruction.instr_outputs:
-        _, addr_expr_list, size_expr_list = output
-        addr_var = extract_addr_var(addr_expr_list[0])
-        size_expr = extract_size_expr(size_expr_list[0])
-
-        if addr_var:
-            get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
-            get_h_cases += templates.render_lines(
-                'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
-            )
-            h_index += 1
-
-    # Process inputs
-    for inp in instruction.instr_inputs:
-        _, addr_expr_list, size_expr_list = inp
+    # The output's range first, then each input's
+    for operand in [*instruction.instr_outputs, *instruction.instr_inputs]:
+        _, addr_expr_list, size_expr_list = operand
         addr_var = extract_addr_var(addr_expr_list[0])
         size_expr = extract_size_expr(size_expr_list[0])
 

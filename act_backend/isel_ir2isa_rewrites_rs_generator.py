@@ -170,6 +170,33 @@ def extract_comp_attr_from_shape(shape_text, comp_attrs):
     return comp_attrs[0] if comp_attrs else None
 
 
+def root_comp_attr(semantics_data):
+    # The attribute the root's shape names, if the semantics has one
+    root_assignment = semantics_data['root_assignment']
+    comp_attrs = semantics_data['comp_attributes']
+    if root_assignment and comp_attrs:
+        return extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
+    return None
+
+
+def shape_to_rust_vec(shape_expr, comp_attr):
+    # Parse shape expression to extract dimensions
+    shape_expr = shape_expr.replace('`', '').replace(' ', '')
+
+    # Replace all @c.attr patterns with variable names
+    if comp_attr:
+        shape_expr = shape_expr.replace(f'@c.{comp_attr}', comp_attr)
+
+    shape_expr = re.sub(r'@c\.(\w+)', r'\1', shape_expr)
+
+    if ',' in shape_expr:
+        dims = [d.strip() for d in shape_expr.split(',')]
+    else:
+        dims = [shape_expr]
+
+    return f'vec![{", ".join(dims)}]'
+
+
 def parse_comp_attr_expression(shape_expr, comp_attr):
     # Only works with @c.attr or @c.attr * constant
     # Very fragile but should work
@@ -213,13 +240,9 @@ def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
 def generate_precond_function(instruction_name, semantics_data, templates):
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
-    comp_attrs = semantics_data['comp_attributes']
 
     num_assignments = len(assignments)
-    comp_attr = None
-
-    if root_assignment and comp_attrs:
-        comp_attr = extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
+    comp_attr = root_comp_attr(semantics_data)
 
     # Generate comp attribute extraction
     comp_attr_code = generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
@@ -228,23 +251,7 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     shape_checks = []
     for i, assignment in enumerate(assignments):
         dtype_rust = map_dtype_to_rust(assignment['dtype'])
-        shape_expr = assignment['shape']
-
-        # Parse shape expression to extract dimensions
-        shape_expr = shape_expr.replace('`', '').replace(' ', '')
-
-        # Replace all @c.attr patterns with variable names
-        if comp_attr:
-            shape_expr = shape_expr.replace(f'@c.{comp_attr}', comp_attr)
-
-        shape_expr = re.sub(r'@c\.(\w+)', r'\1', shape_expr)
-
-        if ',' in shape_expr:
-            dims = [d.strip() for d in shape_expr.split(',')]
-        else:
-            dims = [shape_expr]
-
-        shape_vec = f'vec![{", ".join(dims)}]'
+        shape_vec = shape_to_rust_vec(assignment['shape'], comp_attr)
 
         shape_check = templates.render(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_check.txt',
@@ -267,14 +274,10 @@ def generate_precond_function(instruction_name, semantics_data, templates):
 
 def generate_metadata_function(instruction_name, semantics_data, rhs_size, templates):
     assignments = semantics_data['assignments']
-    comp_attrs = semantics_data['comp_attributes']
     root_assignment = semantics_data['root_assignment']
 
     num_assignments = len(assignments)
-    comp_attr = None
-
-    if root_assignment and comp_attrs:
-        comp_attr = extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
+    comp_attr = root_comp_attr(semantics_data)
 
     if comp_attr:
         # Use unified comp_attr extraction logic - same as precond function
@@ -302,13 +305,9 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
 def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, templates):
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
-    comp_attrs = semantics_data['comp_attributes']
 
     num_assignments = len(assignments)
-    comp_attr = None
-
-    if root_assignment and comp_attrs:
-        comp_attr = extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
+    comp_attr = root_comp_attr(semantics_data)
 
     # Generate metadata extraction - use unified logic same as other functions
     metadata_code = ''
@@ -325,23 +324,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
     shape_setting = ''
     if root_assignment:
         dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
-        shape_expr = root_assignment['shape']
-
-        # Parse shape expression
-        shape_expr = shape_expr.replace('`', '').replace(' ', '')
-
-        # Replace all @c.attr patterns with variable names
-        if comp_attr:
-            shape_expr = shape_expr.replace(f'@c.{comp_attr}', comp_attr)
-
-        shape_expr = re.sub(r'@c\.(\w+)', r'\1', shape_expr)
-
-        if ',' in shape_expr:
-            dims = [d.strip() for d in shape_expr.split(',')]
-        else:
-            dims = [shape_expr]
-
-        shape_vec = f'vec![{", ".join(dims)}]'
+        shape_vec = shape_to_rust_vec(root_assignment['shape'], comp_attr)
 
         shape_setting = templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
