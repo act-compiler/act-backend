@@ -185,6 +185,23 @@ ENTRY main {
 """
 
 
+def add_pred(acc):
+    """Rows of pred loaded and stored, and an instruction that joins two values of them"""
+    add_moves(acc, 'pred', 1)
+    add_binary(acc, 'either', 'or', 'pred')
+
+
+# A kernel that joins two inputs of pred
+EITHER = """HloModule either, entry_computation_layout={(pred[32,64]{1,0}, pred[32,64]{1,0})->pred[32,64]{1,0}}
+
+ENTRY main {
+  %a = pred[32,64] parameter(0)
+  %b = pred[32,64] parameter(1)
+  ROOT %c = pred[32,64] or(%a, %b)
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -206,6 +223,7 @@ def work_dir(tmp_path_factory):
         add_slice(acc)
         add_bit_operations(acc)
         add_f32(acc)
+        add_pred(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -283,6 +301,14 @@ def test_f32_values_are_selected(work_dir, tmp_path):
     assert [name for name, _ in calls] == ['load_f32', 'load_f32', 'add_f32', 'store_f32']
     # Each input is four bytes an element
     assert {call['addr_in'] for _, call in calls[:2]} == {'0', '8192'}
+
+
+def test_pred_values_are_selected(work_dir, tmp_path):
+    kernel = tmp_path / 'kernel.py'
+    calls = compiled_calls(work_dir, tmp_path, EITHER)
+    assert [name for name, _ in calls] == ['load_pred', 'load_pred', 'either', 'store_pred']
+    # The assembly types each input and the output as booleans
+    assert kernel.read_text().count("'dtype': jnp.bool_") == 3
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):

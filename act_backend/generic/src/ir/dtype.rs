@@ -1,5 +1,6 @@
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Dtype {
+  Pred,
   U8,
   I8,
   U16,
@@ -17,6 +18,7 @@ pub enum Dtype {
 impl Dtype {
   pub fn size_in_bytes(&self) -> i32 {
     match self {
+      Dtype::Pred => 1,
       Dtype::U8 => 1,
       Dtype::I8 => 1,
       Dtype::U16 => 2,
@@ -36,6 +38,7 @@ impl Dtype {
 impl std::fmt::Display for Dtype {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
+      Dtype::Pred => write!(f, "pred"),
       Dtype::U8 => write!(f, "u8"),
       Dtype::I8 => write!(f, "s8"),
       Dtype::U16 => write!(f, "u16"),
@@ -55,6 +58,7 @@ impl std::fmt::Display for Dtype {
 impl From<&str> for Dtype {
   fn from(s: &str) -> Self {
     match s {
+      "pred" => Dtype::Pred,
       "u8" => Dtype::U8,
       "s8" => Dtype::I8,
       "u16" => Dtype::U16,
@@ -78,6 +82,7 @@ impl serde::Serialize for Dtype {
     S: serde::Serializer,
   {
     serializer.serialize_str(match self {
+      Dtype::Pred => "jnp.bool_",
       Dtype::U8 => "jnp.uint8",
       Dtype::I8 => "jnp.int8",
       Dtype::U16 => "jnp.uint16",

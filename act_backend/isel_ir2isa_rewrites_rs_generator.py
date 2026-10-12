@@ -7,6 +7,7 @@ from .template_loader import fill_placeholders, get_backend_template_loader
 
 # The e-graph's element types, by their semantics word
 ELEMENT_TYPES = {
+    'pred': 'Dtype::Pred',
     's8': 'Dtype::I8',
     's16': 'Dtype::I16',
     's32': 'Dtype::I32',
