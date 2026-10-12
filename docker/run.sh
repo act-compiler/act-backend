@@ -5,13 +5,22 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
+# Pick the cuda13 image and pass the GPU on a GPU host
+VARIANT=""
+GPU_FLAGS=()
+if nvidia-smi >/dev/null 2>&1 &&
+  docker info -f '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+  VARIANT="-cuda13"
+  GPU_FLAGS=(--gpus all)
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 
 if [ "$ARCH" = "x86_64" ]; then
-  IMAGE_NAME="devanshdvj/act:${ACT_DOCKERHUB_TAG}-amd64"
+  IMAGE_NAME="devanshdvj/act-env:${ACT_ENV_TAG}${VARIANT}-amd64"
 elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
-  IMAGE_NAME="devanshdvj/act:${ACT_DOCKERHUB_TAG}-arm64"
+  IMAGE_NAME="devanshdvj/act-env:${ACT_ENV_TAG}${VARIANT}-arm64"
 else
   echo "Error: Unsupported architecture: $ARCH"
   exit 1
@@ -90,6 +99,7 @@ create_persistent() {
   echo "Creating persistent container (will not be removed on exit) with name ${name}."
 
   docker run -it --name "${name}" \
+    ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} \
     -v "${HOST_MOUNT}:${CONTAINER_MOUNT}:rw" \
     -w "${CONTAINER_MOUNT}" \
     -e HOST_UID="${HOST_UID}" -e HOST_GID="${HOST_GID}" \
@@ -116,6 +126,7 @@ if [ "${PERSISTENT}" -eq 0 ]; then
   echo "Launching ephemeral container (will be removed on exit) with name ${EPHEMERAL_NAME}."
   docker run -it --rm \
     --name "${EPHEMERAL_NAME}" \
+    ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} \
     -v "${HOST_MOUNT}:${CONTAINER_MOUNT}:rw" \
     -w "${CONTAINER_MOUNT}" \
     -e HOST_UID="${HOST_UID}" -e HOST_GID="${HOST_GID}" \

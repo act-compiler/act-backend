@@ -20,3 +20,18 @@ Furthermore, the generated compiler backend supports integration with cost model
 The generated compiler backend is agnostic to the choice of the cost model and can be easily adapted to work with different cost models like cycle-accurate simulators, analytical models, or ML-based models.
 
 Details on automatically generating compiler backends from TAIDL definitions is present in our [arXiv release](https://arxiv.org/abs/2510.09932).
+
+## Installation
+
+ACT-Backend needs Python 3.14 or later.
+
+## Testing
+
+```bash
+./tests/pytest.sh      # every test
+./tests/regenerate.sh  # rewrite the goldens from the compiled kernels
+```
+
+`tests/pytest.sh` runs the tests in `devanshdvj/act-env:py3.14-jax0.10.2`, the image `docker/act.env` names, in its tag for the host's architecture, amd64 or arm64, and in its CUDA 13 tag where `nvidia-smi` succeeds and docker lists the nvidia runtime; the CI pulls its tag for the runner's architecture.
+It installs the package and what `tests/requirements.txt` names, pytest and TAIDL-TO v2.5, whose generated oracle simulates each compiled kernel on the CPU.
+A compiled attention kernel equals its golden bit for bit and is held to its NumPy reference within two bf16 ulps of the largest magnitude in V; `tests/regenerate.sh` rewrites the goldens and records the oracle, jax, platform and machine they come from.

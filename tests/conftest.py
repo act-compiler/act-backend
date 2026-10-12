@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import json
 import shutil
 import subprocess
 import tempfile
@@ -11,6 +12,7 @@ import importlib.util
 
 import pytest
 import numpy as np
+import ml_dtypes
 import jax
 import jax.numpy as jnp
 
@@ -34,6 +36,8 @@ def pytest_runtest_setup(item):
 
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+# The platform every oracle simulates on
+PLATFORM = 'CPU'
 
 
 def load_bf16_matrix(path, shape):
@@ -92,13 +96,13 @@ def compile_hlo(work_dir, example_dir):
 
 
 def run_compiled_kernel(work_dir, data_dir):
-    """Import oracle + compiled kernel, run simulation, return max diff against golden"""
+    """Import oracle + compiled kernel, run simulation, return its output"""
     oracle_dir = os.path.join(work_dir, 'targets', 'QKV')
     sys.path.insert(0, oracle_dir)
 
     oracle_decorator = importlib.import_module('oracle.decorator')
     oracle_api = importlib.import_module('oracle.api')
-    oracle_decorator.set_simulation_backend('CPU')
+    oracle_decorator.set_simulation_backend(PLATFORM)
 
     asm_dir = os.path.join(work_dir, 'asm')
     sys.path.insert(0, asm_dir)
@@ -112,6 +116,32 @@ def run_compiled_kernel(work_dir, data_dir):
     V = load_bf16_matrix(os.path.join(data_dir, 'V.dat'), (64, 64))
 
     outputs, _ = qkv_kernel('fsim')(Q, K, V)
-    golden = load_bf16_matrix(os.path.join(data_dir, 'attention.dat'), (64, 64))
+    return outputs[0]
 
-    return float(jnp.max(jnp.abs(outputs[0] - golden)))
+
+def load_golden(data_dir):
+    """Return the attention golden and the record of where it came from"""
+    with open(os.path.join(data_dir, 'goldens.json')) as f:
+        record = json.load(f)['attention.dat']
+    return load_bf16_matrix(os.path.join(data_dir, 'attention.dat'), (64, 64)), record
+
+
+def bf16(x):
+    """Round float64 values to bf16, kept in float64"""
+    return x.astype(ml_dtypes.bfloat16).astype(np.float64)
+
+
+def attention_reference(data_dir):
+    """Return softmax(Q K^T) V in numpy, rounded to bf16 like the kernel, and its tolerance"""
+    Q, K, V = (
+        np.fromfile(os.path.join(data_dir, f'{n}.dat'), dtype=ml_dtypes.bfloat16)
+        .reshape(64, 64)
+        .astype(np.float64)
+        for n in 'QKV'
+    )
+    S = bf16(Q @ K.T)
+    E = bf16(np.exp(S))
+    P = bf16(E / bf16(E.sum(axis=1, keepdims=True)))
+    # Two bf16 ulps at max|V| bound every output
+    tol = 2 * 2.0 ** (np.floor(np.log2(np.abs(V).max())) - 7)
+    return bf16(P @ V), tol
