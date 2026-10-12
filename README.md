@@ -25,6 +25,63 @@ Details on automatically generating compiler backends from TAIDL definitions is 
 
 ACT-Backend needs Python 3.14 or later.
 
+```bash
+pip install git+https://github.com/act-compiler/act-backend.git@v1.4
+```
+
+Generating a backend builds it, which needs `cargo` with access to crates.io, CMake, `make`, a C++17 compiler, [OR-Tools](https://developers.google.com/optimization) and the [nlohmann/json](https://github.com/nlohmann/json) headers on the machine.
+OR-Tools is read from the directory `ORTOOLS_DIR` names, by default `/opt/ortools`, and the headers from the one `NLOHMANN_JSON_DIR` names, by default `/opt/nlohmann_json`.
+The images `devanshdvj/act-env:py3.14-jax0.10.2-amd64` and `devanshdvj/act-env:py3.14-jax0.10.2-arm64` hold all of them.
+
+## Usage
+
+```python
+from act_backend import generate_backend
+
+generate_backend(acc)  # acc: a TAIDL Accelerator
+```
+
+`generate_backend(acc)` writes the backend's crate into `targets/<name>/backend/` under the accelerator's `base_dir`, by default the directory of the file that creates the accelerator, builds it and copies the compiler to `backends/<name>`.
+A build that fails raises `RuntimeError` with the build's own output.
+ACT-Backend reads TAIDL v2.3.
+
+```bash
+./backends/<name> --input kernel.hlo --output kernel.py
+```
+
+The backend compiles the kernel in an XLA-HLO file into assembly: a Python file of calls to the accelerator's instructions, which an oracle that [TAIDL-TO](https://github.com/act-compiler/act-oracle) generates for the same accelerator simulates.
+The backend is one file that holds its rewrite rules, and its run path names the OR-Tools directory it was built with.
+
+## Cost function
+
+Among the candidates it finds for a kernel, a backend emits the one of lowest cost.
+The cost comes from one C function:
+
+```c
+int act_cost(const char *asm_path, double *cost);
+```
+
+It reads the candidate's assembly at `asm_path`, writes its cost and returns 0; any other return ends the compile with an error.
+By default it counts the candidate's instructions.
+`generate_backend(acc, cost='model.o')` links the library that defines it into the backend in the default's place: an object file, a static library or a shared library, which its author builds.
+
+```bash
+cc -c -fPIC model.c -o model.o
+```
+
+The library's author is responsible for it being complete: beyond the C and C++ runtime libraries, the link adds nothing to it.
+An object file or a static library is carried inside the backend, while a shared library must stay where it is.
+The author returns a large finite cost for a candidate the model cannot price, and closes what the model opened in an `atexit` handler.
+
+## Examples
+
+- `examples/QKV/`: `QKV.py`, an accelerator with two on-chip buffers and seven instructions, and its `attention` kernel under `kernels/`
+- `examples/QKV_new/`: `QKV_new.py`, a variant with a third on-chip buffer and ten instructions, and the same kernel
+
+`pip install -r tests/requirements.txt` installs TAIDL-TO, which each spec needs for its oracle.
+Running a spec, such as `cd examples/QKV && python QKV.py`, generates its oracle and its backend there, and `./backends/QKV --input kernels/attention.hlo --output attention.py` then compiles the kernel.
+`tests/conftest.py` does both in a temporary directory and simulates the compiled kernel on the matrices under `data/`.
+
 ## Testing
 
 ```bash
