@@ -21,6 +21,10 @@ The generated compiler backend is agnostic to the choice of the cost model and c
 
 Details on automatically generating compiler backends from TAIDL definitions is present in our [arXiv release](https://arxiv.org/abs/2510.09932).
 
+## Installation
+
+ACT-Backend needs Python 3.14 or later.
+
 ## Testing
 
 ```bash
