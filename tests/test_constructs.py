@@ -49,6 +49,11 @@ ENTRY main {
 """
 
 
+def add_data_model_with_no_access_dimension(acc):
+    """A buffer that is one unit of 64 columns"""
+    acc.add_data_model('d3', [], [64], 'bf16')
+
+
 def add_instruction_with_no_semantics(acc):
     """An instruction that sets a mode and computes nothing"""
     acc.add_instruction('configure', ['mode'], [])
@@ -61,6 +66,7 @@ def work_dir(tmp_path_factory):
 
     def with_constructs(acc, *args, **kwargs):
         add_concatenate(acc)
+        add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
 
@@ -99,6 +105,12 @@ def test_concatenate_is_selected(work_dir, tmp_path):
     loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
     join = calls[2][1]
     assert (join['addr_1'], join['addr_2']) == (loaded['0'], loaded['4096'])
+
+
+def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
+    allocator = os.path.join(work_dir, 'targets', 'QKV', 'backend', 'cpp', 'malloc')
+    with open(os.path.join(allocator, 'src', 'globals.cc')) as f:
+        assert 'new Storage("D3", {}, 1)' in f.read()
 
 
 def test_instruction_with_no_semantics_is_left_out(work_dir):
