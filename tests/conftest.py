@@ -49,13 +49,12 @@ def load_bf16_matrix(path, shape):
 
 def generate_oracle_and_backend(example_dir, work_dir):
     """Run the ISA spec to generate oracle + backend into work_dir"""
-    # Copy spec and HLO into work_dir
+    # Copy the spec into work_dir
     for name in ['QKV.py', 'QKV_new.py']:
         src = os.path.join(example_dir, name)
         if os.path.exists(src):
             shutil.copy(src, work_dir)
 
-    os.chdir(work_dir)
     for name in ['QKV.py', 'QKV_new.py']:
         path = os.path.join(work_dir, name)
         if os.path.exists(path):
@@ -145,3 +144,26 @@ def attention_reference(data_dir):
     # Two bf16 ulps at max|V| bound every output
     tol = 2 * 2.0 ** (np.floor(np.log2(np.abs(V).max())) - 7)
     return bf16(P @ V), tol
+
+
+@pytest.fixture(scope='module')
+def work_dir(request):
+    """Generate the module's oracle and backend in a directory of its own, removed after"""
+    work_dir = tempfile.mkdtemp()
+    try:
+        generate_oracle_and_backend(request.module.QKV_DIR, work_dir)
+        yield work_dir
+    finally:
+        shutil.rmtree(work_dir)
+
+
+@pytest.fixture(scope='module')
+def assembly(request, work_dir):
+    """Compile the module's attention kernel and return the assembly's path"""
+    return compile_hlo(work_dir, request.module.QKV_DIR)
+
+
+@pytest.fixture(scope='module')
+def output(request, work_dir, assembly):
+    """Simulate the module's compiled kernel once and return its output"""
+    return run_compiled_kernel(work_dir, request.module.DATA_DIR)
