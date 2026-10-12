@@ -28,8 +28,8 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
     if (line.empty() || line[0] == '#')
       continue;
 
-    Instruction *instr = parser::create_instruction(
-        parser::parse_line(line), tensor_map, known_offsets, known_constants);
+    Instruction *instr = parser::create_instruction(parser::parse_line(line), tensor_map,
+                                                    known_offsets, known_constants);
     if (instr)
       instructions.push_back(instr);
   }
@@ -37,15 +37,13 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
   Instruction *root = instructions.back();
   root->get_lhs()->type = Tensor::node_type::OUTPUT;
 
-  std::cout << "Starting Phase 2 Module 4: Topological Ordering Generator..."
-            << std::endl;
+  std::cout << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
 
-  auto scheduled =
-      scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
+  auto scheduled = scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
   if (scheduled.size() != instructions.size()) {
     std::cerr << "Warning: scheduled instructions size (" << scheduled.size()
-              << ") does not match original instructions size ("
-              << instructions.size() << ")." << std::endl;
+              << ") does not match original instructions size (" << instructions.size() << ")."
+              << std::endl;
     return 1;
   }
 
@@ -90,12 +88,11 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
                 return w_a < w_b;
               return a->Min() < b->Min();
             });
-  std::cout << "Starting Phase 2 Module X: Google OR-Tools CP-SAT solver..."
-            << std::endl;
+  std::cout << "Starting Phase 2 Module X: Google OR-Tools CP-SAT solver..." << std::endl;
 
-  auto decision_builder = solver.MakePhase(
-      ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
-      operations_research::Solver::ASSIGN_MIN_VALUE);
+  auto decision_builder =
+      solver.MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
+                       operations_research::Solver::ASSIGN_MIN_VALUE);
 
   // Add a conservative time limit (0.5 seconds) to prevent long hangs
   auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(500));
@@ -113,8 +110,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
     emitter::MetaData metadata(metadata_file, tensor_map, known_constants);
 
     if (emitter::assembly_dump(asm_path, scheduled, metadata)) {
-      std::cout << "New ASM candidate generated: " << asm_path << std::endl
-                << std::endl;
+      std::cout << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
       solver.EndSearch();
       return 0;
     }

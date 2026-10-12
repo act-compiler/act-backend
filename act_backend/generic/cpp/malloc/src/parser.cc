@@ -8,8 +8,7 @@ ParsedLine parse_line(const std::string &line) {
   // Helper lambdas
   // (i) panic with error message
   auto panic = [&](const std::string &msg) -> ParsedLine {
-    std::cerr << "parse_line error: " << msg << "\n  line: `" << line << "`"
-              << std::endl;
+    std::cerr << "parse_line error: " << msg << "\n  line: `" << line << "`" << std::endl;
     assert(false && "unreachable");
     ParsedLine pl;
     return pl;
@@ -48,8 +47,7 @@ ParsedLine parse_line(const std::string &line) {
   // find first '[' and ']'
   auto br_open = left.find('[');
   auto br_close = left.find(']');
-  if (br_open == std::string::npos || br_close == std::string::npos ||
-      br_close < br_open)
+  if (br_open == std::string::npos || br_close == std::string::npos || br_close < br_open)
     return panic("missing '[' or ']' for storage offset");
 
   std::string storage_name = left.substr(0, br_open);
@@ -83,8 +81,7 @@ ParsedLine parse_line(const std::string &line) {
   // find first '[' and ']'
   auto s_brkt = type_shape.find('[');
   auto e_brkt = type_shape.find(']');
-  if (s_brkt == std::string::npos || e_brkt == std::string::npos ||
-      e_brkt < s_brkt)
+  if (s_brkt == std::string::npos || e_brkt == std::string::npos || e_brkt < s_brkt)
     return panic("missing '[' or ']' for type shape");
 
   // std::string dtype = type_shape.substr(0, s_brkt); // Not needed
@@ -114,8 +111,7 @@ ParsedLine parse_line(const std::string &line) {
   // find last '(' and ')'
   auto s_prn = op_and_rest.rfind('(');
   auto e_prn = op_and_rest.rfind(')');
-  if (s_prn == std::string::npos || e_prn == std::string::npos ||
-      e_prn <= s_prn)
+  if (s_prn == std::string::npos || e_prn == std::string::npos || e_prn <= s_prn)
     return panic("missing '(' or ')' for operands");
 
   std::string op_name_and_attr = op_and_rest.substr(0, s_prn);
@@ -143,8 +139,7 @@ ParsedLine parse_line(const std::string &line) {
 
   std::string op_name;
   std::string attr_str;
-  if (s_attr != std::string::npos && e_attr != std::string::npos &&
-      e_attr > s_attr) {
+  if (s_attr != std::string::npos && e_attr != std::string::npos && e_attr > s_attr) {
     op_name = op_name_and_attr.substr(0, s_attr);
     attr_str = op_name_and_attr.substr(s_attr + 1, e_attr - s_attr - 1);
   } else {
@@ -159,11 +154,10 @@ ParsedLine parse_line(const std::string &line) {
   return pl;
 }
 
-Instruction *
-create_instruction(const ParsedLine &pl,
-                   std::unordered_map<std::string, Tensor *> &tensor_map,
-                   std::unordered_map<Tensor *, int64> &known_offsets,
-                   std::unordered_map<Tensor *, std::string> &known_constants) {
+Instruction *create_instruction(const ParsedLine &pl,
+                                std::unordered_map<std::string, Tensor *> &tensor_map,
+                                std::unordered_map<Tensor *, int64> &known_offsets,
+                                std::unordered_map<Tensor *, std::string> &known_constants) {
 
   // Helper lambdas
   // (i) panic with error message
@@ -196,8 +190,7 @@ create_instruction(const ParsedLine &pl,
 
   // if offset is known, insert into known_offsets
   if (offset != -1) {
-    assert(storage->get_name() == "HBM" &&
-           "only HBM storage supports fixed offset specification");
+    assert(storage->get_name() == "HBM" && "only HBM storage supports fixed offset specification");
     assert(offset >= 0 && "storage offset must be non-negative");
     known_offsets[lhs_tensor] = offset;
   }
@@ -258,8 +251,7 @@ create_instruction(const ParsedLine &pl,
     }
 
     return new Slice(lhs_tensor, rhs_tensors, slices);
-  }
-  else if (op_name == "concat") {
+  } else if (op_name == "concat") {
     // currently only implemented for one attribute: dimension
     int64 dimension = 0;
     auto start = attr_str.find("'");

@@ -20,8 +20,7 @@ protected:
   std::vector<Tensor *> X;
 
 public:
-  Instruction(const std::string &op_name, Tensor *y,
-              const std::vector<Tensor *> &X)
+  Instruction(const std::string &op_name, Tensor *y, const std::vector<Tensor *> &X)
       : op_name(op_name), y(y), X(X) {
     if (y != nullptr)
       y->set_defined_by(this);
@@ -33,12 +32,18 @@ public:
 
   virtual ~Instruction() = default;
 
-  virtual std::string get_op_name() const { return op_name; }
+  virtual std::string get_op_name() const {
+    return op_name;
+  }
   virtual std::string str() = 0;
 
-  virtual Tensor *get_lhs() { return y; }
+  virtual Tensor *get_lhs() {
+    return y;
+  }
 
-  virtual std::vector<Tensor *> get_rhs() { return X; }
+  virtual std::vector<Tensor *> get_rhs() {
+    return X;
+  }
   virtual std::vector<bool> get_rhs_inplace() {
     return std::vector<bool>(X.size(), false);
   }
@@ -48,7 +53,6 @@ public:
 
   virtual std::vector<IntVar *> get_int_var() = 0;
 };
-
 
 // {{INSTRUCTION_CLASSES}}
 
@@ -81,8 +85,7 @@ private:
   }
 
 public:
-  Slice(Tensor *y, std::vector<Tensor *> X,
-        const std::vector<std::pair<int64, int64>> &slices)
+  Slice(Tensor *y, std::vector<Tensor *> X, const std::vector<std::pair<int64, int64>> &slices)
       : Instruction("slice", y, X), slices(slices) {
     assert(y != nullptr);
 
@@ -111,7 +114,9 @@ public:
     return "";
   }
 
-  std::vector<bool> get_rhs_inplace() override { return {true}; }
+  std::vector<bool> get_rhs_inplace() override {
+    return {true};
+  }
 
   std::vector<std::pair<IntExpr *, IntExpr *>> get_h(int num) override {
     switch (num) {
@@ -129,7 +134,9 @@ public:
     return constraints;
   }
 
-  std::vector<IntVar *> get_int_var() override { return rhs_addrs; }
+  std::vector<IntVar *> get_int_var() override {
+    return rhs_addrs;
+  }
 };
 
 class Concat : public Instruction {
@@ -145,8 +152,7 @@ private:
     for (size_t i = 0; i < rhs1_sizes.size(); i++) {
       if (i == (size_t)dimension) {
         IntExpr *lhs_addr_start = rhs1_addrs[i];
-        IntExpr *lhs_addr_end =
-            MAKE_SUM(rhs1_addrs[i], rhs1_sizes[i] + rhs2_sizes[i]);
+        IntExpr *lhs_addr_end = MAKE_SUM(rhs1_addrs[i], rhs1_sizes[i] + rhs2_sizes[i]);
         h.push_back({lhs_addr_start, lhs_addr_end});
       } else {
         IntExpr *lhs_addr_start = rhs1_addrs[i];
@@ -172,8 +178,7 @@ private:
     for (size_t i = 0; i < rhs2_sizes.size(); i++) {
       if (i == (size_t)dimension) {
         IntExpr *rhs2_addr_start = MAKE_SUM(rhs1_addrs[i], rhs1_sizes[i]);
-        IntExpr *rhs2_addr_end =
-            MAKE_SUM(rhs1_addrs[i], rhs1_sizes[i] + rhs2_sizes[i]);
+        IntExpr *rhs2_addr_end = MAKE_SUM(rhs1_addrs[i], rhs1_sizes[i] + rhs2_sizes[i]);
         h.push_back({rhs2_addr_start, rhs2_addr_end});
       } else {
         IntExpr *rhs2_addr_start = rhs1_addrs[i];
@@ -222,7 +227,9 @@ public:
     return "";
   }
 
-  std::vector<bool> get_rhs_inplace() override { return {true, true}; }
+  std::vector<bool> get_rhs_inplace() override {
+    return {true, true};
+  }
 
   std::vector<std::pair<IntExpr *, IntExpr *>> get_h(int num) override {
     switch (num) {
@@ -242,7 +249,9 @@ public:
     return constraints;
   }
 
-  std::vector<IntVar *> get_int_var() override { return rhs1_addrs; }
+  std::vector<IntVar *> get_int_var() override {
+    return rhs1_addrs;
+  }
 };
 
 #endif // INSTRUCTIONS_H
