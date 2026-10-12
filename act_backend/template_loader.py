@@ -9,6 +9,10 @@ import re
 from typing import Dict
 
 
+# A fragment's key
+KEY = re.compile(r'\{\{(\w+)\}\}')
+
+
 class TemplateLoader:
     """Manages loading and caching of templates for code generation"""
 
@@ -49,13 +53,18 @@ class TemplateLoader:
 
         Returns:
             Rendered template content
+
+        Raises ValueError naming the template when a key has no value or a value no key.
         """
         template = self.load(template_file)
-        result = template
-        for key, value in kwargs.items():
-            placeholder = f'{{{{{key}}}}}'
-            result = result.replace(placeholder, str(value))
-        return result
+        keys = set(KEY.findall(template))
+        unfilled = sorted(keys - kwargs.keys())
+        if unfilled:
+            raise ValueError(f'{template_file}: no value for the key {", ".join(unfilled)}')
+        unknown = sorted(kwargs.keys() - keys)
+        if unknown:
+            raise ValueError(f'{template_file}: no key for the value {", ".join(unknown)}')
+        return KEY.sub(lambda match: str(kwargs[match.group(1)]), template)
 
     def render_lines(self, template_file: str, **kwargs) -> str:
         """Render a template as whole lines, the last one ended with a newline"""
