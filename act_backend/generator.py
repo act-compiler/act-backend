@@ -137,7 +137,7 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     if os.path.exists(cargo_build_dir):
         shutil.rmtree(cargo_build_dir)
     build = subprocess.run(
-        ['cargo', 'build', '--release'],
+        ['cargo', 'build', '--release', '--locked'],
         cwd=backend_gen_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

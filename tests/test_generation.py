@@ -1,6 +1,7 @@
 """Tests of a whole generation: what generate_backend builds and what it says when it cannot."""
 
 import os
+import re
 import shutil
 import subprocess
 
@@ -8,6 +9,7 @@ import pytest
 
 import act_backend
 from act_backend import generate_backend
+from act_backend.build_rs_generator import generate_build_rs_file
 from conftest import EXAMPLES_DIR, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
@@ -36,6 +38,21 @@ def test_cargo_leaves_the_lock_file_alone(work_dir):
         package_lock = f.read()
     with open(os.path.join(crate, 'Cargo.lock')) as f:
         assert f.read() == package_lock
+
+
+def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
+    # The crate's manifest moves on from its lock file just before the build
+    def generate_stale(backend_gen_dir, cost):
+        generate_build_rs_file(backend_gen_dir, cost)
+        manifest = os.path.join(backend_gen_dir, 'Cargo.toml')
+        with open(manifest) as f:
+            content = f.read()
+        with open(manifest, 'w') as f:
+            f.write(re.sub(r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.M))
+
+    monkeypatch.setattr(act_backend.generator, 'generate_build_rs_file', generate_stale)
+    with pytest.raises(RuntimeError, match='--locked'):
+        generate_backend(accelerator, str(tmp_path))
 
 
 def test_backend_runs_without_its_crate(work_dir, tmp_path):
