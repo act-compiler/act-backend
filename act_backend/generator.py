@@ -94,10 +94,10 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     generic_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'generic')
     backend_gen_dir = os.path.join(target_dir, 'backend')
 
-    # Copy generic backend structure
+    # Copy generic backend structure, without a build directory left in it
     if os.path.exists(backend_gen_dir):
         shutil.rmtree(backend_gen_dir)
-    shutil.copytree(generic_dir, backend_gen_dir)
+    shutil.copytree(generic_dir, backend_gen_dir, ignore=shutil.ignore_patterns('target', 'build'))
 
     print(f'Copied generic backend structure to {backend_gen_dir}')
 
@@ -141,8 +141,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     # Build the backend
     print(f'Building backend for {accelerator.name}')
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
-    if os.path.exists(cargo_build_dir):
-        shutil.rmtree(cargo_build_dir)
     build = subprocess.run(
         ['cargo', 'build', '--release', '--locked'],
         cwd=backend_gen_dir,

@@ -76,6 +76,30 @@ def test_interrupted_copy_leaves_no_binary(accelerator, tmp_path, monkeypatch):
     assert os.listdir(tmp_path / 'backends') == []
 
 
+def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_path, monkeypatch):
+    # Build directories in the package, as a build by hand there leaves them
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    left = [os.path.join(generic, 'target'), os.path.join(generic, 'cpp', 'malloc', 'build')]
+    for directory in left:
+        os.makedirs(directory)
+        open(os.path.join(directory, 'CMakeCache.txt'), 'w').close()
+
+    # The crate as its build finds it: a build that stops without running
+    def build(command, **options):
+        return subprocess.CompletedProcess(command, 1, stdout='')
+
+    monkeypatch.setattr(subprocess, 'run', build)
+    try:
+        with pytest.raises(RuntimeError):
+            generate_backend(accelerator, str(tmp_path))
+    finally:
+        for directory in left:
+            shutil.rmtree(directory)
+    crate = tmp_path / 'targets' / 'PAIR' / 'backend'
+    assert not (crate / 'target').exists()
+    assert not (crate / 'cpp' / 'malloc' / 'build').exists()
+
+
 def test_crate_holds_its_ignore_file(work_dir):
     # The crate comes whole from the installed package, its dot file too
     assert os.path.isfile(os.path.join(work_dir, 'targets', 'QKV', 'backend', '.gitignore'))
