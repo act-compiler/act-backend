@@ -4,7 +4,7 @@ namespace constraint {
 
 void pii_node_constraints(const std::vector<Instruction *> &instructions) {
   for (const auto &instr : instructions) {
-    // Instruction constraints: 𝑒(𝛼,𝛽)
+    // Instruction constraints: e(alpha, beta)
 
     Constraints constraints = instr->get_e();
 
@@ -12,7 +12,7 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions) {
       solver.AddConstraint(constraint);
     }
 
-    // LHS Tensor addresses: (𝐼𝑠(𝑦),𝐼𝑒(𝑦)) = ℎ(0)(𝛽)
+    // LHS Tensor addresses: (Is(y), Ie(y)) = h(0)(beta)
 
     auto lhs_tensor = instr->get_lhs();
     auto lhs_offsets = lhs_tensor->get_offsets();
@@ -28,7 +28,7 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions) {
 
 void def_use_constraints(const std::vector<Instruction *> &instructions) {
   for (const auto &instr : instructions) {
-    // RHS Tensor addresses: (𝐼𝑠(𝑥𝑖), 𝐼𝑒(𝑥𝑖)) = ℎ(𝑖)(𝛽)
+    // RHS Tensor addresses: (Is(x_i), Ie(x_i)) = h(i)(beta)
 
     auto rhs_tensors = instr->get_rhs();
     for (size_t i = 0; i < rhs_tensors.size(); ++i) {
@@ -46,7 +46,7 @@ void def_use_constraints(const std::vector<Instruction *> &instructions) {
 
 void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets) {
   for (const auto &pair : known_offsets) {
-    // Input & Output Tensor addresses: 𝐼𝑠(𝑥𝑖) = 𝑐𝑜𝑛𝑠𝑡
+    // Input & Output Tensor addresses: Is(x_i) = const
 
     Tensor *tensor = pair.first;
     int64 offset = pair.second;
@@ -86,7 +86,7 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
     assert(dims == sizes1.size());
     assert(dims == sizes2.size());
 
-    // Non-overlapping constraint: (𝐼𝑒(𝑥1) ≤ 𝐼𝑠(𝑥2)) ∨ (𝐼𝑒(𝑥2) ≤ 𝐼𝑠(𝑥1))
+    // Non-overlapping constraint: (Ie(x1) <= Is(x2)) or (Ie(x2) <= Is(x1))
 
     for (size_t i = 0; i < dims; ++i) {
       auto end1 = MAKE_SUM(offsets1[i], sizes1[i]);

@@ -40,7 +40,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
 
   auto scheduled = scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
   if (scheduled.size() != instructions.size()) {
-    std::cerr << "Warning: scheduled instructions size (" << scheduled.size()
+    std::cerr << "Error: scheduled instructions size (" << scheduled.size()
               << ") does not match original instructions size (" << instructions.size() << ")."
               << std::endl;
     return 1;
@@ -87,7 +87,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
                 return w_a < w_b;
               return a->Min() < b->Min();
             });
-  std::cout << "Starting Phase 2 Module X: Google OR-Tools CP-SAT solver..." << std::endl;
+  std::cout << "Starting Google OR-Tools constraint solver..." << std::endl;
 
   auto decision_builder =
       solver.MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
@@ -121,7 +121,6 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
   } else {
     std::cout << "No solution found." << std::endl;
 
-    std::cout << "Starting Phase 2 Module 6: Code Emitter..." << std::endl;
     std::cout << "No ASM candidate generated." << std::endl << std::endl;
 
     solver.EndSearch();

@@ -1,5 +1,5 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef SOLVER_H
+#define SOLVER_H
 
 #include "ortools/constraint_solver/constraint_solver.h"
 
@@ -14,4 +14,4 @@ extern operations_research::Solver solver;
 
 #define MAKE_EQUALITY(a, b) (solver.MakeEquality((a), (b)))
 
-#endif // COMMON_H
+#endif // SOLVER_H

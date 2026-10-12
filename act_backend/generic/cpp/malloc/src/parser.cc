@@ -30,7 +30,7 @@ ParsedLine parse_line(const std::string &line) {
   trim(lhs);
   trim(rest);
 
-  pl.lhs_variable_name = lhs; // Processed
+  pl.lhs_variable_name = lhs;
 
   // parse rest: left = right
   // find first '='
@@ -55,7 +55,7 @@ ParsedLine parse_line(const std::string &line) {
   trim(storage_name);
   trim(addr_str);
 
-  pl.lhs_storage_name = storage_name; // Processed
+  pl.lhs_storage_name = storage_name;
 
   int64 offset = -1;
   try {
@@ -64,7 +64,7 @@ ParsedLine parse_line(const std::string &line) {
     return panic("failed to parse storage offset as integer");
   }
 
-  pl.lhs_offset = offset; // Processed
+  pl.lhs_offset = offset;
 
   // parse right: datatype[shape] <operation>
   // find first space
@@ -84,9 +84,7 @@ ParsedLine parse_line(const std::string &line) {
   if (s_brkt == std::string::npos || e_brkt == std::string::npos || e_brkt < s_brkt)
     return panic("missing '[' or ']' for type shape");
 
-  // std::string dtype = type_shape.substr(0, s_brkt); // Not needed
   std::string shape_str = type_shape.substr(s_brkt + 1, e_brkt - s_brkt - 1);
-  // trim(dtype); // Not needed
   trim(shape_str);
 
   std::vector<int64> shape_vec;
@@ -105,7 +103,7 @@ ParsedLine parse_line(const std::string &line) {
     }
   }
 
-  pl.lhs_shape = shape_vec; // Processed
+  pl.lhs_shape = shape_vec;
 
   // parse op_and_rest: op_name_attr(operands)
   // find last '(' and ')'
@@ -130,7 +128,7 @@ ParsedLine parse_line(const std::string &line) {
     }
   }
 
-  pl.operand_names = operands_vec; // Processed
+  pl.operand_names = operands_vec;
 
   // parse op_name_and_attr: op_name[attr]
   // find first '[' and ']'
@@ -148,8 +146,8 @@ ParsedLine parse_line(const std::string &line) {
   trim(op_name);
   trim(attr_str);
 
-  pl.op_name = op_name;  // Processed
-  pl.op_attr = attr_str; // Processed
+  pl.op_name = op_name;
+  pl.op_attr = attr_str;
 
   return pl;
 }
@@ -231,11 +229,11 @@ Instruction *create_instruction(const ParsedLine &pl,
       std::string tok;
       while (std::getline(ss, tok, ';')) {
         if (!tok.empty()) {
-          auto dash_pos = tok.find(':');
-          if (dash_pos == std::string::npos)
+          auto colon_pos = tok.find(':');
+          if (colon_pos == std::string::npos)
             return panic("missing ':' in slice specification");
-          std::string start_str = tok.substr(0, dash_pos);
-          std::string end_str = tok.substr(dash_pos + 1);
+          std::string start_str = tok.substr(0, colon_pos);
+          std::string end_str = tok.substr(colon_pos + 1);
           int64 s = 0, e = 0;
           try {
             s = std::stoll(start_str);

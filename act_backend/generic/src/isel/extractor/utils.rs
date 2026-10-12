@@ -4,10 +4,7 @@ use std::collections::{HashSet, VecDeque};
 use crate::ir::egraph::*;
 
 /// Worklist algorithm for compile-time detection of constants.
-/// Marks e-classes as const (updates analysis data), inserts a DetectedConst enode
-/// carrying a pretty-printed representative op string, unions it into the class,
-/// and returns the set of constant eclass ids.
-/// Worklist algorithm for compile-time detection of constants.
+/// Returns the set of constant eclass ids.
 pub fn detect_constants(
   egraph: &EGraph<TensorOp, TensorInfo>,
   inputs: &HashSet<Id>,

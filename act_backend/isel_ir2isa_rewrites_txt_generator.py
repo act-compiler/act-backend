@@ -25,7 +25,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
         self.parameter_variables = {}
         self.variable_definitions = {}
         self.root_variable = None
-        self.variable_usage_count = set()
+        self.used_values = set()
 
     def get_next_variable(self):
         var_name = f'?{chr(ord("a") + self.variable_counter)}'
@@ -76,7 +76,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
                     if operand_value in self.variable_definitions:
                         pattern = self.variable_definitions[operand_value]
 
-                        if operand_value in self.variable_usage_count:
+                        if operand_value in self.used_values:
                             substitutions = {}
                             for param_var in self.parameter_variables.values():
                                 if param_var in pattern:
@@ -85,7 +85,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
                             if substitutions:
                                 pattern = self.substitute_params(pattern, substitutions)
                         else:
-                            self.variable_usage_count.add(operand_value)
+                            self.used_values.add(operand_value)
 
                         operand_patterns.append(pattern)
                     else:
@@ -132,9 +132,9 @@ def generate_rewrite_rule(metadata, templates):
     parameter_vars = visitor.get_parameter_variables()
     kebab_name = metadata.name.replace('_', '-')
 
-    # Fallback for unparseable semantics
+    # No pattern or no parameter: a rule over a lone variable
     if not (lhs_pattern and parameter_vars):
-        # Use fixed padding for fallback
+        # Align the '=>' at column 20, as for every rule
         padding = ' ' * (19 - len(kebab_name))
         return templates.render(
             'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',

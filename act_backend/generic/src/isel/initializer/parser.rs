@@ -17,22 +17,17 @@ pub fn parse_type_shape(type_shape: &str) -> (String, String, String) {
           if let Some(end_paren) = tile_str.find(')') {
             ttile = tile_str[start_paren + 1..end_paren].to_string();
           } else {
-            // No closing ')', fallback
-            // ttile = tile_str[start_paren + 1..].to_string();
-            // DJ: this should never happen
+            // No closing ')'
             panic!("Invalid ttype string: {}", type_shape);
           }
         }
       }
     } else {
-      // No closing ']', fallback
-      // tshape = type_shape[bracket_start..].to_string();
-      // DJ: this should never happen
+      // No closing ']'
       panic!("Invalid ttype string: {}", type_shape);
     }
   } else {
-    // tshape = "[]".to_string();
-    // DJ: this should never happen
+    // No shape
     panic!("Invalid ttype string: {}", type_shape);
   }
   if tshape.is_empty() {
@@ -200,7 +195,6 @@ pub fn validate_region_exists(
   }
 
   // region only contains parameter and add instructions
-  // @todo check shape here and type
   for instruction in regions.get(region_name).unwrap().instructions.iter() {
     match instruction {
       HLOExpr::Parameter { .. } => {}
@@ -493,7 +487,7 @@ pub struct HloModuleHeader {
   pub output_type: String,
 }
 
-pub fn parse_hlo_module_header_hand(line: &str) -> Option<HloModuleHeader> {
+pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
   let line = line.trim();
 
   // Step 1: Extract module name and entry computation layout
@@ -587,7 +581,7 @@ pub fn parse_hlo_module_header_hand(line: &str) -> Option<HloModuleHeader> {
   let inputs_str = io_parts[0].strip_prefix('(').unwrap_or(io_parts[0]);
   let output_type = io_parts[1].strip_suffix(')').unwrap_or(io_parts[1]);
 
-  // 6) split inputs on top-level commas (ignore commas inside brackets)
+  // Split inputs on top-level commas (ignore commas inside brackets)
   fn split_top_level_commas(s: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut buf = String::new();
@@ -721,7 +715,7 @@ pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader,
     return None;
   }
   // Parse the module header from the first line
-  let header = match parse_hlo_module_header_hand(lines[0]) {
+  let header = match parse_hlo_module_header(lines[0]) {
     Some(h) => h,
     None => return None,
   };

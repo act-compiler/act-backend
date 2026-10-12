@@ -167,7 +167,7 @@ fn add_expr_to_egraph(
       tshape,
       value,
     } => {
-      assert!(parsing_root == false); // parameters should not be in root
+      assert!(parsing_root == false); // constants should not be in root
       add_constant(tsymbol, ttype, tshape, value, egraph, table);
     }
 

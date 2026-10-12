@@ -13,15 +13,10 @@ use backend::isel;
 use backend::{N, PROCESSED, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
-  if program_name == "cargo" {
-    // When run via `cargo run -- ...`, the first argument is "cargo"
-    println!("Usage: cargo run -- --input <hlo_path> --output <asm_path> [--log <log_dir>]");
-  } else {
-    println!(
-      "Usage: {} --input <hlo_path> --output <asm_path> [--log <log_dir>]",
-      program_name
-    );
-  }
+  println!(
+    "Usage: {} --input <hlo_path> --output <asm_path> [--log <log_dir>]",
+    program_name
+  );
   println!();
   println!("Description:");
   println!("  This program compiles an .hlo file into an assembly code.");
@@ -136,10 +131,7 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
     start.elapsed(),
     TIME_LIMIT
   );
-  println!(
-    "Starting Phase X: Performance Cost Evaluation for {:?}",
-    asm_path
-  );
+  println!("Starting Performance Cost Evaluation for {:?}", asm_path);
   println!();
 
   let cost: i32 = backend::cost::python_bridge(&asm_path);

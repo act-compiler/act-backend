@@ -4,10 +4,9 @@ use itertools::Itertools;
 use crate::ir::dtype::Dtype;
 use crate::ir::egraph::{TensorInfo, TensorOp};
 
-/// precond_*(): Return if the rewrite should be applied.
-/// metadata_*(): Return a list of metadata strings to use for RHS enodes
-/// set_shapes_*(): Set the TensorInfo for each RHS eclass
-/// TODO: change name to set_metadata_*()
+// precond_*(): Return if the rewrite should be applied.
+// metadata_*(): Return a list of metadata strings to use for RHS enodes
+// set_shapes_*(): Set the TensorInfo for each RHS eclass
 
 pub fn precond_0(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) -> bool {
   assert_eq!(lhs_eclasses.len(), 5);
