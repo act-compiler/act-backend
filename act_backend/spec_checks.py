@@ -287,6 +287,7 @@ class SemanticsChecker(OperandVisitor):
         self.name = name
         self.values = []
         self.read = set()
+        self.roots = []
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -322,6 +323,8 @@ class SemanticsChecker(OperandVisitor):
         if value in self.values:
             raise ValueError(f"{self.name}: its semantics defines '{value}' twice")
         self.values.append(value)
+        if ctx.ROOT():
+            self.roots.append(value)
 
 
 def check_semantics(instructions):
@@ -336,3 +339,5 @@ def check_semantics(instructions):
                 raise ValueError(
                     f"{name}: its semantics defines '{value}', which no line below reads"
                 )
+            if value in checker.roots:
+                raise ValueError(f"{name}: its semantics marks '{value}' ROOT above its last line")

@@ -344,3 +344,9 @@ def test_value_defined_twice_refused(tmp_path):
 def test_value_no_line_reads_refused(lines, inputs, value, tmp_path):
     message = refusal(with_semantics(lines, inputs), tmp_path)
     assert message == f"gemm: its semantics defines '{value}', which no line below reads"
+
+
+def test_root_above_the_last_line_refused(tmp_path):
+    lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"
