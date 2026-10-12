@@ -5,6 +5,7 @@ import re
 import keyword
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
+from .isel_ir2isa_rewrites_rs_generator import RustGeneratorVisitor
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
@@ -364,3 +365,11 @@ def check_semantics(instructions):
             )
         if not checker.operations:
             raise ValueError(f'{name}: its semantics holds no operation for the selector to match')
+        # A computational attribute is read from a shape the semantics writes it in
+        named = RustGeneratorVisitor().visit(instruction.instr_semantics_ast)['comp_attributes']
+        for attribute in instruction.comp_attr:
+            if attribute not in named:
+                raise ValueError(
+                    f'{name}: no line of its semantics names the computational attribute '
+                    f"'{attribute}'"
+                )

@@ -384,3 +384,10 @@ def test_instruction_with_no_inputs_refused(tmp_path):
 def test_semantics_with_no_operation_refused(tmp_path):
     message = refusal(with_semantics([IN1], inputs=1), tmp_path)
     assert message == 'gemm: its semantics holds no operation for the selector to match'
+
+
+def test_computational_attribute_no_line_names_refused(tmp_path):
+    acc = with_semantics([IN1, IN2, result('dot(%In1, %In2)')])
+    acc.instructions[0].comp_attr.append('k')
+    message = refusal(acc, tmp_path)
+    assert message == "gemm: no line of its semantics names the computational attribute 'k'"
