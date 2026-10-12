@@ -24,7 +24,7 @@ from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
 from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
 from .build_rs_generator import generate_build_rs_file
-from .spec_checks import check_accelerator_name
+from .spec_checks import check_accelerator_name, check_names
 
 
 @dataclass
@@ -94,6 +94,9 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     instructions = [
         instruction for instruction in accelerator.instructions if instruction.instr_semantics_ast
     ]
+
+    # A spec the checks refuse is refused by name
+    check_names(instructions, accelerator.data_model)
 
     # Setup directories
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)
