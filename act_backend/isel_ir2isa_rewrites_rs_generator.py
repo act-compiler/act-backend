@@ -56,12 +56,6 @@ class RustGeneratorVisitor(OperandVisitor):
                 else:
                     self.variable_usage.add(operand_text)
 
-        if ctx.attributes():
-            attributes = self.visit(ctx.attributes())
-            for _, attr_value, attr_type in attributes:
-                if attr_type in ['EXPRESSION', 'BRACELIST']:
-                    self.extract_comp_attrs_from_text(str(attr_value))
-
         assignment = {
             'lhs': lhs_name,
             'dtype': lhs_type,
@@ -112,40 +106,6 @@ class RustGeneratorVisitor(OperandVisitor):
         dims = ctx.getText()
         typ = ctx.parentCtx.TYPE().getText()
         return (dims, typ)
-
-    def visitAttributes(self, ctx):
-        attributes_list = []
-        for attribute_ctx in ctx.attribute():
-            attr_info = self.visit(attribute_ctx)
-            attributes_list.append(attr_info)
-        return attributes_list
-
-    def visitAttribute(self, ctx):
-        attr_name = ctx.IDENTIFIER().getText()
-        attr_value_info = self.visit(ctx.attributeValue())
-        attr_value, attr_type = attr_value_info
-        return (attr_name, attr_value, attr_type)
-
-    def visitAttributeValue(self, ctx):
-        if ctx.braceList():
-            brace_info = self.visit(ctx.braceList())
-            return (brace_info, 'BRACELIST')
-        elif ctx.value():
-            value_ctx = ctx.value()
-            value_text = value_ctx.getText()
-
-            if value_ctx.INT():
-                value_type = 'INT'
-            elif value_ctx.IDENTIFIER():
-                value_type = 'IDENTIFIER'
-            elif value_ctx.EXPRESSION():
-                value_type = 'EXPRESSION'
-            else:
-                value_type = 'UNKNOWN'
-
-            return (value_text, value_type)
-        else:
-            return ('', 'UNKNOWN')
 
 
 def map_dtype_to_rust(dtype):
