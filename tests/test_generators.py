@@ -147,6 +147,13 @@ def test_fill_placeholders():
     assert fill_placeholders(source, values, 'e.rs') == filled
 
 
+def test_placeholder_with_no_code_leaves_no_line():
+    source = 'enum E {\n  A,\n  // {{VARIANTS}}\n}\n\n// {{FUNCTIONS}}\n\nfn f() {}\n'
+    # Nor the blank line above it
+    filled = 'enum E {\n  A,\n}\n\nfn f() {}\n'
+    assert fill_placeholders(source, {'VARIANTS': '', 'FUNCTIONS': ''}, 'e.rs') == filled
+
+
 def test_placeholder_without_value_refused():
     source = '// {{VARIANTS}}\n/* {{NAMES}} */\n'
     with pytest.raises(ValueError, match=r'^e\.rs: no value for the placeholder NAMES$'):
