@@ -2,6 +2,7 @@
 
 import os
 import re
+import ast
 import keyword
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
@@ -378,6 +379,29 @@ def check_semantics(instructions):
 # The address the allocator reads for an operand: one address attribute, alone
 ADDRESS = re.compile(r'@a\.(\w+)')
 
+# What a size is written with beside integers and computational attributes
+SIZE_SYNTAX = (ast.BinOp, ast.Mult, ast.Div, ast.Add, ast.Sub, ast.Name, ast.Load, ast.Constant)
+
+
+def check_size(what, size, attributes):
+    """Refuse a size the allocator's C++ cannot take as it is written"""
+    refusal = ValueError(
+        f"{what} has the size '{size}', which is not integers and computational attributes "
+        "joined by '*', '/', '+' and '-'"
+    )
+    try:
+        tree = ast.parse(re.sub(r'@c\.', '', str(size)).strip(), mode='eval')
+    except SyntaxError:
+        raise refusal from None
+    for node in ast.walk(tree.body):
+        known = (
+            isinstance(node, SIZE_SYNTAX)
+            and (not isinstance(node, ast.Name) or node.id in attributes)
+            and (not isinstance(node, ast.Constant) or type(node.value) is int)
+        )
+        if not known:
+            raise refusal
+
 
 def check_operands(instructions, data_models):
     """Refuse an operand the allocator cannot address"""
@@ -417,3 +441,4 @@ def check_operands(instructions, data_models):
                     f"{what} has the address '{addresses[0]}', "
                     'which is not one address attribute of the instruction'
                 )
+            check_size(what, sizes[0], instruction.comp_attr)

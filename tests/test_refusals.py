@@ -468,3 +468,21 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
 )
 def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path):
     assert refusal(with_operands(**operands), tmp_path) == f'gemm: {reason}'
+
+
+@pytest.mark.parametrize('size', ['128 // 2', '2 ** 6', '@c.m', '64;', '-64', '6.4e1'])
+def test_size_the_allocator_cannot_read_refused(size, tmp_path):
+    message = refusal(with_operands(outputs=[['d2', ['@a.addr_out'], [size]]]), tmp_path)
+    assert message == (
+        f"gemm: its operand on 'd2' has the size '{size}', which is not integers and "
+        "computational attributes joined by '*', '/', '+' and '-'"
+    )
+
+
+def test_sizes_the_allocator_reads():
+    acc = loader()
+    (instruction,) = acc.instructions
+    # An integer, an attribute, and their products, quotients, sums and differences
+    for size in [64, '64', '@c.n', '@c.n * 128', '(@c.n + 1) * 2 - @c.n / 2']:
+        instruction.set_outputs([['d1', ['@a.addr_out'], [size]]])
+        spec_checks.check_operands(acc.instructions, acc.data_model)
