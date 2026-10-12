@@ -32,9 +32,6 @@ public:
 
   virtual ~Instruction() = default;
 
-  virtual std::string get_op_name() const {
-    return op_name;
-  }
   virtual std::string str() = 0;
 
   virtual Tensor *get_lhs() {

@@ -44,7 +44,7 @@ std::string MetaDataInfo::str() const {
 MetaData::MetaData(std::ifstream &metadata_path,
                    const std::unordered_map<std::string, Tensor *> &tensor_map,
                    const std::unordered_map<Tensor *, std::string> &known_constants)
-    : max_hbm_size(HBM_SIZE) {
+    : max_hbm_size(0) {
   try {
     if (!metadata_path)
       throw std::runtime_error("failed to open metadata.json");
@@ -100,7 +100,6 @@ MetaData::MetaData(std::ifstream &metadata_path,
     }
   }
 
-  this->max_hbm_size = 0;
   for (const auto &pair : tensor_map) {
     auto *tensor = pair.second;
     if (tensor->get_storage()->get_name() == "HBM") {

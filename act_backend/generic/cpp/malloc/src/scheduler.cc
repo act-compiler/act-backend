@@ -102,9 +102,6 @@ void dfs(Instruction *instr, std::unordered_map<Instruction *, bool> &visited,
       if (!visited[rhs_instr]) {
         next_candidates.push_back(rhs_instr);
       }
-    } else {
-      // default if rhs operand's instruction is nullptr
-      // (i.e., input or constant leaf)
     }
   }
 
