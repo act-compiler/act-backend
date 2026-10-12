@@ -210,6 +210,8 @@ pub fn validate_region_exists(
   true
 }
 
+// One argument per field of the kernel's line
+#[allow(clippy::too_many_arguments)]
 pub fn parse_hlo_expr(
   tsymbol: &str,
   ttype: &str,
@@ -502,11 +504,8 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
 
   // Find entry_computation_layout parameter
   let layout_start = "entry_computation_layout={";
-  let layout_part = if let Some(start_pos) = rest.find(layout_start) {
-    &rest[start_pos + layout_start.len()..]
-  } else {
-    return None;
-  };
+  let start_pos = rest.find(layout_start)?;
+  let layout_part = &rest[start_pos + layout_start.len()..];
 
   // Find matching closing brace
   let mut brace_count = 1;
@@ -594,9 +593,7 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
           buf.push(ch);
         }
         ']' => {
-          if depth > 0 {
-            depth -= 1;
-          }
+          depth = depth.saturating_sub(1);
           buf.push(ch);
         }
         ',' if depth == 0 => {
@@ -641,12 +638,9 @@ pub fn parse_region(
   let first_line = lines[start_idx].trim();
 
   // Check if this is a region definition (starts with region name and has opening brace)
-  let brace_pos = first_line.find('{');
-  if brace_pos.is_none() {
-    return None;
-  }
+  let brace_pos = first_line.find('{')?;
 
-  let region_name_with_signature = first_line[..brace_pos.unwrap()].trim();
+  let region_name_with_signature = first_line[..brace_pos].trim();
 
   // Extract just the region name (before the function signature)
   // Format: %region_name (params) -> return_type
@@ -715,10 +709,7 @@ pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader,
     return None;
   }
   // Parse the module header from the first line
-  let header = match parse_hlo_module_header(lines[0]) {
-    Some(h) => h,
-    None => return None,
-  };
+  let header = parse_hlo_module_header(lines[0])?;
 
   let mut regions = std::collections::HashMap::new();
   let mut entry_instructions = Vec::new();

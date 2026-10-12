@@ -1,7 +1,7 @@
 pub fn metadata_{{instruction_name}}(
   _: &EGraph<TensorOp, TensorInfo>,
-  lhs_eclasses: &Vec<Id>,
-  _: &Vec<Option<TensorOp>>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), {{num_assignments}});
 

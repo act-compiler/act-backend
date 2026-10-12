@@ -17,7 +17,7 @@ pub fn detect_constants(
     worklist.push_back(ec.id);
   }
 
-  while worklist.len() > 0 {
+  while !worklist.is_empty() {
     let eclass = worklist.pop_front().unwrap();
     if constants.contains(&eclass) {
       continue;
@@ -123,17 +123,13 @@ fn op_repr_en(
 
   let mut parts: Vec<String> = Vec::new();
   for &cid in children_ids.iter() {
-    if let Some(s) = op_repr(egraph, cid, visited) {
-      parts.push(s);
-    } else {
-      return None;
-    }
+    parts.push(op_repr(egraph, cid, visited)?);
   }
 
   Some(format!("{}({})", label, parts.join(", ")))
 }
 
-pub fn get_hbm_offset(hbm_offsets: &Vec<(Option<Id>, i32)>, eclass: Id) -> Option<i32> {
+pub fn get_hbm_offset(hbm_offsets: &[(Option<Id>, i32)], eclass: Id) -> Option<i32> {
   for (buf_ec, offset) in hbm_offsets.iter() {
     if buf_ec.is_some() && buf_ec.unwrap() == eclass {
       return Some(*offset);

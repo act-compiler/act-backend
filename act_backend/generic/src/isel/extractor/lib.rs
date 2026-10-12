@@ -15,13 +15,13 @@ pub fn extract(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
   inputs: &HashSet<Id>,
-  hbm_offsets: &Vec<(Option<Id>, i32)>,
+  hbm_offsets: &[(Option<Id>, i32)],
   limit: usize,
 ) -> Vec<PiiGraph> {
   let nodes = egraph.total_number_of_nodes();
 
   let start = Instant::now();
-  let mut piis_fast = extract_fast(egraph, root, &inputs, &hbm_offsets);
+  let mut piis_fast = extract_fast(egraph, root, inputs, hbm_offsets);
 
   println!("Fast Extractor Algorithm over #nodes={}", nodes);
   println!("Number of PII graphs extracted: {}", piis_fast.len());
@@ -32,7 +32,7 @@ pub fn extract(
   let mut piis_slow: Vec<PiiGraph> = vec![];
   if limit <= SLOW_LIMIT_CUTOFF {
     let start = Instant::now();
-    piis_slow = extract_slow(egraph, root, &inputs, &hbm_offsets, limit);
+    piis_slow = extract_slow(egraph, root, inputs, hbm_offsets, limit);
 
     println!("Slow Extractor Algorithm over #nodes={}", nodes);
     println!("Limit used: {}", limit);

@@ -59,12 +59,12 @@ impl PiiGraph {
     idx
   }
 
-  fn shape_to_string(shape: &Vec<i32>) -> String {
+  fn shape_to_string(shape: &[i32]) -> String {
     let s: Vec<String> = shape.iter().map(|d| d.to_string()).collect();
     format!("[{}]", s.join(","))
   }
 
-  pub fn save(&self, path: &std::path::PathBuf) {
+  pub fn save(&self, path: &std::path::Path) {
     let mut file = File::create(path).expect("Unable to create file");
     write!(file, "{}", self).expect("Unable to write data");
   }

@@ -15,7 +15,7 @@ pub fn extract_fast(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
   inputs: &HashSet<Id>,
-  hbm_offsets: &Vec<(Option<Id>, i32)>,
+  hbm_offsets: &[(Option<Id>, i32)],
 ) -> Vec<PiiGraph> {
   // Bottom-up traversal to detect compile-time constants
   let constants = detect_constants(egraph, inputs);
@@ -117,7 +117,7 @@ fn get_pii_graph(
 /// Algorithm builds the pii graph bottom-up in topological order.
 fn select2pii_graph(
   selected: &HashMap<TensorOp, (Id, TensorInfo)>,
-  hbm_offsets: &Vec<(Option<Id>, i32)>,
+  hbm_offsets: &[(Option<Id>, i32)],
 ) -> PiiGraph {
   let mut pii_graph = PiiGraph::default();
 

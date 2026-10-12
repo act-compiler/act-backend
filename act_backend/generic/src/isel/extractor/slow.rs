@@ -16,7 +16,7 @@ pub fn extract_slow(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
   inputs: &HashSet<Id>,
-  hbm_offsets: &Vec<(Option<Id>, i32)>,
+  hbm_offsets: &[(Option<Id>, i32)],
   limit: usize,
 ) -> Vec<PiiGraph> {
   // Bottom-up traversal to detect compile-time constants
@@ -117,7 +117,7 @@ fn get_extraction_trees(
 }
 
 /// Given a preorder extraction tree, recover the parent/child edges between nodes.
-fn get_edges(tree: &Vec<TensorOp>) -> (HashMap<usize, Vec<usize>>, HashMap<usize, Option<usize>>) {
+fn get_edges(tree: &[TensorOp]) -> (HashMap<usize, Vec<usize>>, HashMap<usize, Option<usize>>) {
   let mut children = HashMap::new();
   let mut parent = HashMap::new();
   let mut stack = vec![];
@@ -134,13 +134,9 @@ fn get_edges(tree: &Vec<TensorOp>) -> (HashMap<usize, Vec<usize>>, HashMap<usize
     }
     stack.push(i);
     if tree[i].is_leaf() {
-      loop {
-        if let Some(top) = stack.last() {
-          if children[top].len() == tree[*top].num_children() {
-            stack.pop();
-          } else {
-            break;
-          }
+      while let Some(top) = stack.last() {
+        if children[top].len() == tree[*top].num_children() {
+          stack.pop();
         } else {
           break;
         }
@@ -152,7 +148,7 @@ fn get_edges(tree: &Vec<TensorOp>) -> (HashMap<usize, Vec<usize>>, HashMap<usize
 
 /// Perform GVN on an extraction tree to collapse equivalent subtrees.
 fn get_extractions(
-  tree: &Vec<TensorOp>,
+  tree: &[TensorOp],
   child_map: &mut HashMap<usize, Vec<usize>>,
   parent_map: &mut HashMap<usize, Option<usize>>,
 ) -> Vec<Extraction> {
@@ -181,7 +177,7 @@ fn get_extractions(
     }
   }
   extractions.push(Extraction {
-    tree: tree.clone(),
+    tree: tree.to_vec(),
     parent: parent_map.clone(),
     children: child_map.clone(),
   });
@@ -203,7 +199,7 @@ fn get_extractions(
             siblings[child_idx] = idx_map[node];
             parent_map.insert(i, None);
             extractions.push(Extraction {
-              tree: tree.clone(),
+              tree: tree.to_vec(),
               parent: parent_map.clone(),
               children: child_map.clone(),
             });
@@ -220,7 +216,7 @@ fn get_extractions(
 // Convert an Extraction into a PiiGraph.
 fn extraction_to_piigraph(
   extraction: &Extraction,
-  hbm_offsets: &Vec<(Option<Id>, i32)>,
+  hbm_offsets: &[(Option<Id>, i32)],
   egraph: &EGraph<TensorOp, TensorInfo>,
 ) -> PiiGraph {
   let mut pii = PiiGraph::default();
