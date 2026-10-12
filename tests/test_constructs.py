@@ -106,6 +106,68 @@ ENTRY main {
 """
 
 
+def add_moves(acc, element_type, size):
+    """A load of rows of one element type into d1 and a store of them from it"""
+    # A row is 64 elements of `size` bytes each
+    last = '' if size == 1 else f',{size}'
+    instr = acc.add_instruction(f'load_{element_type}', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], [f'@c.n * {64 * size}']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = u8[`@c.n * {64 * size}`] parameter(0);
+    %a = u8[`@c.n`,64{last}] reshape(%In0);
+    ROOT %Out0 = {element_type}[`@c.n`,64] bitcast_convert(%a);
+}}
+""")
+
+    instr = acc.add_instruction(f'store_{element_type}', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], [f'@c.n * {64 * size}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = {element_type}[`@c.n`,64] parameter(0);
+    %a = u8[`@c.n`,64{last}] bitcast_convert(%In0);
+    ROOT %Out0 = u8[`@c.n * {64 * size}`] reshape(%a);
+}}
+""")
+
+
+def add_binary(acc, name, word, element_type):
+    """An instruction that joins two values of 32 rows of d1 by one operation word"""
+    instr = acc.add_instruction(name, [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['32']], ['d1', ['@a.addr_2'], ['32']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = {element_type}[32,64] parameter(0);
+    %In1 = {element_type}[32,64] parameter(1);
+    ROOT %Out0 = {element_type}[32,64] {word}(%In0, %In1);
+}}
+""")
+
+
+def add_bit_operations(acc):
+    """Bytes loaded and stored, and one instruction each for or and the two shifts"""
+    add_moves(acc, 'u8', 1)
+    add_binary(acc, 'bits_or', 'or', 'u8')
+    add_binary(acc, 'bits_shl', 'shift_left', 'u8')
+    add_binary(acc, 'bits_shr', 'shift_right_logical', 'u8')
+
+
+# Two byte inputs joined by or and both shifts
+BITS = """HloModule bits, entry_computation_layout={(u8[32,64]{1,0}, u8[32,64]{1,0})->u8[32,64]{1,0}}
+
+ENTRY main {
+  %a = u8[32,64] parameter(0)
+  %b = u8[32,64] parameter(1)
+  %c = u8[32,64] or(%a, %b)
+  %d = u8[32,64] shift-left(%c, %b)
+  ROOT %e = u8[32,64] shift-right-logical(%d, %a)
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -125,6 +187,7 @@ def work_dir(tmp_path_factory):
         add_concatenate(acc)
         add_rank_0_result(acc)
         add_slice(acc)
+        add_bit_operations(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -182,6 +245,19 @@ def test_attribute_named_by_an_operation_word_is_read(work_dir, tmp_path):
     # The attribute named slice is read: upper keeps 32 rows
     assert [name for name, _ in calls] == ['load_rm', 'upper', 'mov', 'store_rm']
     assert [call['n'] for _, call in calls if 'n' in call] == ['64', '32', '32']
+
+
+def test_or_and_the_shifts_are_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, BITS)
+    names = [name for name, _ in calls]
+    assert names == ['load_u8', 'load_u8', 'bits_or', 'bits_shl', 'bits_shr', 'store_u8']
+    # Each instruction takes its two values in the kernel's order
+    loaded = {call['addr_in']: call['addr_out'] for _, call in calls[:2]}
+    a, b = loaded['0'], loaded['2048']
+    (_, joined), (_, left), (_, right) = calls[2:5]
+    assert (joined['addr_1'], joined['addr_2']) == (a, b)
+    assert (left['addr_1'], left['addr_2']) == (joined['addr_out'], b)
+    assert (right['addr_1'], right['addr_2']) == (left['addr_out'], a)
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
