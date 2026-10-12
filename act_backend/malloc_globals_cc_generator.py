@@ -27,7 +27,7 @@ def generate_globals_models(data_models):
             access_dims = access_dims[:-1] + '}'
             num_unit = len(data_model.unit_dim)
             out_str = (
-                f'\t{{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}}'
+                f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}}'
             )
             if idx < len(data_models):
                 out_str += ','

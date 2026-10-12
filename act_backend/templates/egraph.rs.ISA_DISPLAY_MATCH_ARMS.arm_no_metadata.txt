@@ -1,1 +1,1 @@
-            TensorOp::{{variant_name}}(_) => write!(f, "{{instruction_name}}"),
+      TensorOp::{{variant_name}}(_) => write!(f, "{{instruction_name}}"),
