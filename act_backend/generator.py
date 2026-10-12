@@ -61,6 +61,11 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     if base_dir is None:
         base_dir = accelerator.base_dir
 
+    # An earlier binary goes first, so a generation that fails leaves none
+    final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
+    if os.path.lexists(final_dest_path):
+        os.remove(final_dest_path)
+
     # The cost library is linked from where it lies
     if cost is not None:
         cost = os.path.abspath(cost)
@@ -150,7 +155,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
 
     # Copy built backend to final destination
     build_backend_path = os.path.join(cargo_build_dir, 'release', 'backend')
-    final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
     Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(build_backend_path, final_dest_path)
     print(f'Final backend binary located at {final_dest_path}')

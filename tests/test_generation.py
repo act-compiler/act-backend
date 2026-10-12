@@ -24,6 +24,43 @@ def test_failed_build_shows_its_error(accelerator, tmp_path, monkeypatch):
     assert os.path.join(str(tmp_path), 'targets', 'PAIR', 'backend') in str(error.value)
 
 
+@pytest.mark.parametrize('cost, error', [('model.c', ValueError), (None, RuntimeError)])
+def test_failed_generation_leaves_no_earlier_binary(
+    cost, error, accelerator, tmp_path, monkeypatch
+):
+    # What an earlier generation left
+    backend = tmp_path / 'backends' / 'PAIR'
+    backend.parent.mkdir()
+    backend.write_text('an earlier backend\n')
+    # A cost library that is refused, or a build that stops on a missing compiler
+    monkeypatch.setenv('CXX', 'no-such-compiler')
+    with pytest.raises(error):
+        generate_backend(accelerator, str(tmp_path), cost=cost)
+    assert not backend.exists()
+
+
+def built(command, cwd, **options):
+    """A build that passes without running and leaves a binary where cargo would"""
+    binary = os.path.join(cwd, 'target', 'release', 'backend')
+    os.makedirs(os.path.dirname(binary))
+    with open(binary, 'w') as f:
+        f.write('a new backend')
+    return subprocess.CompletedProcess(command, 0, stdout='')
+
+
+def test_binary_is_not_written_through_a_link(accelerator, tmp_path, monkeypatch):
+    # A link an earlier run left under the binary's name, to a file outside
+    outside = tmp_path / 'outside'
+    outside.write_text('kept')
+    (tmp_path / 'backends').mkdir()
+    (tmp_path / 'backends' / 'PAIR').symlink_to(outside)
+    monkeypatch.setattr(subprocess, 'run', built)
+    generate_backend(accelerator, str(tmp_path))
+    backend = tmp_path / 'backends' / 'PAIR'
+    assert not backend.is_symlink() and backend.read_text() == 'a new backend'
+    assert outside.read_text() == 'kept'
+
+
 def test_crate_holds_its_ignore_file(work_dir):
     # The crate comes whole from the installed package, its dot file too
     assert os.path.isfile(os.path.join(work_dir, 'targets', 'QKV', 'backend', '.gitignore'))
