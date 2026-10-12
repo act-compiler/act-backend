@@ -1,4 +1,4 @@
-  else if (op_name == "{{op_name}}") {
+  } else if (op_name == "{{op_name}}") {
     // currently only implemented for one attribute: {{attr_name}}
     int64 {{attr_name}} = 0;
     auto start = attr_str.find("'");
@@ -15,4 +15,3 @@
     }
 
     return new {{ClassName}}(lhs_tensor, rhs_tensors, {{attr_name}});
-  }
