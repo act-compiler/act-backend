@@ -322,7 +322,7 @@ impl PartialEq for TensorInfo {
 impl Analysis<TensorOp> for TensorInfo {
   type Data = TensorInfo;
 
-  fn make(_egraph: &mut EGraph<TensorOp, Self>, enode: &TensorOp) -> Self::Data {
+  fn make(_: &mut EGraph<TensorOp, Self>, enode: &TensorOp) -> Self::Data {
     let mut data = TensorInfo::default();
     data.is_const = match enode {
       TensorOp::DetectedConst(_) => true,

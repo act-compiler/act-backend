@@ -104,7 +104,7 @@ fn fill_offsets_from_header(
 
   let mut curr_bytes: i32 = 0;
   for shape in header.input_types.iter() {
-    let (ttype, tshape, _ttile) = parse_type_shape(shape);
+    let (ttype, tshape, _) = parse_type_shape(shape);
     let dtype: Dtype = ttype.as_str().into();
     let shape_vec = shape_to_vec(&tshape);
 
@@ -122,7 +122,7 @@ fn fill_offsets_from_header(
   }
 
   let output_shape = &header.output_type;
-  let (ttype, tshape, _ttile) = parse_type_shape(output_shape);
+  let (ttype, tshape, _) = parse_type_shape(output_shape);
   let dtype: Dtype = ttype.as_str().into();
   let shape_vec = shape_to_vec(&tshape);
 

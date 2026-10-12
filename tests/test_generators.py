@@ -6,7 +6,7 @@ import pytest
 from taidl import Accelerator
 
 from act_backend import ir_buffer_rs_generator, ir_egraph_rs_generator
-from act_backend.generator import _get_instruction_metadata
+from act_backend.generator import get_instruction_metadata
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
 from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
@@ -59,7 +59,7 @@ def squeeze(text):
 
 
 def test_rewrite_rules(accelerator, templates):
-    rules = [generate_rewrite_rule(m, templates) for m in _get_instruction_metadata(accelerator)]
+    rules = [generate_rewrite_rule(m, templates) for m in get_instruction_metadata(accelerator)]
     # The semantics as a pattern over its inputs, `_?` wherever an attribute is carried
     assert [squeeze(rule) for rule in rules] == [
         'load-rm: (bitcvt (reshape_? ?a)) => (load-rm_? ?a)',
@@ -87,7 +87,7 @@ def test_enum_variants(accelerator, templates):
 
 
 def test_preconditions(accelerator, templates):
-    load_rm, gemm = _get_instruction_metadata(accelerator)
+    load_rm, gemm = get_instruction_metadata(accelerator)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
     # The attribute is read from the root's first dimension
     assert 'let n = lhs_metadata[2].shape[0];' in functions
