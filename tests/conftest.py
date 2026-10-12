@@ -113,7 +113,7 @@ def compile_hlo(work_dir, example_dir):
     hlo_path = os.path.join(example_dir, 'kernels', 'attention.hlo')
     asm_dir = os.path.join(work_dir, 'asm')
     os.makedirs(asm_dir, exist_ok=True)
-    output_path = os.path.join(asm_dir, 'compiled_qkv.py')
+    output_path = os.path.join(asm_dir, 'attention.py')
 
     subprocess.run(
         [backend_bin, '--input', hlo_path, '--output', output_path], check=True, cwd=work_dir
@@ -167,18 +167,18 @@ def run_compiled_kernel(work_dir, assembly_path, data_dir):
     oracle_decorator, oracle_api = import_oracle(work_dir)
 
     # The compiled kernel, loaded from its own path
-    spec = importlib.util.spec_from_file_location('compiled_qkv', assembly_path)
+    spec = importlib.util.spec_from_file_location('attention', assembly_path)
     kernel_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(kernel_module)
 
-    qkv_kernel = kernel_module.qkv(oracle_decorator.kernel, oracle_api)
-    qkv_kernel('fsim-compile')()
+    kernel = kernel_module.attention(oracle_decorator.kernel, oracle_api)
+    kernel('fsim-compile')()
 
     Q = load_bf16_matrix(os.path.join(data_dir, 'Q.dat'), (64, 64))
     K = load_bf16_matrix(os.path.join(data_dir, 'K.dat'), (64, 64))
     V = load_bf16_matrix(os.path.join(data_dir, 'V.dat'), (64, 64))
 
-    outputs, _ = qkv_kernel('fsim')(Q, K, V)
+    outputs, _ = kernel('fsim')(Q, K, V)
     return outputs[0]
 
 
