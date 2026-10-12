@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+import json
 import shutil
 import subprocess
 import tempfile
@@ -35,6 +36,8 @@ def pytest_runtest_setup(item):
 
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+# The platform every oracle simulates on
+PLATFORM = 'CPU'
 
 
 def load_bf16_matrix(path, shape):
@@ -99,7 +102,7 @@ def run_compiled_kernel(work_dir, data_dir):
 
     oracle_decorator = importlib.import_module('oracle.decorator')
     oracle_api = importlib.import_module('oracle.api')
-    oracle_decorator.set_simulation_backend('CPU')
+    oracle_decorator.set_simulation_backend(PLATFORM)
 
     asm_dir = os.path.join(work_dir, 'asm')
     sys.path.insert(0, asm_dir)
@@ -117,8 +120,10 @@ def run_compiled_kernel(work_dir, data_dir):
 
 
 def load_golden(data_dir):
-    """Return the attention golden"""
-    return load_bf16_matrix(os.path.join(data_dir, 'attention.dat'), (64, 64))
+    """Return the attention golden and the record of where it came from"""
+    with open(os.path.join(data_dir, 'goldens.json')) as f:
+        record = json.load(f)['attention.dat']
+    return load_bf16_matrix(os.path.join(data_dir, 'attention.dat'), (64, 64)), record
 
 
 def bf16(x):

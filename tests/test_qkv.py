@@ -43,6 +43,6 @@ class TestQKV:
 
     def test_compiled_kernel_matches_golden(self):
         output = run_compiled_kernel(WORK_DIR, DATA_DIR)
-        golden = load_golden(DATA_DIR)
+        golden, record = load_golden(DATA_DIR)
         max_diff = float(jnp.max(jnp.abs(output - golden)))
-        assert max_diff == 0, f'Max diff: {max_diff}'
+        assert max_diff == 0, f'Max diff: {max_diff} (golden from {record})'
