@@ -99,6 +99,26 @@ def compile_hlo(work_dir, example_dir):
     return output_path
 
 
+def run_backend(backend_bin, example_dir, out_dir, env=None):
+    """Run a backend on the example's attention kernel; return the run and the output's path"""
+    output_path = os.path.join(out_dir, 'attention.py')
+    run = subprocess.run(
+        [
+            backend_bin,
+            '--input',
+            os.path.join(example_dir, 'kernels', 'attention.hlo'),
+            '--output',
+            output_path,
+            '--log',
+            os.path.join(out_dir, 'log'),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    return run, output_path
+
+
 def instruction_calls(assembly_path):
     """Count the calls to each instruction in a compiled kernel"""
     with open(assembly_path) as f:

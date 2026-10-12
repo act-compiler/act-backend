@@ -1,6 +1,12 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 fn main() {
+  // Rerun when the script, the allocator's sources or the cost model change
+  println!("cargo:rerun-if-changed=build.rs");
+  println!("cargo:rerun-if-changed=cpp/malloc/CMakeLists.txt");
+  println!("cargo:rerun-if-changed=cpp/malloc/include");
+  println!("cargo:rerun-if-changed=cpp/malloc/src");
+
   println!("cargo:rustc-link-lib=dylib=stdc++");
 
   println!("cargo:rustc-link-search=native=/opt/ortools/lib");
@@ -34,4 +40,7 @@ fn main() {
 
   println!("cargo:rustc-link-search=native={}", cpp_build_dir.display());
   println!("cargo:rustc-link-lib=static=malloc_static");
+
+  // The cost model: the default, or the library the backend names
+  // {{COST_MODEL}}
 }

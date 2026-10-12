@@ -37,7 +37,7 @@ fn print_help(program_name: String) {
 #[derive(Clone)]
 struct AsmCandidate {
   path: PathBuf,
-  cost: i32,
+  cost: f64,
   timestamp: Duration,
 }
 
@@ -121,7 +121,12 @@ fn timeout(best: Option<AsmCandidate>, start: &Instant, output_path: &PathBuf) {
   }
 }
 
-fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Instant) -> bool {
+fn update_best(
+  best: &mut Option<AsmCandidate>,
+  asm_path: &PathBuf,
+  start: &Instant,
+  output_path: &PathBuf,
+) -> bool {
   if !asm_path.exists() {
     return false;
   }
@@ -134,7 +139,18 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
   println!("Starting Performance Cost Evaluation for {:?}", asm_path);
   println!();
 
-  let cost: i32 = backend::cost::python_bridge(asm_path);
+  let cost: f64 = match backend::cost::c_bridge(asm_path) {
+    Ok(cost) => cost,
+    Err(reason) => {
+      eprintln!("Error: the cost model {} for {:?}", reason, asm_path);
+
+      // A failed compile leaves no output
+      if output_path.exists() {
+        std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+      }
+      process::exit(1);
+    }
+  };
   let time = start.elapsed();
 
   print!("New ASM has performance cost {}. ", cost);
@@ -333,7 +349,12 @@ fn main() {
             backend::malloc::cpp_bridge(&pii_path, &metadata_path_for_hook, &asm_path);
 
             // Check cost and update best if necessary
-            update_best(&mut best.borrow_mut(), &asm_path, &start);
+            update_best(
+              &mut best.borrow_mut(),
+              &asm_path,
+              &start,
+              &output_path_for_hook,
+            );
             println!();
 
             *pii_counter.borrow_mut() += 1;
@@ -405,7 +426,7 @@ fn main() {
           backend::malloc::cpp_bridge(&pii_path, &metadata_path, &asm_path);
 
           // Check cost and update best if necessary
-          update_best(&mut best.borrow_mut(), &asm_path, &start);
+          update_best(&mut best.borrow_mut(), &asm_path, &start, &output_path);
           println!();
 
           *pii_counter.borrow_mut() += 1;

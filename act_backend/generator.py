@@ -23,6 +23,7 @@ from .isel_applier_rs_generator import generate_applier_file
 from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
 from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
+from .build_rs_generator import generate_build_rs_file
 
 
 @dataclass
@@ -48,16 +49,36 @@ def get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetada
     return metadata_list
 
 
-def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
+def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str = None) -> None:
     """
     Generate complete ACT backend code for an accelerator.
 
     Args:
         accelerator: TAIDL Accelerator object
         base_dir: Base directory of the project. Defaults to accelerator.base_dir.
+        cost: Library that defines the cost function act_cost. Defaults to the instruction count.
     """
     if base_dir is None:
         base_dir = accelerator.base_dir
+
+    # The cost library is linked from where it lies
+    if cost is not None:
+        cost = os.path.abspath(cost)
+        if not cost.endswith(('.o', '.a', '.so')):
+            raise ValueError(
+                f'Cost library {cost} is not an object file (.o), a static library (.a) '
+                'or a shared library (.so)'
+            )
+        # The build passes the path on as one line
+        if '\n' in cost:
+            raise ValueError(f'Cost library {cost!r} has a line break in its path')
+        # A run path, which finds a shared library again, is split at colons
+        if cost.endswith('.so') and ':' in os.path.dirname(cost):
+            raise ValueError(
+                f'Cost library {cost} is a shared library under a directory with a colon'
+            )
+        if not os.path.isfile(cost):
+            raise FileNotFoundError(f'Cost library {cost} does not exist')
 
     # Setup directories
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)
@@ -104,6 +125,9 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
 
     generate_act_malloc_file(backend_gen_dir, accelerator.data_model)
     print('Generated act_malloc.cc')
+
+    # Generate the build script, which links the cost model
+    generate_build_rs_file(backend_gen_dir, cost)
 
     print(f'Backend generation complete for {accelerator.name}')
 

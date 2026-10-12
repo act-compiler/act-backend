@@ -1,0 +1,4 @@
+  // The run path finds a shared library again at each run
+  for arg in ["-Xlinker", "-rpath", "-Xlinker", "{{directory}}"] {
+    println!("cargo:rustc-link-arg={}", arg);
+  }
