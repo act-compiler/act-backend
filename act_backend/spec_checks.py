@@ -285,9 +285,11 @@ class SemanticsChecker(OperandVisitor):
     def __init__(self, name):
         super().__init__()
         self.name = name
+        self.values = []
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
+        value = ctx.IDENTIFIER().getText()
         operands = self.visit(ctx.operands()) if ctx.operands() else []
         if word == 'parameter':
             # An input, read by its number
@@ -310,6 +312,12 @@ class SemanticsChecker(OperandVisitor):
                     f"{self.name}: its semantics gives the operation '{word}' {len(named)} values, "
                     f"where the selector's takes {count}"
                 )
+            for operand in named:
+                if operand not in self.values:
+                    raise ValueError(
+                        f"{self.name}: its semantics reads '{operand}', which no line above defines"
+                    )
+        self.values.append(value)
 
 
 def check_semantics(instructions):

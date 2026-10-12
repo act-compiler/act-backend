@@ -299,3 +299,24 @@ def test_concatenate_of_three_refused(tmp_path):
         "gemm: its semantics gives the operation 'concatenate' 3 values, "
         "where the selector's takes 2"
     )
+
+
+@pytest.mark.parametrize(
+    'lines, value',
+    [
+        ([IN1, IN2, result('dot(%In1, %In3)')], '%In3'),
+        (
+            [
+                IN1,
+                IN2,
+                '%a = bf16[64,64] add(%In1, %b)',
+                '%b = bf16[64,64] copy(%In2)',
+                result('copy(%a)'),
+            ],
+            '%b',
+        ),
+    ],
+)
+def test_operand_that_names_no_value_refused(lines, value, tmp_path):
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == f"gemm: its semantics reads '{value}', which no line above defines"

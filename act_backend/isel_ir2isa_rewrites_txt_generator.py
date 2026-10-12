@@ -83,24 +83,20 @@ class RewriteRuleVisitor(OperandVisitor):
             operand_info = self.visit(ctx.operands())
             for operand_value, operand_type in operand_info:
                 if operand_type == 'IDENTIFIER':
-                    if operand_value in self.variable_definitions:
-                        pattern = self.variable_definitions[operand_value]
+                    pattern = self.variable_definitions[operand_value]
 
-                        if operand_value in self.used_values:
-                            substitutions = {}
-                            for param_var in self.parameter_variables.values():
-                                if param_var in pattern:
-                                    fresh_var = self.get_next_variable()
-                                    substitutions[param_var] = fresh_var
-                            if substitutions:
-                                pattern = self.substitute_params(pattern, substitutions)
-                        else:
-                            self.used_values.add(operand_value)
-
-                        operand_patterns.append(pattern)
+                    if operand_value in self.used_values:
+                        substitutions = {}
+                        for param_var in self.parameter_variables.values():
+                            if param_var in pattern:
+                                fresh_var = self.get_next_variable()
+                                substitutions[param_var] = fresh_var
+                        if substitutions:
+                            pattern = self.substitute_params(pattern, substitutions)
                     else:
-                        var = self.get_next_variable()
-                        operand_patterns.append(var)
+                        self.used_values.add(operand_value)
+
+                    operand_patterns.append(pattern)
 
         rewrite_op_name, _ = OPERATIONS[op_name]
         pattern = (
