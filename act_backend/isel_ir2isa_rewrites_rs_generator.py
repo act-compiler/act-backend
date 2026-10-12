@@ -5,6 +5,22 @@ from .expression_writer import source
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
+# The e-graph's element types, by their semantics word
+ELEMENT_TYPES = {
+    's8': 'Dtype::I8',
+    's16': 'Dtype::I16',
+    's32': 'Dtype::I32',
+    's64': 'Dtype::I64',
+    'u8': 'Dtype::U8',
+    'u16': 'Dtype::U16',
+    'u32': 'Dtype::U32',
+    'u64': 'Dtype::U64',
+    'f16': 'Dtype::FP16',
+    'bf16': 'Dtype::BF16',
+    'f32': 'Dtype::FP32',
+    'f64': 'Dtype::FP64',
+}
+
 
 class RustGeneratorVisitor(OperandVisitor):
     def __init__(self, expressions):
@@ -116,15 +132,7 @@ class RustGeneratorVisitor(OperandVisitor):
 
 
 def map_dtype_to_rust(dtype):
-    dtype_map = {
-        's8': 'Dtype::I8',
-        'u8': 'Dtype::U8',
-        's32': 'Dtype::I32',
-        'u32': 'Dtype::U32',
-        'bf16': 'Dtype::BF16',
-    }
-
-    rust_type = dtype_map.get(dtype)
+    rust_type = ELEMENT_TYPES.get(dtype)
     assert rust_type != None
     return rust_type
 

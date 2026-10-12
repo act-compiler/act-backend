@@ -11,7 +11,10 @@ from taidl import Accelerator
 import act_backend
 from act_backend import generate_backend, spec_checks
 from act_backend.generator import get_instruction_metadata
-from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
+from act_backend.isel_ir2isa_rewrites_rs_generator import (
+    ELEMENT_TYPES,
+    generate_ir2isa_rust_functions,
+)
 from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
@@ -310,6 +313,14 @@ def test_operations_are_the_egraphs_own():
     children = {word: int(count) for _, word, count in arms if word != 'eye'}
     assert {word.removesuffix('_?'): count for word, count in OPERATIONS.values()} == children
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
+
+
+def test_element_types_are_the_egraphs_own():
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    with open(os.path.join(generic, 'src', 'ir', 'dtype.rs')) as f:
+        dtype = f.read()
+    # The kernel reader's element types, by their kernel word
+    assert dict(re.findall(r'"(\w+)" => (Dtype::\w+),', dtype)) == ELEMENT_TYPES
 
 
 def test_concatenate_of_three_refused(tmp_path):
