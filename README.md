@@ -28,8 +28,9 @@ ACT-Backend needs Python 3.14 or later.
 ## Testing
 
 ```bash
-./tests/pytest.sh      # every test
-./tests/regenerate.sh  # rewrite the goldens from the compiled kernels
+./tests/pytest.sh             # every test
+./tests/pytest.sh -k qkv_new  # its arguments go on to pytest
+./tests/regenerate.sh         # rewrite the goldens from the compiled kernels
 ```
 
 `tests/pytest.sh` runs the tests in `devanshdvj/act-env:py3.14-jax0.10.2`, the image `docker/act.env` names, in its tag for the host's architecture, amd64 or arm64, and in its CUDA 13 tag where `nvidia-smi` succeeds and docker lists the nvidia runtime; the CI pulls its tag for the runner's architecture.
