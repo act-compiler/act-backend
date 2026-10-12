@@ -1,9 +1,9 @@
 {
   "attention.dat": {
     "kernel": "attention.hlo",
-    "oracle": "2.5",
-    "jax": "0.10.2",
-    "jaxlib": "0.10.2",
+    "oracle": "2.6",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
     "platform": "cpu",
     "machine": "x86_64"
   }

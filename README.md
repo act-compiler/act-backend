@@ -45,7 +45,7 @@ generate_backend(acc)  # acc: a TAIDL Accelerator
 `generate_backend(acc)` writes the backend's crate into `targets/<name>/backend/` under the accelerator's `base_dir`, by default the directory of the file that creates the accelerator, builds it and copies the compiler to `backends/<name>`.
 A build that fails raises `RuntimeError` with the build's own output, and a generation that fails leaves no `backends/<name>` from an earlier one.
 A spec the generator refuses raises `ValueError`, which names what is refused, before anything is written.
-ACT-Backend reads TAIDL v2.3.
+ACT-Backend pins TAIDL v2.13.
 An instruction with no semantics is left out of the backend.
 
 ```bash
@@ -95,6 +95,6 @@ Running a spec, such as `cd examples/QKV && python QKV.py`, generates its oracle
 ```
 
 `tests/pytest.sh` runs the tests in `devanshdvj/act-env:py3.14-jax0.11.2`, the image `docker/act.env` names, in its tag for the host's architecture, amd64 or arm64, and in its CUDA 13 tag where `nvidia-smi` succeeds and docker lists the nvidia runtime; the CI pulls its tag for the runner's architecture.
-It installs the package and what `tests/requirements.txt` names, pytest and TAIDL-TO v2.5, whose generated oracle simulates each compiled kernel on the CPU.
+It installs the package and what `tests/requirements.txt` names, pytest and TAIDL-TO v2.6, whose generated oracle simulates each compiled kernel on the CPU.
 A compiled attention kernel equals its golden bit for bit and is held to its NumPy reference within two bf16 ulps of the largest magnitude in V; `tests/regenerate.sh` rewrites the goldens and records the oracle, jax, platform and machine they come from.
 `tests/lint.sh` generates each example's backend, runs `cargo clippy` over its crate with warnings denied and builds its allocator with `-Wall -Wextra -Werror`, then runs `cargo clippy` over a crate generated with a cost library; the CI runs it after the tests, and generating a backend never does.
