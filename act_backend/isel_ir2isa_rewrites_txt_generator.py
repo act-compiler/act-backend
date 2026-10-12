@@ -54,9 +54,7 @@ class RewriteRuleVisitor(OperandVisitor):
         self.visitChildren(ctx)
         if self.root_variable and self.root_variable in self.variable_definitions:
             return self.variable_definitions[self.root_variable]
-        elif self.pattern_stack:
-            return self.pattern_stack[-1]
-        return None
+        return self.pattern_stack[-1]
 
     def get_parameter_variables(self):
         sorted_params = sorted(self.parameter_variables.items(), key=lambda x: x[0])
@@ -117,18 +115,6 @@ def generate_rewrite_rule(metadata, templates):
     lhs_pattern = visitor.visit(metadata.semantics_ast)
     parameter_vars = visitor.get_parameter_variables()
     kebab_name = get_kebab_name(metadata.name)
-
-    # No pattern or no parameter: a rule over a lone variable
-    if not (lhs_pattern and parameter_vars):
-        # Align the '=>' at column 20, as for every rule
-        padding = ' ' * (19 - len(kebab_name))
-        return templates.render(
-            'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
-            kebab_name=kebab_name,
-            padding=padding,
-            lhs_pattern='(?fallback)',
-            rhs=f'({kebab_name} ?args)',
-        )
 
     # Generate RHS with or without _? suffix
     rhs = (

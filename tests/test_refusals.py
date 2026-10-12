@@ -374,3 +374,13 @@ def test_parameter_under_another_name_refused(tmp_path):
 def test_semantics_that_reads_other_inputs_refused(lines, inputs, reason, tmp_path):
     message = refusal(with_semantics(lines, inputs), tmp_path)
     assert message == f'gemm: its semantics {reason}'
+
+
+def test_instruction_with_no_inputs_refused(tmp_path):
+    message = refusal(with_semantics([result('constant(0)')], inputs=0), tmp_path)
+    assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
+
+
+def test_semantics_with_no_operation_refused(tmp_path):
+    message = refusal(with_semantics([IN1], inputs=1), tmp_path)
+    assert message == 'gemm: its semantics holds no operation for the selector to match'

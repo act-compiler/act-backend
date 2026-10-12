@@ -289,6 +289,7 @@ class SemanticsChecker(OperandVisitor):
         self.read = set()
         self.roots = []
         self.inputs = []
+        self.operations = 0
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -310,6 +311,7 @@ class SemanticsChecker(OperandVisitor):
                 )
             self.inputs.append(number)
         else:
+            self.operations += 1
             if word not in OPERATIONS:
                 raise ValueError(
                     f"{self.name}: its semantics uses the operation '{word}', "
@@ -356,3 +358,9 @@ def check_semantics(instructions):
                 f'{name}: its semantics reads {len(checker.inputs)} inputs by parameter, '
                 f'and the instruction has {len(instruction.instr_inputs)}'
             )
+        if not checker.inputs:
+            raise ValueError(
+                f'{name}: the instruction has no inputs, which the selector cannot match'
+            )
+        if not checker.operations:
+            raise ValueError(f'{name}: its semantics holds no operation for the selector to match')
