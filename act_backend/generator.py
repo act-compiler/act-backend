@@ -31,6 +31,7 @@ from .spec_checks import check_names, check_operands, check_outputs, check_seman
 class InstructionMetadata:
     name: str
     semantics_ast: object
+    expressions: dict
     has_comp_attrs: bool
     rhs_size: int
 
@@ -42,6 +43,7 @@ def get_instruction_metadata(instructions) -> List[InstructionMetadata]:
         metadata = InstructionMetadata(
             name=instruction.instruction,
             semantics_ast=instruction.instr_semantics_ast,
+            expressions=instruction.instr_expression_asts,
             has_comp_attrs=len(instruction.comp_attr) > 0,
             rhs_size=len(instruction.instr_inputs) + 1,
         )

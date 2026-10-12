@@ -66,7 +66,8 @@ def test_preconditions(accelerator, templates):
     assert 'let n = lhs_metadata[2].shape[0];' in functions
     # Every value of the semantics is held to its shape and type
     assert functions.count('if lhs_metadata[') == 3
-    for index, shape, dtype in [(1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]:
+    shapes = [(0, 'n * 128', 'U8'), (1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]
+    for index, shape, dtype in shapes:
         value = f'TensorInfo {{ shape: vec![{shape}], dtype: Dtype::{dtype}, is_const: false, }}'
         assert f'if lhs_metadata[{index}] != ({value})' in functions
     # An instruction with no attribute reads none

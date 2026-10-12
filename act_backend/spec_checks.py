@@ -325,7 +325,8 @@ def check_semantics(instructions):
                 f'{name}: the instruction has no inputs, which the selector cannot match'
             )
         # A computational attribute is read from a shape the semantics writes it in
-        named = RustGeneratorVisitor().visit(instruction.instr_semantics_ast)['comp_attributes']
+        visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
+        named = visitor.visit(instruction.instr_semantics_ast)['comp_attributes']
         for attribute in instruction.comp_attr:
             if attribute not in named:
                 raise ValueError(
