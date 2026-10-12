@@ -1,3 +1,3 @@
-mod python;
+mod c;
 
-pub use python::python_bridge;
+pub use c::c_bridge;

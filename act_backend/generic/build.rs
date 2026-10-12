@@ -34,4 +34,5 @@ fn main() {
 
   println!("cargo:rustc-link-search=native={}", cpp_build_dir.display());
   println!("cargo:rustc-link-lib=static=malloc_static");
+  println!("cargo:rustc-link-lib=static=cost_static");
 }
