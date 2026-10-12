@@ -1,5 +1,5 @@
-#ifndef SCHEDULING_H
-#define SCHEDULING_H
+#ifndef SCHEDULER_H
+#define SCHEDULER_H
 
 #include <string>
 #include <unordered_map>
@@ -31,4 +31,4 @@ void dfs(Instruction *instr, std::unordered_map<Instruction *, bool> &visited,
          std::vector<Instruction *> &order,
          const std::unordered_map<Instruction *, double> &cost_map);
 
-#endif // SCHEDULING_H
+#endif // SCHEDULER_H
