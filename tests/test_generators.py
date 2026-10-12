@@ -28,7 +28,10 @@ def squeeze(text):
 
 
 def test_rewrite_rules(accelerator, templates):
-    rules = [generate_rewrite_rule(m, templates) for m in get_instruction_metadata(accelerator)]
+    rules = [
+        generate_rewrite_rule(m, templates)
+        for m in get_instruction_metadata(accelerator.instructions)
+    ]
     # The semantics as a pattern over its inputs, `_?` wherever an attribute is carried
     assert [squeeze(rule) for rule in rules] == [
         'load-rm: (bitcvt (reshape_? ?a)) => (load-rm_? ?a)',
@@ -56,7 +59,7 @@ def test_enum_variants(accelerator, templates):
 
 
 def test_preconditions(accelerator, templates):
-    load_rm, gemm = get_instruction_metadata(accelerator)
+    load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
     # The attribute is read from the root's first dimension
     assert 'let n = lhs_metadata[2].shape[0];' in functions

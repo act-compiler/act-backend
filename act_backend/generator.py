@@ -34,18 +34,17 @@ class InstructionMetadata:
     rhs_size: int
 
 
-def get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetadata]:
+def get_instruction_metadata(instructions) -> List[InstructionMetadata]:
     """Extract instruction metadata needed for rewrite rule generation"""
     metadata_list = []
-    for instruction in accelerator.instructions:
-        if instruction.instr_semantics_ast:
-            metadata = InstructionMetadata(
-                name=instruction.instruction,
-                semantics_ast=instruction.instr_semantics_ast,
-                has_comp_attrs=len(instruction.comp_attr) > 0,
-                rhs_size=len(instruction.instr_inputs) + 1,
-            )
-            metadata_list.append(metadata)
+    for instruction in instructions:
+        metadata = InstructionMetadata(
+            name=instruction.instruction,
+            semantics_ast=instruction.instr_semantics_ast,
+            has_comp_attrs=len(instruction.comp_attr) > 0,
+            rhs_size=len(instruction.instr_inputs) + 1,
+        )
+        metadata_list.append(metadata)
     return metadata_list
 
 
@@ -87,6 +86,11 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
         if not os.path.isfile(cost):
             raise FileNotFoundError(f'Cost library {cost} does not exist')
 
+    # An instruction with no semantics is never selected, so the backend leaves it out
+    instructions = [
+        instruction for instruction in accelerator.instructions if instruction.instr_semantics_ast
+    ]
+
     # Setup directories
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)
     Path(target_dir).mkdir(parents=True, exist_ok=True)
@@ -101,7 +105,7 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
 
     print(f'Copied generic backend structure to {backend_gen_dir}')
 
-    instruction_metadata = get_instruction_metadata(accelerator)
+    instruction_metadata = get_instruction_metadata(instructions)
 
     # Generate rewrite rules
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)
@@ -111,23 +115,23 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     generate_ir2isa_rewrites_rs_file(backend_gen_dir, instruction_metadata)
     print('Generated ir2isa_rewrites.rs')
 
-    generate_buffer_rs_file(backend_gen_dir, accelerator.instructions, accelerator.data_model)
+    generate_buffer_rs_file(backend_gen_dir, instructions, accelerator.data_model)
     print('Generated buffer.rs')
 
-    generate_egraph_rs_file(backend_gen_dir, accelerator.instructions)
+    generate_egraph_rs_file(backend_gen_dir, instructions)
     print('Generated egraph.rs')
 
-    generate_applier_file(backend_gen_dir, accelerator.instructions)
+    generate_applier_file(backend_gen_dir, instructions)
     print('Generated applier.rs')
 
     # Generate C++ malloc files
     generate_globals_file(backend_gen_dir, accelerator.data_model)
     print('Generated globals.cc')
 
-    generate_instructions_file(backend_gen_dir, accelerator.instructions)
+    generate_instructions_file(backend_gen_dir, instructions)
     print('Generated instructions.h')
 
-    generate_parser_file(backend_gen_dir, accelerator.instructions)
+    generate_parser_file(backend_gen_dir, instructions)
     print('Generated parser.cc')
 
     generate_act_malloc_file(backend_gen_dir, accelerator.data_model)
