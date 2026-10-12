@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 from conftest import EXAMPLES_DIR, instruction_calls, run_backend
+from taidl import Accelerator
 
 import act_backend
 from act_backend import generate_backend
@@ -221,6 +222,29 @@ def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_pat
     monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
     generate_backend(accelerator, str(tmp_path))
     assert starts(str(tmp_path / 'backends' / 'PAIR'))
+
+
+def test_spec_with_every_default_generates(tmp_path):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    mov = acc.add_instruction('mov', ['n'], ['addr_in', 'addr_out'])
+    mov.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
+    mov.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    mov.add_semantics("""
+ENTRY {
+    %In0 = bf16[`@c.n`,64] parameter(0);
+    ROOT %Out0 = bf16[`@c.n`,64] copy(%In0);
+}
+""")
+    # A list that marks no input is the default
+    mov.set_inplace([False])
+    # An instruction with no semantics is left out, unchecked
+    clear = acc.add_instruction('clear', [], ['addr'])
+    clear.set_inputs([['d1', ['@a.addr'], ['64']]])
+    clear.set_outputs([['d1', ['@a.addr'], ['64']]])
+    clear.set_inplace([True])
+    generate_backend(acc, str(tmp_path))
+    assert starts(str(tmp_path / 'backends' / 'ONE'))
 
 
 def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):

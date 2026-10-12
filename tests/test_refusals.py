@@ -516,3 +516,14 @@ def test_sizes_the_allocator_reads():
 def test_address_attribute_no_operand_reads_refused(tmp_path):
     acc = with_operands(addresses=['addr_1', 'addr_2', 'addr_out', 'spare'])
     assert refusal(acc, tmp_path) == "gemm: no operand reads the address attribute 'spare'"
+
+
+def test_input_marked_in_place_refused(tmp_path):
+    acc = with_operands()
+    (gemm,) = acc.instructions
+    # A list that marks no input is the default
+    gemm.set_inplace([False, False])
+    spec_checks.check_inplace(acc.instructions)
+    gemm.set_inplace([False, True])
+    message = refusal(acc, tmp_path)
+    assert message == 'gemm: its input 1 is marked in place, which the backend does not read'
