@@ -18,6 +18,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["act_backend*"]
 
 [tool.setuptools.package-data]
 "act_backend.templates" = ["*.txt"]
