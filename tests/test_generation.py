@@ -66,3 +66,10 @@ def test_backend_runs_without_its_crate(work_dir, tmp_path):
         os.rename(crate + '.moved', crate)
     assert run.returncode == 0, run.stderr
     assert sum(instruction_calls(output_path).values()) == 9
+
+
+def test_backend_finds_the_solver_by_itself(work_dir, tmp_path):
+    # No library path in the environment: the binary's run path is all it has
+    env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
+    run, _ = run_backend(os.path.join(work_dir, 'backends', 'QKV'), QKV_DIR, str(tmp_path), env)
+    assert run.returncode == 0, run.stderr

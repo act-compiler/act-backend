@@ -14,6 +14,10 @@ fn main() {
   println!("cargo:rustc-link-lib=dylib=absl_base");
   println!("cargo:rustc-link-lib=dylib=absl_log_internal_check_op");
   println!("cargo:rustc-link-lib=dylib=absl_log_internal_message");
+  // The run path finds OR-Tools again at each run
+  for arg in ["-Xlinker", "-rpath", "-Xlinker", "/opt/ortools/lib"] {
+    println!("cargo:rustc-link-arg={}", arg);
+  }
 
   // Create cpp/malloc/build, run `cmake ..` inside it, then `make -j4`
   let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
