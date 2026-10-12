@@ -23,7 +23,7 @@ def extract_size_expr(expr):
 
 def generate_get_h_method(index, addr_var, size_expr, templates):
     range_pair = f'{addr_var}, MAKE_SUM({addr_var}, {size_expr})'
-    return templates.render(
+    return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=range_pair
     )
 
@@ -57,7 +57,7 @@ def generate_instruction_class(instruction, templates):
 
         if addr_var:
             get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
-            get_h_cases += templates.render(
+            get_h_cases += templates.render_lines(
                 'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
             )
             h_index += 1
@@ -70,7 +70,7 @@ def generate_instruction_class(instruction, templates):
 
         if addr_var:
             get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
-            get_h_cases += templates.render(
+            get_h_cases += templates.render_lines(
                 'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
             )
             h_index += 1
@@ -99,7 +99,7 @@ def generate_instruction_class(instruction, templates):
     get_int_var_list = ', '.join(params)
 
     # Generate complete class using template
-    return templates.render(
+    return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.class.txt',
         CLASS_NAME=class_name,
         OP_NAME=op_name,

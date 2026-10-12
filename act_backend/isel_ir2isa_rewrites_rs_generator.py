@@ -276,7 +276,7 @@ def generate_precond_function(instruction_name, semantics_data, templates):
 
     shape_checks_code = '\n'.join(shape_checks)
 
-    return templates.render(
+    return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.precond.txt',
         instruction_name=instruction_name,
         num_assignments=str(num_assignments),
@@ -302,7 +302,7 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
             root_assignment, comp_attr, num_assignments
         )
 
-        return templates.render(
+        return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',
             instruction_name=instruction_name,
             num_assignments=str(num_assignments),
@@ -311,7 +311,7 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
             rhs_size=str(rhs_size),
         )
     else:
-        return templates.render(
+        return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_no_attr.txt',
             instruction_name=instruction_name,
             num_assignments=str(num_assignments),
@@ -363,7 +363,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
 
         shape_vec = f'vec![{", ".join(dims)}]'
 
-        shape_setting = templates.render(
+        shape_setting = templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
             shape_vec=shape_vec,
             dtype=dtype_rust,
@@ -372,7 +372,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
     # Without a root the function reads no e-graph
     egraph_param = 'egraph' if root_assignment else '_'
 
-    return templates.render(
+    return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt',
         egraph_param=egraph_param,
         instruction_name=instruction_name,

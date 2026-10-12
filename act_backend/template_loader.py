@@ -35,7 +35,8 @@ class TemplateLoader:
         if template_file not in self._cache:
             file_path = os.path.join(self.template_dir, template_file)
             with open(file_path, 'r') as f:
-                self._cache[template_file] = f.read()
+                # The final newline ends the file, not the fragment
+                self._cache[template_file] = f.read().removesuffix('\n')
         return self._cache[template_file]
 
     def render(self, template_file: str, **kwargs) -> str:
@@ -55,6 +56,10 @@ class TemplateLoader:
             placeholder = f'{{{{{key}}}}}'
             result = result.replace(placeholder, str(value))
         return result
+
+    def render_lines(self, template_file: str, **kwargs) -> str:
+        """Render a template as whole lines, the last one ended with a newline"""
+        return self.render(template_file, **kwargs) + '\n'
 
 
 # A skeleton's placeholder: a comment line of its own, a block comment inside a line, or bare
