@@ -317,6 +317,8 @@ class SemanticsChecker(OperandVisitor):
                     raise ValueError(
                         f"{self.name}: its semantics reads '{operand}', which no line above defines"
                     )
+        if value in self.values:
+            raise ValueError(f"{self.name}: its semantics defines '{value}' twice")
         self.values.append(value)
 
 

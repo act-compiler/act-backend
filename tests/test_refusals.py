@@ -320,3 +320,14 @@ def test_concatenate_of_three_refused(tmp_path):
 def test_operand_that_names_no_value_refused(lines, value, tmp_path):
     message = refusal(with_semantics(lines), tmp_path)
     assert message == f"gemm: its semantics reads '{value}', which no line above defines"
+
+
+def test_value_defined_twice_refused(tmp_path):
+    lines = [
+        IN1,
+        IN2,
+        '%a = bf16[64,64] add(%In1, %In2)',
+        '%a = bf16[64,64] copy(%a)',
+        result('copy(%a)'),
+    ]
+    assert refusal(with_semantics(lines), tmp_path) == "gemm: its semantics defines '%a' twice"
