@@ -216,3 +216,37 @@ def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_pat
     monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
     generate_backend(accelerator, str(tmp_path))
     assert starts(str(tmp_path / 'backends' / 'PAIR'))
+
+
+def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
+    # OR-Tools under another path, and the crate built again by hand
+    solver_dir = tmp_path / 'solver'
+    solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
+    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    env = dict(os.environ, ORTOOLS_DIR=str(solver_dir))
+    subprocess.run(
+        ['cargo', 'build', '--release', '--locked'],
+        cwd=crate,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    # The allocator's build looked for OR-Tools there, not where the last build found it
+    with open(os.path.join(crate, 'cpp', 'malloc', 'build', 'CMakeCache.txt')) as f:
+        assert f'ortools_DIR:PATH={solver_dir}/lib/cmake/ortools' in f.read()
+
+
+def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
+    # The default cost model's source taken away, and the crate built again by hand
+    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    source = os.path.join(crate, 'cpp', 'cost', 'count.cc')
+    os.rename(source, source + '.moved')
+    try:
+        build = subprocess.run(
+            ['cargo', 'build', '--release', '--locked'], cwd=crate, capture_output=True, text=True
+        )
+    finally:
+        os.rename(source + '.moved', source)
+    # The link finds no model the last build left behind
+    assert build.returncode != 0
+    assert 'cost_static' in build.stderr
