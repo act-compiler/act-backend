@@ -294,6 +294,10 @@ def test_operation_word_handled_or_refused(word):
             lines.visit(semantics)
 
 
+def test_operations_are_words_of_the_grammar():
+    assert set(OPERATIONS) <= set(grammar_words())
+
+
 def test_operations_are_the_egraphs_own():
     generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
     with open(os.path.join(generic, 'src', 'ir', 'egraph.rs')) as f:

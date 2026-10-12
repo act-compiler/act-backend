@@ -18,7 +18,6 @@ OPERATIONS = {
     'dot': ('dot', 2),
     'exponential': ('exponential', 1),
     'or': ('or', 2),
-    'reduce': ('reduce', 1),
     'reduce_add': ('reduce_?', 1),
     'reshape': ('reshape_?', 1),
     'shift_left': ('shift-left', 2),
