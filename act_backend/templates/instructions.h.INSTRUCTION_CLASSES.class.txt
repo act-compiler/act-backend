@@ -5,10 +5,10 @@ private:
 public:
   {{CLASS_NAME}}(Tensor *y, std::vector<Tensor *> X{{COMP_ATTR_PARAMS}})
       : Instruction("{{OP_NAME}}", y, X){{COMP_ATTR_INIT}} {
-{{CONSTRUCTOR_VALIDATIONS}}  }
+  }
 
   std::string str() override {
-{{STR_BOUND_CHECKS}}    return op_name + "({{STR_FORMAT}}" + ")";
+    return op_name + "({{STR_FORMAT}}" + ")";
   }
 
   std::vector<std::pair<IntExpr *, IntExpr *>> get_h(int num) override {

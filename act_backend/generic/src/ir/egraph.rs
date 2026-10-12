@@ -261,7 +261,6 @@ impl FromOp for TensorOp {
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpTranspose(data.to_string(), children))
       }
-      op if op.starts_with('?') && children.is_empty() => Ok(TensorOp::Var(op.to_string())),
       _ => Err(FromOpError::new(op, children)),
     }
   }

@@ -62,13 +62,9 @@ pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(
   let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
 
   // Parse the module with regions
-  if let Some((header, regions, entry_instructions)) = parse_hlo_module_with_regions(&line_refs) {
+  if let Some((header, entry_instructions)) = parse_hlo_module_with_regions(&line_refs) {
     // Fill offsets from the header
     fill_offsets_from_header(&header, &mut offsets, &mut metadata);
-
-    // Process regions (store them for future use, but don't add to egraph yet)
-    // For now, we just store the regions - they'll be used when referenced in reduce operations
-    let _regions = regions; // Store regions for future use
 
     // Process entry instructions
     let mut root: Option<Id> = None;
@@ -97,18 +93,6 @@ pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(
   } else {
     panic!("Failed to parse HLO module with regions");
   }
-}
-
-fn _should_skip_line(line: String) -> bool {
-  let trimmed = line.trim();
-  if trimmed.is_empty()
-    || trimmed.starts_with('#')
-    || trimmed.starts_with("}")
-    || trimmed.starts_with("ENTRY ")
-  {
-    return true;
-  }
-  false
 }
 
 fn fill_offsets_from_header(
@@ -289,13 +273,9 @@ fn add_expr_to_egraph(
       tshape,
       ttile,
       source,
-      constant,
       dimensions,
-      to_apply,
     } => {
-      add_reduce(
-        tsymbol, ttype, tshape, ttile, source, constant, dimensions, to_apply, egraph, table,
-      );
+      add_reduce(tsymbol, ttype, tshape, source, dimensions, egraph, table);
       if parsing_root {
         add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
       }
@@ -308,7 +288,7 @@ fn add_expr_to_egraph(
       ttile,
       source,
     } => {
-      add_exponential(tsymbol, ttype, tshape, ttile, source, egraph, table);
+      add_exponential(tsymbol, ttype, tshape, source, egraph, table);
       if parsing_root {
         add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
       }
@@ -701,11 +681,8 @@ fn add_reduce(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
-  _ttile: &str,
   source: &str,
-  _constant: &str,
   dimensions: &str,
-  _to_apply: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
 ) {
@@ -732,7 +709,6 @@ fn add_exponential(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
-  _ttile: &str,
   source: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,

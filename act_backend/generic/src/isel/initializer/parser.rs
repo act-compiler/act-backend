@@ -180,9 +180,7 @@ pub enum HLOExpr {
     tshape: String,
     ttile: String,
     source: String,
-    constant: String,
     dimensions: String,
-    to_apply: String,
   },
   Exponential {
     tsymbol: String,
@@ -393,8 +391,6 @@ pub fn parse_hlo_expr(
     }
 
     "reduce" => {
-      let _source = toperands.trim().to_string();
-
       // Parse dimensions from something like: dimensions={1}
       let dimensions = trest
         .split("dimensions=")
@@ -458,7 +454,6 @@ pub fn parse_hlo_expr(
       }
 
       let source = operands[0].to_string();
-      let constant = operands[1].to_string();
 
       Some(HLOExpr::ReduceSum {
         tsymbol: tsymbol.to_string(),
@@ -466,9 +461,7 @@ pub fn parse_hlo_expr(
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-        constant,
         dimensions,
-        to_apply,
       })
     }
     "exponential" => {
@@ -723,13 +716,7 @@ pub fn parse_region(
   ))
 }
 
-pub fn parse_hlo_module_with_regions(
-  lines: &[&str],
-) -> Option<(
-  HloModuleHeader,
-  std::collections::HashMap<String, HLORegion>,
-  Vec<HLOExpr>,
-)> {
+pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader, Vec<HLOExpr>)> {
   if lines.is_empty() {
     return None;
   }
@@ -790,5 +777,5 @@ pub fn parse_hlo_module_with_regions(
     }
   }
 
-  Some((header, regions, entry_instructions))
+  Some((header, entry_instructions))
 }

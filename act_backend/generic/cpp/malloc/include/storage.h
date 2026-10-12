@@ -40,9 +40,6 @@ public:
     return prod;
   }
 
-  size_t get_non_addressing_dims() const {
-    return non_addressing_dims;
-  }
   size_t get_addressing_dims() const {
     return addressing_dims;
   }
@@ -53,7 +50,6 @@ public:
 
 extern std::map<std::string, Storage *> g_storage;
 
-#define STORAGE_CAPACITY(buffer, dim) (g_storage[buffer]->get_capacity(dim))
 #define STORAGE_SIZE(buffer) (g_storage[buffer]->get_size())
 #define HBM_SIZE (1 << 30)
 

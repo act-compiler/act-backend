@@ -1,15 +1,5 @@
 import os
-from typing import List
-from dataclasses import dataclass
 from .template_loader import fill_placeholders
-
-
-@dataclass
-class InstructionInfo:
-    name: str
-    arity: int
-    has_metadata: bool
-    buffer_assignment: str
 
 
 def generate_globals_models(data_models):
