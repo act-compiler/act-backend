@@ -570,3 +570,38 @@ def test_placement_mark_that_appends_no_constraint_passes():
     # The output shares the first input's start: nothing to hold
     gemm.set_no_partial_overlap([True, False])
     spec_checks.check_constraints(acc.instructions)
+
+
+def with_state(update=(), dimension='64'):
+    """An accelerator that declares the state variable mode, and one instruction, scale"""
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_initial_state('mode', 0)
+    instr = acc.add_instruction('scale', [], ['addr_in', 'addr_out'], update=update)
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[{dimension},64] parameter(0);
+    ROOT %Out0 = bf16[{dimension},64] copy(%In0);
+}}
+""")
+    return acc
+
+
+def test_state_no_instruction_uses_passes():
+    spec_checks.check_state(with_state().instructions)
+
+
+def test_state_update_refused(tmp_path):
+    message = refusal(with_state(update=['@s.mode = 1']), tmp_path)
+    assert message == (
+        "scale: it updates machine state by '@s.mode = 1', which the backend does not model"
+    )
+
+
+def test_state_read_refused(tmp_path):
+    message = refusal(with_state(dimension='`64 - @s.mode`'), tmp_path)
+    assert message == (
+        "scale: its semantics reads the state variable '@s.mode', which the backend does not model"
+    )

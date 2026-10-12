@@ -629,3 +629,21 @@ def check_constraints(instructions):
             f"{instruction.instruction}: {origin} the constraint '{text}', "
             'which the backend does not read'
         )
+
+
+def check_state(instructions):
+    """Refuse an instruction that reads or updates machine state"""
+    for instruction in instructions:
+        name = instruction.instruction
+        if instruction.update:
+            raise ValueError(
+                f"{name}: it updates machine state by '{instruction.update[0]}', "
+                'which the backend does not model'
+            )
+        for expression in instruction.instr_expression_asts.values():
+            read = Trees.findAllTokenNodes(expression, IDLV2ExprParser.STATE)
+            if read:
+                raise ValueError(
+                    f"{name}: its semantics reads the state variable '{read[0].getText()}', "
+                    'which the backend does not model'
+                )

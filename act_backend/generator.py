@@ -30,6 +30,7 @@ from .spec_checks import (
     check_operands,
     check_outputs,
     check_semantics,
+    check_state,
 )
 
 
@@ -110,6 +111,7 @@ def generate_backend(
     check_operands(instructions, accelerator.data_model)
     check_inplace(instructions)
     check_constraints(instructions)
+    check_state(instructions)
 
     # Setup directories
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)

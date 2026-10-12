@@ -227,6 +227,8 @@ def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_pat
 def test_spec_with_every_default_generates(tmp_path):
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [128], [64], 'bf16')
+    # State that no instruction of the backend reads or updates
+    acc.add_initial_state('mode', 0)
     mov = acc.add_instruction('mov', ['n'], ['addr_in', 'addr_out'])
     mov.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
     mov.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
@@ -248,6 +250,7 @@ ENTRY {
     clear.set_outputs([['d1', ['@a.addr'], ['64']]])
     clear.set_inplace([True])
     clear.add_constraints(['@a.addr <= 64'])
+    acc.add_instruction('configure', ['mode'], [], update=['@s.mode = @c.mode'])
     generate_backend(acc, str(tmp_path))
     assert starts(str(tmp_path / 'backends' / 'ONE'))
 
