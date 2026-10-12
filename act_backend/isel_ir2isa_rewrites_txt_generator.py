@@ -25,7 +25,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
         self.parameter_variables = {}
         self.variable_definitions = {}
         self.root_variable = None
-        self.variable_usage_count = set()
+        self.used_values = set()
 
     def get_next_variable(self):
         var_name = f'?{chr(ord("a") + self.variable_counter)}'
@@ -76,7 +76,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
                     if operand_value in self.variable_definitions:
                         pattern = self.variable_definitions[operand_value]
 
-                        if operand_value in self.variable_usage_count:
+                        if operand_value in self.used_values:
                             substitutions = {}
                             for param_var in self.parameter_variables.values():
                                 if param_var in pattern:
@@ -85,7 +85,7 @@ class RewriteRuleVisitor(IDLV2Visitor):
                             if substitutions:
                                 pattern = self.substitute_params(pattern, substitutions)
                         else:
-                            self.variable_usage_count.add(operand_value)
+                            self.used_values.add(operand_value)
 
                         operand_patterns.append(pattern)
                     else:
