@@ -101,6 +101,9 @@ class RustGeneratorVisitor(OperandVisitor):
         self.comp_attributes.update(matches)
 
     def visitResult_type(self, ctx):
+        # A rank-0 result is one element, like a kernel's
+        if ctx.shape() is None:
+            return (ctx.TYPE().getText(), '', ['1'])
         # The type, the written shape, and each dimension in Rust
         dims = [self.visit(dim) for dim in ctx.shape().dim()]
         return (ctx.TYPE().getText(), ctx.shape().getText(), dims)

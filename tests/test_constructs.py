@@ -49,6 +49,38 @@ ENTRY main {
 """
 
 
+def add_rank_0_result(acc):
+    """An instruction that fills d2 with the sum of 64 rows of d1"""
+    instr = acc.add_instruction('spread', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %total = bf16[] reduce_add(%In0), dimensions={0,1};
+    ROOT %Out0 = bf16[64,64] broadcast(%total), dimensions={};
+}
+""")
+
+
+# A kernel filling its output with its input's sum
+SPREAD = """HloModule spread, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+%reduce_add (x: bf16[], y: bf16[]) -> bf16[] {
+  %x = bf16[] parameter(0)
+  %y = bf16[] parameter(1)
+  ROOT %sum = bf16[] add(%x, %y)
+}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %zero = bf16[] constant(0)
+  %total = bf16[] reduce(%x, %zero), dimensions={0,1}, to_apply=%reduce_add
+  ROOT %out = bf16[64,64] broadcast(%total), dimensions={}
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -66,6 +98,7 @@ def work_dir(tmp_path_factory):
 
     def with_constructs(acc, *args, **kwargs):
         add_concatenate(acc)
+        add_rank_0_result(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -110,6 +143,12 @@ def test_concatenate_is_selected(work_dir, tmp_path):
     loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
     join = calls[2][1]
     assert (join['addr_1'], join['addr_2']) == (loaded['0'], loaded['4096'])
+
+
+def test_rank_0_result_is_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, SPREAD)
+    # The rank-0 sum is matched inside the instruction
+    assert [name for name, _ in calls] == ['load_rm', 'spread', 'mov', 'store_rm']
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
