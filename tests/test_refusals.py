@@ -357,3 +357,20 @@ def test_parameter_under_another_name_refused(tmp_path):
     lines = ['%In1 = bf16[64,64] parameter(1)', '%In2 = bf16[64,64] parameter(0)']
     message = refusal(with_semantics([*lines, result('dot(%In1, %In2)')]), tmp_path)
     assert message == "gemm: its semantics names parameter(1) '%In1', not '%In2'"
+
+
+@pytest.mark.parametrize(
+    'lines, inputs, reason',
+    [
+        (
+            [IN1, IN2, result('dot(%In1, %In2)')],
+            1,
+            'reads 2 inputs by parameter, and the instruction has 1',
+        ),
+        ([IN1, result('copy(%In1)')], 2, 'reads 1 inputs by parameter, and the instruction has 2'),
+        ([result('constant(0)')], 2, 'reads 0 inputs by parameter, and the instruction has 2'),
+    ],
+)
+def test_semantics_that_reads_other_inputs_refused(lines, inputs, reason, tmp_path):
+    message = refusal(with_semantics(lines, inputs), tmp_path)
+    assert message == f'gemm: its semantics {reason}'

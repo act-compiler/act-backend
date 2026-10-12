@@ -288,6 +288,7 @@ class SemanticsChecker(OperandVisitor):
         self.values = []
         self.read = set()
         self.roots = []
+        self.inputs = []
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -307,6 +308,7 @@ class SemanticsChecker(OperandVisitor):
                     f"{self.name}: its semantics names parameter({number}) '{value}', "
                     f"not '%In{number + 1}'"
                 )
+            self.inputs.append(number)
         else:
             if word not in OPERATIONS:
                 raise ValueError(
@@ -348,3 +350,9 @@ def check_semantics(instructions):
                 )
             if value in checker.roots:
                 raise ValueError(f"{name}: its semantics marks '{value}' ROOT above its last line")
+        # The rule is matched over the inputs, each read by one parameter
+        if len(checker.inputs) != len(instruction.instr_inputs):
+            raise ValueError(
+                f'{name}: its semantics reads {len(checker.inputs)} inputs by parameter, '
+                f'and the instruction has {len(instruction.instr_inputs)}'
+            )
