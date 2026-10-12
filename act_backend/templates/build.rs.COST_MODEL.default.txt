@@ -1,0 +1,2 @@
+  println!("cargo:rerun-if-changed=cpp/cost");
+  println!("cargo:rustc-link-lib=static=cost_static");
