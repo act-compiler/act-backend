@@ -132,12 +132,6 @@ class RustGeneratorVisitor(OperandVisitor):
         return source(self.expressions[ctx.EXPRESSION()])
 
 
-def map_dtype_to_rust(dtype):
-    rust_type = ELEMENT_TYPES.get(dtype)
-    assert rust_type != None
-    return rust_type
-
-
 def extract_comp_attr_from_shape(shape_text, comp_attrs):
     # Find the computational attribute that appears in the shape
     for attr in comp_attrs:
@@ -208,7 +202,7 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     # Generate shape/dtype checks for all assignments
     shape_checks = []
     for i, assignment in enumerate(assignments):
-        dtype_rust = map_dtype_to_rust(assignment['dtype'])
+        dtype_rust = ELEMENT_TYPES[assignment['dtype']]
         shape_vec = f'vec![{", ".join(assignment["dims"])}]'
 
         shape_check = templates.render(
@@ -279,7 +273,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         )
 
     # Generate shape setting
-    dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
+    dtype_rust = ELEMENT_TYPES[root_assignment['dtype']]
     shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
 
     shape_setting = templates.render_lines(
