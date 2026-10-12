@@ -125,3 +125,18 @@ def test_wrong_solver_directory_named(name, accelerator, tmp_path, monkeypatch):
         generate_backend(accelerator, str(tmp_path / 'base'))
     assert 'ORTOOLS_DIR' in str(error.value)
     assert str(solver_dir) in str(error.value)
+
+
+def test_json_headers_sought_where_the_environment_says(accelerator, tmp_path, monkeypatch):
+    # A directory that holds no header stops the allocator's build
+    monkeypatch.setenv('NLOHMANN_JSON_DIR', str(tmp_path))
+    with pytest.raises(RuntimeError, match='nlohmann/json.hpp'):
+        generate_backend(accelerator, str(tmp_path))
+
+
+def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_path, monkeypatch):
+    # The defaults are where the environment image holds OR-Tools and the JSON headers
+    monkeypatch.delenv('ORTOOLS_DIR', raising=False)
+    monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
+    generate_backend(accelerator, str(tmp_path))
+    assert starts(str(tmp_path / 'backends' / 'PAIR'))

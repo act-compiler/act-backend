@@ -45,6 +45,9 @@ fn main() {
     println!("cargo:rustc-link-arg={}", arg);
   }
 
+  // The JSON headers, which the allocator's build reads from NLOHMANN_JSON_DIR
+  println!("cargo:rerun-if-env-changed=NLOHMANN_JSON_DIR");
+
   // Create cpp/malloc/build, run `cmake ..` inside it, then `make -j4`
   let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
   let cpp_build_dir = manifest.join("cpp").join("malloc").join("build");
