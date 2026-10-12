@@ -486,3 +486,8 @@ def test_sizes_the_allocator_reads():
     for size in [64, '64', '@c.n', '@c.n * 128', '(@c.n + 1) * 2 - @c.n / 2']:
         instruction.set_outputs([['d1', ['@a.addr_out'], [size]]])
         spec_checks.check_operands(acc.instructions, acc.data_model)
+
+
+def test_address_attribute_no_operand_reads_refused(tmp_path):
+    acc = with_operands(addresses=['addr_1', 'addr_2', 'addr_out', 'spare'])
+    assert refusal(acc, tmp_path) == "gemm: no operand reads the address attribute 'spare'"

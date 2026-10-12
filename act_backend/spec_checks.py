@@ -415,6 +415,7 @@ def check_operands(instructions, data_models):
                 f'{name}: the instruction has {len(instruction.instr_outputs)} outputs, '
                 'and the allocator places one'
             )
+        read = set()
         for operand in [*instruction.instr_outputs, *instruction.instr_inputs]:
             lists = [part for part in operand[1:] if isinstance(part, (list, tuple))]
             if len(operand) != 3 or len(lists) != 2:
@@ -442,3 +443,7 @@ def check_operands(instructions, data_models):
                     'which is not one address attribute of the instruction'
                 )
             check_size(what, sizes[0], instruction.comp_attr)
+            read.add(address.group(1))
+        for attribute in instruction.parameters:
+            if attribute not in read:
+                raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")
