@@ -58,7 +58,7 @@ pub fn precond_0(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_0(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 5);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -243,7 +243,7 @@ pub fn precond_2(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_2(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -290,7 +290,7 @@ pub fn precond_3(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_3(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -347,7 +347,7 @@ pub fn precond_4(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_4(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
   let rhs_metadata = vec![None; 3];
@@ -408,7 +408,7 @@ pub fn precond_5(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_5(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
   let mut rhs_metadata = vec![None; 6];
@@ -486,7 +486,7 @@ pub fn precond_6(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_6(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
   let rhs_metadata = vec![None; 1];
@@ -519,7 +519,7 @@ pub fn precond_7(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_7(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
   let rhs_metadata = vec![None; 2];
@@ -563,7 +563,7 @@ pub fn precond_8(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_8(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 2);
   let rhs_metadata = vec![None; 1];
@@ -605,7 +605,7 @@ pub fn precond_9(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 pub fn metadata_9(
   _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
-  _lhs_enodes: &Vec<Option<TensorOp>>,
+  _: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
   let rhs_metadata = vec![None; 1];

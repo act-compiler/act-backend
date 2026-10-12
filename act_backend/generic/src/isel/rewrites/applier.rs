@@ -75,7 +75,7 @@ impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
     egraph: &mut EGraph<TensorOp, TensorInfo>,
     eclass: Id,
     subst: &Subst,
-    _searcher_ast: Option<&PatternAst<TensorOp>>,
+    _: Option<&PatternAst<TensorOp>>,
     rule_name: Symbol,
   ) -> Vec<Id> {
     let mut ids = vec![];
