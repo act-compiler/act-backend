@@ -19,9 +19,6 @@ pub const SLOW_LIMIT_CUTOFF: usize = 15;
 // Ratio of termination time to time since last improvement
 pub const SATURATION_FACTOR: u32 = 2;
 
-// Debug field to slow down the pipeline to test termination conditions
-pub const SLEEP_TIME: Duration = Duration::from_millis(0);
-
 pub mod cost;
 pub mod ir;
 pub mod isel;

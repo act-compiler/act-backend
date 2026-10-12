@@ -4,16 +4,13 @@ use std::env;
 use std::path::PathBuf;
 use std::process;
 use std::rc::Rc;
-use std::thread::sleep;
 use std::time::Duration;
 use std::time::Instant;
 
 use egg::{Runner, StopReason};
 
-pub use backend::{ir, isel, malloc};
-pub use backend::{
-  N, PROCESSED, SATURATION_FACTOR, SLEEP_TIME, SLOW_LIMIT_CUTOFF, SLOW_LIMIT_START, TIME_LIMIT,
-};
+use backend::isel;
+use backend::{N, PROCESSED, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   if program_name == "cargo" {
@@ -360,7 +357,6 @@ fn main() {
           runner.iterations.len() + 1
         );
         println!();
-        sleep(SLEEP_TIME);
 
         Ok(())
       })
@@ -425,8 +421,6 @@ fn main() {
           "Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection"
         );
         println!();
-
-        sleep(SLEEP_TIME);
       }
       println!("Info: Reached time limit. No further extraction.");
     }

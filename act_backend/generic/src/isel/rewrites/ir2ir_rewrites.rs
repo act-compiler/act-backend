@@ -165,13 +165,8 @@ pub fn set_shapes_0(
   );
 }
 
-pub fn precond_1(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) -> bool {
+pub fn precond_1(_: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) -> bool {
   assert_eq!(lhs_eclasses.len(), 3);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   true
 }
 
@@ -351,16 +346,11 @@ pub fn precond_4(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_4(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let rhs_metadata = vec![None; 3];
   rhs_metadata
 }
@@ -417,16 +407,11 @@ pub fn precond_5(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_5(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let mut rhs_metadata = vec![None; 6];
   rhs_metadata[1] = Some("I32".to_string());
   rhs_metadata[3] = Some("I32".to_string());
@@ -500,31 +485,22 @@ pub fn precond_6(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_6(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let rhs_metadata = vec![None; 1];
   rhs_metadata
 }
 
 pub fn set_shapes_6(
-  egraph: &mut EGraph<TensorOp, TensorInfo>,
+  _: &mut EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   rhs_eclasses: &Vec<Id>,
 ) {
   assert_eq!(lhs_eclasses.len(), 3);
   assert_eq!(rhs_eclasses.len(), 1);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
 }
 
 pub fn precond_7(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) -> bool {
@@ -542,16 +518,11 @@ pub fn precond_7(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_7(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 1);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let rhs_metadata = vec![None; 2];
   rhs_metadata
 }
@@ -591,31 +562,22 @@ pub fn precond_8(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_8(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 2);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let rhs_metadata = vec![None; 1];
   rhs_metadata
 }
 
 pub fn set_shapes_8(
-  egraph: &mut EGraph<TensorOp, TensorInfo>,
+  _: &mut EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   rhs_eclasses: &Vec<Id>,
 ) {
   assert_eq!(lhs_eclasses.len(), 2);
   assert_eq!(rhs_eclasses.len(), 1);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
 }
 
 pub fn precond_9(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) -> bool {
@@ -642,29 +604,20 @@ pub fn precond_9(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &Vec<Id>) 
 }
 
 pub fn metadata_9(
-  egraph: &EGraph<TensorOp, TensorInfo>,
+  _: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   _lhs_enodes: &Vec<Option<TensorOp>>,
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
-
   let rhs_metadata = vec![None; 1];
   rhs_metadata
 }
 
 pub fn set_shapes_9(
-  egraph: &mut EGraph<TensorOp, TensorInfo>,
+  _: &mut EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &Vec<Id>,
   rhs_eclasses: &Vec<Id>,
 ) {
   assert_eq!(lhs_eclasses.len(), 3);
   assert_eq!(rhs_eclasses.len(), 1);
-  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses
-    .iter()
-    .map(|id| egraph[*id].data.clone())
-    .collect();
 }
