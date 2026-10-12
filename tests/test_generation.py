@@ -48,17 +48,32 @@ def built(command, cwd, **options):
     return subprocess.CompletedProcess(command, 0, stdout='')
 
 
-def test_binary_is_not_written_through_a_link(accelerator, tmp_path, monkeypatch):
+@pytest.mark.parametrize('name', ['PAIR', 'PAIR.partial'])
+def test_binary_is_not_written_through_a_link(name, accelerator, tmp_path, monkeypatch):
     # A link an earlier run left under the binary's name, to a file outside
     outside = tmp_path / 'outside'
     outside.write_text('kept')
     (tmp_path / 'backends').mkdir()
-    (tmp_path / 'backends' / 'PAIR').symlink_to(outside)
+    (tmp_path / 'backends' / name).symlink_to(outside)
     monkeypatch.setattr(subprocess, 'run', built)
     generate_backend(accelerator, str(tmp_path))
     backend = tmp_path / 'backends' / 'PAIR'
     assert not backend.is_symlink() and backend.read_text() == 'a new backend'
     assert outside.read_text() == 'kept'
+
+
+def test_interrupted_copy_leaves_no_binary(accelerator, tmp_path, monkeypatch):
+    # A copy that stops halfway
+    def copy(source, destination):
+        with open(destination, 'w') as f:
+            f.write('half a backend')
+        raise OSError('No space left on device')
+
+    monkeypatch.setattr(subprocess, 'run', built)
+    monkeypatch.setattr(shutil, 'copy', copy)
+    with pytest.raises(OSError):
+        generate_backend(accelerator, str(tmp_path))
+    assert os.listdir(tmp_path / 'backends') == []
 
 
 def test_crate_holds_its_ignore_file(work_dir):
