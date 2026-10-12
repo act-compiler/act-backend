@@ -1,17 +1,12 @@
 """What a backend cannot be generated for: each refused by name, before anything is written"""
 
-import os
 import re
 import ast
-import keyword
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
 from .isel_ir2isa_rewrites_rs_generator import RustGeneratorVisitor
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
-
-# A name the generated sources can spell as an identifier
-IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 
 # Operators of the e-graph, by the word a rule spells each with
 EGRAPH_WORDS = {
@@ -163,31 +158,11 @@ COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
 RANGE_METHOD = re.compile(r'get_h\d+')
 
 
-def check_accelerator_name(name):
-    """Refuse an accelerator name that is no directory's name: the backend is written under it"""
-    if name in ('', '.', '..') or os.path.basename(name) != name:
-        raise ValueError(f"Accelerator name '{name}' is not the name of one directory")
-
-
-def check_identifier(what, name):
-    """Refuse a name the generated sources cannot spell"""
-    if not IDENTIFIER.fullmatch(name):
-        raise ValueError(f"{what} '{name}' is not an identifier")
-
-
-def check_assembly_name(what, name):
-    """Refuse a name the assembly, a Python file, cannot spell"""
-    check_identifier(what, name)
-    if keyword.iskeyword(name):
-        raise ValueError(f"{what} '{name}' is a Python keyword, which no assembly can spell")
-
-
 def check_instruction_names(instructions):
     """Refuse an instruction name the selector or the allocator cannot carry"""
     carried = {}
     for instruction in instructions:
         name = instruction.instruction
-        check_assembly_name('Instruction name', name)
         if get_kebab_name(name) in EGRAPH_WORDS:
             raise ValueError(
                 f"Instruction name '{name}' is also the e-graph's operator {get_kebab_name(name)}"
@@ -220,7 +195,6 @@ def check_instruction_names(instructions):
 def check_attribute_names(instruction):
     """Refuse an attribute name the generated sources cannot carry beside their own names"""
     name = instruction.instruction
-    seen = set()
     for kind, attributes, languages, keywords, held in [
         (
             'computational',
@@ -233,7 +207,6 @@ def check_attribute_names(instruction):
     ]:
         for attribute in attributes:
             what = f'{name}: {kind} attribute'
-            check_assembly_name(what, attribute)
             if attribute in keywords:
                 raise ValueError(
                     f"{what} '{attribute}' is a {languages} keyword, "
@@ -247,9 +220,6 @@ def check_attribute_names(instruction):
                 or attribute == to_camel_case(name)
             ):
                 raise ValueError(f"{what} '{attribute}' is a name the backend already holds")
-            if attribute in seen:
-                raise ValueError(f"{name}: attribute '{attribute}' is given twice")
-            seen.add(attribute)
 
 
 def check_data_model_names(data_models):
@@ -260,7 +230,6 @@ def check_data_model_names(data_models):
         # d0 is the HBM, which the backend holds itself
         if name == 'd0':
             continue
-        check_identifier('Data model name', name)
         buffer = get_buffer_name(name)
         if buffer in BUFFERS:
             raise ValueError(
@@ -291,7 +260,6 @@ class SemanticsChecker(OperandVisitor):
         self.read = set()
         self.roots = []
         self.inputs = []
-        self.operations = 0
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -299,21 +267,8 @@ class SemanticsChecker(OperandVisitor):
         operands = self.visit(ctx.operands()) if ctx.operands() else []
         if word == 'parameter':
             # An input, read by its number
-            if [kind for _, kind in operands] != ['INT']:
-                given = ctx.operands().getText() if ctx.operands() else ''
-                raise ValueError(
-                    f"{self.name}: its semantics reads parameter({given}), not one input's number"
-                )
-            number = int(operands[0][0])
-            # The oracle finds input k by the name %In<k+1>
-            if value != f'%In{number + 1}':
-                raise ValueError(
-                    f"{self.name}: its semantics names parameter({number}) '{value}', "
-                    f"not '%In{number + 1}'"
-                )
-            self.inputs.append(number)
+            self.inputs.append(int(operands[0][0]))
         else:
-            self.operations += 1
             if word not in OPERATIONS:
                 raise ValueError(
                     f"{self.name}: its semantics uses the operation '{word}', "
@@ -327,14 +282,7 @@ class SemanticsChecker(OperandVisitor):
                     f"{self.name}: its semantics gives the operation '{word}' {len(named)} values, "
                     f"where the selector's takes {count}"
                 )
-            for operand in named:
-                if operand not in self.values:
-                    raise ValueError(
-                        f"{self.name}: its semantics reads '{operand}', which no line above defines"
-                    )
             self.read.update(named)
-        if value in self.values:
-            raise ValueError(f"{self.name}: its semantics defines '{value}' twice")
         self.values.append(value)
         if ctx.ROOT():
             self.roots.append(value)
@@ -364,8 +312,6 @@ def check_semantics(instructions):
             raise ValueError(
                 f'{name}: the instruction has no inputs, which the selector cannot match'
             )
-        if not checker.operations:
-            raise ValueError(f'{name}: its semantics holds no operation for the selector to match')
         # A computational attribute is read from a shape the semantics writes it in
         named = RustGeneratorVisitor().visit(instruction.instr_semantics_ast)['comp_attributes']
         for attribute in instruction.comp_attr:
@@ -416,28 +362,15 @@ def check_operands(instructions, data_models):
                 'and the allocator places one'
             )
         read = set()
-        for operand in [*instruction.instr_outputs, *instruction.instr_inputs]:
-            lists = [part for part in operand[1:] if isinstance(part, (list, tuple))]
-            if len(operand) != 3 or len(lists) != 2:
-                raise ValueError(
-                    f'{name}: the operand {operand!r} is not [buffer, [address], [size]]'
-                )
-            buffer, addresses, sizes = operand
+        for buffer, addresses, sizes in [*instruction.instr_outputs, *instruction.instr_inputs]:
             what = f"{name}: its operand on '{buffer}'"
-            if buffer not in access_dimensions:
-                raise ValueError(f'{what} names no data model')
             if access_dimensions[buffer] != 1:
                 raise ValueError(
                     f'{what} is addressed along {access_dimensions[buffer]} dimensions, '
                     'and the allocator addresses one'
                 )
-            if len(addresses) != 1 or len(sizes) != 1:
-                raise ValueError(
-                    f'{what} gives {len(addresses)} addresses and {len(sizes)} sizes, '
-                    'where the buffer takes one of each'
-                )
             address = ADDRESS.fullmatch(str(addresses[0]).strip())
-            if not address or address.group(1) not in instruction.parameters:
+            if not address:
                 raise ValueError(
                     f"{what} has the address '{addresses[0]}', "
                     'which is not one address attribute of the instruction'

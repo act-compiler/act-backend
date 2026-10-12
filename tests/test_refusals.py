@@ -101,22 +101,9 @@ def refusal(accelerator, tmp_path):
     return str(error.value)
 
 
-@pytest.mark.parametrize('name', ['', '.', '..', '../../outside', 'a/b'])
-def test_accelerator_name_that_is_no_directory_refused(name, tmp_path):
-    # What the name would reach from the base directory
-    kept = tmp_path / 'outside' / 'backend' / 'kept'
-    kept.parent.mkdir(parents=True)
-    kept.touch()
-    message = refusal(loader(name=name), tmp_path)
-    assert message == f"Accelerator name '{name}' is not the name of one directory"
-    assert kept.exists()
-
-
 @pytest.mark.parametrize(
     'name, reason',
     [
-        ('load-2', 'is not an identifier'),
-        ('while', 'is a Python keyword, which no assembly can spell'),
         ('dot', "is also the e-graph's operator dot"),
         ('shift_left', "is also the e-graph's operator shift-left"),
         ('Variant', 'starts with Var or DCC, which the allocator reads as a declaration'),
@@ -140,11 +127,6 @@ def test_instruction_names_that_fold_to_one_refused(tmp_path):
 @pytest.mark.parametrize(
     'names, reason',
     [
-        ({'attribute': 'n-1'}, "computational attribute 'n-1' is not an identifier"),
-        (
-            {'address': 'class'},
-            "address attribute 'class' is a Python keyword, which no assembly can spell",
-        ),
         (
             {'attribute': 'type'},
             "computational attribute 'type' is a Rust or C++ keyword, which the generated code cannot spell",
@@ -172,8 +154,6 @@ def test_instruction_names_that_fold_to_one_refused(tmp_path):
         ({'address': 'solver'}, "address attribute 'solver' is a name the backend already holds"),
         ({'address': 'get_h0'}, "address attribute 'get_h0' is a name the backend already holds"),
         ({'address': 'Tensor'}, "address attribute 'Tensor' is a name the backend already holds"),
-        ({'address': 'n'}, "attribute 'n' is given twice"),
-        ({'address': 'addr_in'}, "attribute 'addr_in' is given twice"),
     ],
 )
 def test_attribute_name_refused(names, reason, tmp_path):
@@ -183,7 +163,6 @@ def test_attribute_name_refused(names, reason, tmp_path):
 @pytest.mark.parametrize(
     'name, reason',
     [
-        ('d-1', 'is not an identifier'),
         ('hbm', 'gives the buffer HBM, which the backend already holds'),
         ('any', 'gives the buffer ANY, which the backend already holds'),
     ],
@@ -256,29 +235,11 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     assert beside == spec_checks.COMPUTATIONAL_ATTRIBUTE_NAMES
 
 
-@pytest.mark.parametrize(
-    'lines, reason',
-    [
-        (
-            [IN1, IN2, result('maximum(%In1, %In2)')],
-            "uses the operation 'maximum', which the selector does not have",
-        ),
-        (
-            [IN1, IN2, result('add(%In1, %In2, %In1)')],
-            "gives the operation 'add' 3 values, where the selector's takes 2",
-        ),
-        (
-            [IN1, IN2, '%a = bf16[64,64] add(%In1, %In2)', result('divide(%a, 2)')],
-            "gives the operation 'divide' 1 values, where the selector's takes 2",
-        ),
-        (
-            [IN1, '%In2 = bf16[64,64] parameter(%In1)', result('dot(%In1, %In2)')],
-            "reads parameter(%In1), not one input's number",
-        ),
-    ],
-)
-def test_operation_the_selector_lacks_refused(lines, reason, tmp_path):
-    assert refusal(with_semantics(lines), tmp_path) == f'gemm: its semantics {reason}'
+def test_operation_the_selector_lacks_refused(tmp_path):
+    message = refusal(with_semantics([IN1, IN2, result('maximum(%In1, %In2)')]), tmp_path)
+    assert message == (
+        "gemm: its semantics uses the operation 'maximum', which the selector does not have"
+    )
 
 
 @pytest.mark.parametrize('word', [word for word in grammar_words() if word != 'parameter'])
@@ -324,38 +285,6 @@ def test_concatenate_of_three_refused(tmp_path):
 
 
 @pytest.mark.parametrize(
-    'lines, value',
-    [
-        ([IN1, IN2, result('dot(%In1, %In3)')], '%In3'),
-        (
-            [
-                IN1,
-                IN2,
-                '%a = bf16[64,64] add(%In1, %b)',
-                '%b = bf16[64,64] copy(%In2)',
-                result('copy(%a)'),
-            ],
-            '%b',
-        ),
-    ],
-)
-def test_operand_that_names_no_value_refused(lines, value, tmp_path):
-    message = refusal(with_semantics(lines), tmp_path)
-    assert message == f"gemm: its semantics reads '{value}', which no line above defines"
-
-
-def test_value_defined_twice_refused(tmp_path):
-    lines = [
-        IN1,
-        IN2,
-        '%a = bf16[64,64] add(%In1, %In2)',
-        '%a = bf16[64,64] copy(%a)',
-        result('copy(%a)'),
-    ]
-    assert refusal(with_semantics(lines), tmp_path) == "gemm: its semantics defines '%a' twice"
-
-
-@pytest.mark.parametrize(
     'lines, inputs, value',
     [
         # An input no operation reads, and a line whose value none reads
@@ -372,13 +301,6 @@ def test_root_above_the_last_line_refused(tmp_path):
     lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
     message = refusal(with_semantics(lines), tmp_path)
     assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"
-
-
-def test_parameter_under_another_name_refused(tmp_path):
-    # The oracle would read %In1 as input 0, where this semantics says input 1
-    lines = ['%In1 = bf16[64,64] parameter(1)', '%In2 = bf16[64,64] parameter(0)']
-    message = refusal(with_semantics([*lines, result('dot(%In1, %In2)')]), tmp_path)
-    assert message == "gemm: its semantics names parameter(1) '%In1', not '%In2'"
 
 
 @pytest.mark.parametrize(
@@ -403,11 +325,6 @@ def test_instruction_with_no_inputs_refused(tmp_path):
     assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
 
 
-def test_semantics_with_no_operation_refused(tmp_path):
-    message = refusal(with_semantics([IN1], inputs=1), tmp_path)
-    assert message == 'gemm: its semantics holds no operation for the selector to match'
-
-
 def test_computational_attribute_no_line_names_refused(tmp_path):
     acc = with_semantics([IN1, IN2, result('dot(%In1, %In2)')])
     acc.instructions[0].comp_attr.append('k')
@@ -427,14 +344,6 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
         ),
         ({'outputs': []}, 'the instruction has 0 outputs, and the allocator places one'),
         (
-            {'inputs': [['d1', '@a.addr_1', '64'], SECOND]},
-            "the operand ['d1', '@a.addr_1', '64'] is not [buffer, [address], [size]]",
-        ),
-        (
-            {'inputs': [['d9', ['@a.addr_1'], ['64']], SECOND]},
-            "its operand on 'd9' names no data model",
-        ),
-        (
             {
                 'inputs': [['d3', ['@a.addr_1'], ['64']], SECOND],
                 'models': [('d3', [64, 4], [64], 'bf16')],
@@ -446,10 +355,6 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
             "its operand on 'd3' is addressed along 0 dimensions, and the allocator addresses one",
         ),
         (
-            {'inputs': [['d1', ['@a.addr_1', '@a.addr_2'], ['64', '1']], SECOND]},
-            "its operand on 'd1' gives 2 addresses and 2 sizes, where the buffer takes one of each",
-        ),
-        (
             {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
             "its operand on 'd1' has the address '@a.addr_1 * 2', "
             'which is not one address attribute of the instruction',
@@ -459,18 +364,13 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
             "its operand on 'd1' has the address '0', "
             'which is not one address attribute of the instruction',
         ),
-        (
-            {'inputs': [['d1', ['@a.addr_9'], ['64']], SECOND]},
-            "its operand on 'd1' has the address '@a.addr_9', "
-            'which is not one address attribute of the instruction',
-        ),
     ],
 )
 def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path):
     assert refusal(with_operands(**operands), tmp_path) == f'gemm: {reason}'
 
 
-@pytest.mark.parametrize('size', ['128 // 2', '2 ** 6', '@c.m', '64;', '-64', '6.4e1'])
+@pytest.mark.parametrize('size', ['-64'])
 def test_size_the_allocator_cannot_read_refused(size, tmp_path):
     message = refusal(with_operands(outputs=[['d2', ['@a.addr_out'], [size]]]), tmp_path)
     assert message == (

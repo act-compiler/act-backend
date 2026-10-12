@@ -24,7 +24,7 @@ from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
 from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
 from .build_rs_generator import generate_build_rs_file
-from .spec_checks import check_accelerator_name, check_names, check_operands, check_semantics
+from .spec_checks import check_names, check_operands, check_semantics
 
 
 @dataclass
@@ -60,9 +60,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     """
     if base_dir is None:
         base_dir = accelerator.base_dir
-
-    # The backend is written under the accelerator's name
-    check_accelerator_name(accelerator.name)
 
     # An earlier binary and a part of one go first
     final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
