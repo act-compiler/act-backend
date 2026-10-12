@@ -387,6 +387,15 @@ def test_computational_attribute_no_line_names_refused(tmp_path):
     assert message == "gemm: no line of its semantics names the computational attribute 'k'"
 
 
+def test_address_attribute_in_a_semantics_refused(tmp_path):
+    lines = [IN0, IN1, f'ROOT %Out0 = bf16[`64 + @a.addr_out`,64] {DOT}']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == (
+        "gemm: its semantics reads the address attribute '@a.addr_out', "
+        'which is not known when an instruction is selected'
+    )
+
+
 SECOND = ['d1', ['@a.addr_2'], ['64']]
 
 

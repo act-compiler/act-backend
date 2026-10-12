@@ -3,6 +3,7 @@
 import re
 
 from antlr4.tree.Tree import TerminalNode
+from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
@@ -454,6 +455,14 @@ def check_semantics(instructions):
             raise ValueError(
                 f'{name}: the instruction has no inputs, which the selector cannot match'
             )
+        # An address is set after selection: no line reads one
+        for expression in instruction.instr_expression_asts.values():
+            placed = Trees.findAllTokenNodes(expression, IDLV2ExprParser.ADDRESSING)
+            if placed:
+                raise ValueError(
+                    f"{name}: its semantics reads the address attribute '{placed[0].getText()}', "
+                    'which is not known when an instruction is selected'
+                )
         # A computational attribute is read from a shape the semantics writes it in
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
         named = visitor.visit(instruction.instr_semantics_ast)['comp_attributes']
