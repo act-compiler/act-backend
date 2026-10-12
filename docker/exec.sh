@@ -25,6 +25,14 @@ fi
 
 HOST_MOUNT="$(pwd)/.."
 
+# The container writes as root: restore the caller's ownership at exit
+restore_ownership() {
+  local status=$?
+  ./chown.sh >/dev/null 2>&1 || echo "warning: could not restore the ownership of the files this run wrote" >&2
+  exit "$status"
+}
+trap restore_ownership EXIT
+
 docker run --rm --entrypoint bash \
   ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} \
   -v "${HOST_MOUNT}:/workspace:rw" \
