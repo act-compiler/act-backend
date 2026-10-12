@@ -17,6 +17,7 @@ import numpy as np
 import ml_dtypes
 import jax
 import jax.numpy as jnp
+from taidl import Accelerator
 
 
 def pytest_configure(config):
@@ -164,6 +165,37 @@ def attention_reference(data_dir):
     # Two bf16 ulps at max|V| bound every output
     tol = 2 * 2.0 ** (np.floor(np.log2(np.abs(V).max())) - 7)
     return bf16(P @ V), tol
+
+
+@pytest.fixture(scope='module')
+def accelerator():
+    """One instruction with a computational attribute, load_rm, and one without, gemm"""
+    acc = Accelerator('PAIR')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [64], [64], 'bf16')
+
+    instr = acc.add_instruction('load_rm', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics("""
+ENTRY load_rm {
+    %In1 = u8[`@c.n * 128`] parameter(0);
+    %a = u8[`@c.n`,64,2] reshape(%In1);
+    ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
+}
+""")
+
+    instr = acc.add_instruction('gemm', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY gemm {
+    %In1 = bf16[64,64] parameter(0);
+    %In2 = bf16[64,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] dot(%In1, %In2), lhs_contracting_dims={1}, rhs_contracting_dims={0};
+}
+""")
+    return acc
 
 
 @pytest.fixture(scope='module')
