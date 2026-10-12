@@ -15,16 +15,16 @@ using InterferenceGraph = std::vector<std::pair<Tensor *, Tensor *>>;
 
 namespace constraint {
 
-// CSP1: 𝑒(𝛼,𝛽) ∧ (𝐼𝑠(𝑦),𝐼𝑒(𝑦)) = ℎ(0)(𝛽)
+// CSP1: e(alpha, beta) and (Is(y), Ie(y)) = h(0)(beta)
 void pii_node_constraints(const std::vector<Instruction *> &instructions);
 
-// CSP2: (𝐼𝑠(𝑥𝑖), 𝐼𝑒(𝑥𝑖)) = ℎ(𝑖)(𝛽)
+// CSP2: (Is(x_i), Ie(x_i)) = h(i)(beta)
 void def_use_constraints(const std::vector<Instruction *> &instructions);
 
-// CSP3: 𝐼𝑠(𝑥𝑖) = 𝑐𝑜𝑛𝑠𝑡
+// CSP3: Is(x_i) = const
 void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets);
 
-// CSP4: NON_OVERLAP(ℎ(0), ℎ'(0))
+// CSP4: NON_OVERLAP(h(0), h'(0))
 void overlap_constraints(const std::vector<Instruction *> &instructions,
                          const std::unordered_map<std::string, Tensor *> &tensor_map,
                          std::vector<IntVar *> &new_vars);
