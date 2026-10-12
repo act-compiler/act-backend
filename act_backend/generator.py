@@ -33,7 +33,7 @@ class InstructionMetadata:
     rhs_size: int
 
 
-def _get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetadata]:
+def get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetadata]:
     """Extract instruction metadata needed for rewrite rule generation"""
     metadata_list = []
     for instruction in accelerator.instructions:
@@ -73,7 +73,7 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
 
     print(f'Copied generic backend structure to {backend_gen_dir}')
 
-    instruction_metadata = _get_instruction_metadata(accelerator)
+    instruction_metadata = get_instruction_metadata(accelerator)
 
     # Generate rewrite rules
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)

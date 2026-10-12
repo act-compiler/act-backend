@@ -27,12 +27,12 @@ def pytest_runtest_makereport(item, call):
     if 'incremental' in item.keywords:
         if call.excinfo is not None:
             parent = item.parent
-            parent._previousfailed = item
+            parent.previousfailed = item
 
 
 def pytest_runtest_setup(item):
     if 'incremental' in item.keywords:
-        previousfailed = getattr(item.parent, '_previousfailed', None)
+        previousfailed = getattr(item.parent, 'previousfailed', None)
         if previousfailed is not None:
             pytest.skip(f'previous test failed ({previousfailed.name})')
 

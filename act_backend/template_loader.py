@@ -20,7 +20,7 @@ class TemplateLoader:
             template_dir: Directory containing template files
         """
         self.template_dir = template_dir
-        self._cache: Dict[str, str] = {}
+        self.cache: Dict[str, str] = {}
 
     def load(self, template_file: str) -> str:
         """
@@ -32,12 +32,12 @@ class TemplateLoader:
         Returns:
             Template content as string
         """
-        if template_file not in self._cache:
+        if template_file not in self.cache:
             file_path = os.path.join(self.template_dir, template_file)
             with open(file_path, 'r') as f:
                 # The final newline ends the file, not the fragment
-                self._cache[template_file] = f.read().removesuffix('\n')
-        return self._cache[template_file]
+                self.cache[template_file] = f.read().removesuffix('\n')
+        return self.cache[template_file]
 
     def render(self, template_file: str, **kwargs) -> str:
         """

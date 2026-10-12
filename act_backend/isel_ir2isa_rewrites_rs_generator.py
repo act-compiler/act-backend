@@ -39,20 +39,20 @@ class RustGeneratorVisitor(IDLV2Visitor):
 
         is_root = ctx.ROOT() is not None
 
-        self._extract_comp_attrs_from_text(lhs_shape)
+        self.extract_comp_attrs_from_text(lhs_shape)
 
         operand_names = []
         if ctx.operands():
             operands = self.visit(ctx.operands())
             for operand_text, operand_type in operands:
-                self._extract_comp_attrs_from_text(operand_text)
+                self.extract_comp_attrs_from_text(operand_text)
                 if operand_type == 'IDENTIFIER':
                     operand_names.append(operand_text)
 
         for operand_text in operand_names:
             if operand_text in self.variable_definitions:
                 if operand_text in self.variable_usage:
-                    self._duplicate_variable_recursive(operand_text)
+                    self.duplicate_variable_recursive(operand_text)
                 else:
                     self.variable_usage.add(operand_text)
 
@@ -60,7 +60,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
             attributes = self.visit(ctx.attributes())
             for _, attr_value, attr_type in attributes:
                 if attr_type in ['EXPRESSION', 'BRACELIST']:
-                    self._extract_comp_attrs_from_text(str(attr_value))
+                    self.extract_comp_attrs_from_text(str(attr_value))
 
         assignment = {
             'lhs': lhs_name,
@@ -77,7 +77,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
 
         return assignment
 
-    def _duplicate_variable_recursive(self, var_name):
+    def duplicate_variable_recursive(self, var_name):
         dup_name = f'{var_name}_dup'
 
         if dup_name in self.variable_definitions:
@@ -87,7 +87,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
 
         for operand in original['operands']:
             if operand in self.variable_definitions:
-                self._duplicate_variable_recursive(operand)
+                self.duplicate_variable_recursive(operand)
 
         duplicate = {
             'lhs': dup_name,
@@ -98,7 +98,7 @@ class RustGeneratorVisitor(IDLV2Visitor):
         self.variable_definitions[dup_name] = len(self.assignments)
         self.assignments.append(duplicate)
 
-    def _extract_comp_attrs_from_text(self, text):
+    def extract_comp_attrs_from_text(self, text):
         pattern = r'@c\.(\w+)'
         matches = re.findall(pattern, str(text))
         self.comp_attributes.update(matches)
