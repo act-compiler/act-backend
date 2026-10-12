@@ -527,3 +527,46 @@ def test_input_marked_in_place_refused(tmp_path):
     gemm.set_inplace([False, True])
     message = refusal(acc, tmp_path)
     assert message == 'gemm: its input 1 is marked in place, which the backend does not read'
+
+
+def test_constraint_refused(tmp_path):
+    acc = with_operands()
+    (gemm,) = acc.instructions
+    # A list of no constraints is the default
+    gemm.add_constraints([])
+    spec_checks.check_constraints(acc.instructions)
+    gemm.add_constraints(['@a.addr_1 <= @a.addr_2'])
+    assert refusal(acc, tmp_path) == (
+        "gemm: it declares the constraint '@a.addr_1 <= @a.addr_2', which the backend does not read"
+    )
+
+
+@pytest.mark.parametrize(
+    'mark, constraint',
+    [
+        ('set_apart', '@a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1'),
+        (
+            'set_no_partial_overlap',
+            '@a.addr_1 == @a.addr_2 or @a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1',
+        ),
+    ],
+)
+def test_placement_mark_refused(mark, constraint, tmp_path):
+    # The output lies in d1, as the second input does
+    acc = with_operands(outputs=[['d1', ['@a.addr_1'], ['64']]], addresses=['addr_1', 'addr_2'])
+    (gemm,) = acc.instructions
+    # Marking no input is the default and appends nothing
+    getattr(gemm, mark)([False, False])
+    spec_checks.check_constraints(acc.instructions)
+    getattr(gemm, mark)([False, True])
+    assert refusal(acc, tmp_path) == (
+        f"gemm: {mark} gives it the constraint '{constraint}', which the backend does not read"
+    )
+
+
+def test_placement_mark_that_appends_no_constraint_passes():
+    acc = with_operands(outputs=[['d1', ['@a.addr_1'], ['64']]], addresses=['addr_1', 'addr_2'])
+    (gemm,) = acc.instructions
+    # The output shares the first input's start: nothing to hold
+    gemm.set_no_partial_overlap([True, False])
+    spec_checks.check_constraints(acc.instructions)

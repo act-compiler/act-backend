@@ -610,3 +610,22 @@ def check_inplace(instructions):
                     f'{instruction.instruction}: its input {number} is marked in place, '
                     'which the backend does not read'
                 )
+
+
+def check_constraints(instructions):
+    """Refuse an instruction that has a constraint: the backend would emit calls outside it"""
+    for instruction in instructions:
+        if not instruction.constraints:
+            continue
+        text, tree = instruction.constraints[0], instruction.constraint_asts[0]
+        # A placement mark's constraint is named by its mark
+        marks = [
+            method
+            for method, placed in instruction.placed.items()
+            if any(tree is constraint for constraint in placed)
+        ]
+        origin = f'{marks[0]} gives it' if marks else 'it declares'
+        raise ValueError(
+            f"{instruction.instruction}: {origin} the constraint '{text}', "
+            'which the backend does not read'
+        )

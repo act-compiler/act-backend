@@ -238,11 +238,16 @@ ENTRY {
 """)
     # A list that marks no input is the default
     mov.set_inplace([False])
+    # No constraint and no placement mark are the defaults
+    mov.add_constraints([])
+    mov.set_apart([False])
+    mov.set_no_partial_overlap([False])
     # An instruction with no semantics is left out, unchecked
     clear = acc.add_instruction('clear', [], ['addr'])
     clear.set_inputs([['d1', ['@a.addr'], ['64']]])
     clear.set_outputs([['d1', ['@a.addr'], ['64']]])
     clear.set_inplace([True])
+    clear.add_constraints(['@a.addr <= 64'])
     generate_backend(acc, str(tmp_path))
     assert starts(str(tmp_path / 'backends' / 'ONE'))
 
