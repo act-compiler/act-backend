@@ -132,9 +132,9 @@ def generate_rewrite_rule(metadata, templates):
     parameter_vars = visitor.get_parameter_variables()
     kebab_name = metadata.name.replace('_', '-')
 
-    # Fallback for unparseable semantics
+    # No pattern or no parameter: a rule over a lone variable
     if not (lhs_pattern and parameter_vars):
-        # Use fixed padding for fallback
+        # Align the '=>' at column 20, as for every rule
         padding = ' ' * (19 - len(kebab_name))
         return templates.render(
             'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
