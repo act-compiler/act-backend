@@ -3,7 +3,6 @@
 import re
 
 import pytest
-from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
 from act_backend.generator import get_instruction_metadata
@@ -16,37 +15,6 @@ from act_backend.malloc_globals_cc_generator import generate_globals_models
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
 from act_backend.template_loader import fill_placeholders, get_backend_template_loader
-
-
-@pytest.fixture(scope='module')
-def accelerator():
-    """One instruction with a computational attribute, load_rm, and one without, gemm"""
-    acc = Accelerator('PAIR')
-    acc.add_data_model('d1', [128], [64], 'bf16')
-    acc.add_data_model('d2', [64], [64], 'bf16')
-
-    instr = acc.add_instruction('load_rm', ['n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
-    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
-    instr.add_semantics("""
-ENTRY load_rm {
-    %In1 = u8[`@c.n * 128`] parameter(0);
-    %a = u8[`@c.n`,64,2] reshape(%In1);
-    ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
-}
-""")
-
-    instr = acc.add_instruction('gemm', [], ['addr_1', 'addr_2', 'addr_out'])
-    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]])
-    instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
-    instr.add_semantics("""
-ENTRY gemm {
-    %In1 = bf16[64,64] parameter(0);
-    %In2 = bf16[64,64] parameter(1);
-    ROOT %Out0 = bf16[64,64] dot(%In1, %In2), lhs_contracting_dims={1}, rhs_contracting_dims={0};
-}
-""")
-    return acc
 
 
 @pytest.fixture(scope='module')
