@@ -290,3 +290,12 @@ def test_operations_are_the_egraphs_own():
     children = {word: int(count) for _, word, count in arms if word != 'eye'}
     assert {word.removesuffix('_?'): count for word, count in OPERATIONS.values()} == children
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
+
+
+def test_concatenate_of_three_refused(tmp_path):
+    lines = [IN1, IN2, result('concatenate(%In1, %In2, %In1), dimensions={0}')]
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == (
+        "gemm: its semantics gives the operation 'concatenate' 3 values, "
+        "where the selector's takes 2"
+    )

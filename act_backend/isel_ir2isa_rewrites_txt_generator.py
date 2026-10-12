@@ -10,7 +10,7 @@ OPERATIONS = {
     'add': ('add', 2),
     'bitcast_convert': ('bitcvt', 1),
     'broadcast': ('broadcast_?', 1),
-    'concat': ('concat_?', 2),
+    'concatenate': ('concat_?', 2),
     'constant': ('constant_?', 0),
     'convert': ('convert_?', 1),
     'copy': ('copy', 1),
