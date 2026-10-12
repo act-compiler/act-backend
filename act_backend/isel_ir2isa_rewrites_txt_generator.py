@@ -1,10 +1,11 @@
 import os
-from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
+from taidl.antlr4 import IDLV2Parser
+from .semantics_visitor import OperandVisitor
 from .instruction_info import get_kebab_name
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
-class RewriteRuleVisitor(IDLV2Visitor):
+class RewriteRuleVisitor(OperandVisitor):
     OP_MAP = {
         'reshape': 'reshape_?',
         'convert': 'convert_?',
@@ -104,26 +105,6 @@ class RewriteRuleVisitor(IDLV2Visitor):
         self.pattern_stack.append(pattern)
 
         return pattern
-
-    def visitOperands(self, ctx: IDLV2Parser.OperandsContext):
-        operand_list = []
-        for operand_ctx in ctx.operand():
-            operand_info = self.visit(operand_ctx)
-            operand_list.append(operand_info)
-        return operand_list
-
-    def visitOperand(self, ctx: IDLV2Parser.OperandContext):
-        value_ctx = ctx.value()
-        value_text = value_ctx.getText()
-
-        if value_ctx.INT():
-            operand_type = 'INT'
-        elif value_ctx.IDENTIFIER():
-            operand_type = 'IDENTIFIER'
-        else:
-            operand_type = 'EXPRESSION'
-
-        return (value_text, operand_type)
 
 
 def generate_rewrite_rule(metadata, templates):
