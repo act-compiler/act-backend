@@ -4,7 +4,13 @@ import os
 import pytest
 import numpy as np
 import jax.numpy as jnp
-from conftest import EXAMPLES_DIR, unfilled_sources, load_golden, attention_reference
+from conftest import (
+    EXAMPLES_DIR,
+    unfilled_sources,
+    instruction_calls,
+    load_golden,
+    attention_reference,
+)
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV_new')
 DATA_DIR = os.path.join(QKV_DIR, 'data')
@@ -28,3 +34,18 @@ class TestQKVNew:
         golden, record = load_golden(DATA_DIR)
         max_diff = float(jnp.max(jnp.abs(output - golden)))
         assert max_diff == 0, f'Max diff: {max_diff} (golden from {record})'
+
+
+# Outside the incremental class: counted even when an output test fails
+def test_compiled_kernel_calls(assembly):
+    # The cheapest selection the backend finds for the attention kernel
+    assert instruction_calls(assembly) == {
+        'load_01': 1,
+        'load_03': 2,
+        'transpose_13': 1,
+        'gemm_33': 2,
+        'softmax': 1,
+        'mov_21': 1,
+        'mov_23': 1,
+        'store_10': 1,
+    }

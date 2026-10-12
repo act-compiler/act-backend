@@ -10,6 +10,7 @@ import tempfile
 import importlib
 import importlib.util
 import itertools
+from collections import Counter
 
 import pytest
 import numpy as np
@@ -95,6 +96,12 @@ def compile_hlo(work_dir, example_dir):
         [backend_bin, '--input', hlo_path, '--output', output_path], check=True, cwd=work_dir
     )
     return output_path
+
+
+def instruction_calls(assembly_path):
+    """Count the calls to each instruction in a compiled kernel"""
+    with open(assembly_path) as f:
+        return Counter(re.findall(r'api\.(\w+)\(', f.read()))
 
 
 def import_oracle(work_dir):
