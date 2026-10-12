@@ -350,3 +350,10 @@ def test_root_above_the_last_line_refused(tmp_path):
     lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
     message = refusal(with_semantics(lines), tmp_path)
     assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"
+
+
+def test_parameter_under_another_name_refused(tmp_path):
+    # The oracle would read %In1 as input 0, where this semantics says input 1
+    lines = ['%In1 = bf16[64,64] parameter(1)', '%In2 = bf16[64,64] parameter(0)']
+    message = refusal(with_semantics([*lines, result('dot(%In1, %In2)')]), tmp_path)
+    assert message == "gemm: its semantics names parameter(1) '%In1', not '%In2'"

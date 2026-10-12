@@ -300,6 +300,13 @@ class SemanticsChecker(OperandVisitor):
                 raise ValueError(
                     f"{self.name}: its semantics reads parameter({given}), not one input's number"
                 )
+            number = int(operands[0][0])
+            # The oracle finds input k by the name %In<k+1>
+            if value != f'%In{number + 1}':
+                raise ValueError(
+                    f"{self.name}: its semantics names parameter({number}) '{value}', "
+                    f"not '%In{number + 1}'"
+                )
         else:
             if word not in OPERATIONS:
                 raise ValueError(
