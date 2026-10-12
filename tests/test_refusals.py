@@ -331,3 +331,16 @@ def test_value_defined_twice_refused(tmp_path):
         result('copy(%a)'),
     ]
     assert refusal(with_semantics(lines), tmp_path) == "gemm: its semantics defines '%a' twice"
+
+
+@pytest.mark.parametrize(
+    'lines, inputs, value',
+    [
+        # An input no operation reads, and a line whose value none reads
+        ([IN1, IN2, '%In3 = bf16[64,64] parameter(2)', result('dot(%In1, %In2)')], 3, '%In3'),
+        ([IN1, IN2, '%a = bf16[64,64] exponential(%In1)', result('dot(%In1, %In2)')], 2, '%a'),
+    ],
+)
+def test_value_no_line_reads_refused(lines, inputs, value, tmp_path):
+    message = refusal(with_semantics(lines, inputs), tmp_path)
+    assert message == f"gemm: its semantics defines '{value}', which no line below reads"

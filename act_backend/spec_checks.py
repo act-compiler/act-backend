@@ -286,6 +286,7 @@ class SemanticsChecker(OperandVisitor):
         super().__init__()
         self.name = name
         self.values = []
+        self.read = set()
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -317,6 +318,7 @@ class SemanticsChecker(OperandVisitor):
                     raise ValueError(
                         f"{self.name}: its semantics reads '{operand}', which no line above defines"
                     )
+            self.read.update(named)
         if value in self.values:
             raise ValueError(f"{self.name}: its semantics defines '{value}' twice")
         self.values.append(value)
@@ -325,4 +327,12 @@ class SemanticsChecker(OperandVisitor):
 def check_semantics(instructions):
     """Refuse a semantics the selector cannot write a rule from"""
     for instruction in instructions:
-        SemanticsChecker(instruction.instruction).visit(instruction.instr_semantics_ast)
+        name = instruction.instruction
+        checker = SemanticsChecker(name)
+        checker.visit(instruction.instr_semantics_ast)
+        # The rule's pattern is the last line's, and holds what that line reads
+        for value in checker.values[:-1]:
+            if value not in checker.read:
+                raise ValueError(
+                    f"{name}: its semantics defines '{value}', which no line below reads"
+                )
