@@ -12,7 +12,6 @@ class RewriteRuleVisitor(IDLV2Visitor):
         'broadcast': 'broadcast_?',
         'concat': 'concat_?',
         'constant': 'constant_?',
-        'eye': 'eye_?',
         'bitcast_convert': 'bitcvt',
         'reduce_add': 'reduce_?',
         'shift_left': 'shift-left',
@@ -23,7 +22,6 @@ class RewriteRuleVisitor(IDLV2Visitor):
         super().__init__()
         self.pattern_stack = []
         self.variable_counter = 0
-        self.input_variables = {}
         self.parameter_variables = {}
         self.variable_definitions = {}
         self.root_variable = None
@@ -121,44 +119,10 @@ class RewriteRuleVisitor(IDLV2Visitor):
             operand_type = 'INT'
         elif value_ctx.IDENTIFIER():
             operand_type = 'IDENTIFIER'
-        elif value_ctx.EXPRESSION():
-            operand_type = 'EXPRESSION'
         else:
-            operand_type = 'UNKNOWN'
+            operand_type = 'EXPRESSION'
 
         return (value_text, operand_type)
-
-    def visitAttributes(self, ctx: IDLV2Parser.AttributesContext):
-        attributes_list = []
-        for attribute_ctx in ctx.attribute():
-            attr_info = self.visit(attribute_ctx)
-            attributes_list.append(attr_info)
-        return attributes_list
-
-    def visitAttribute(self, ctx: IDLV2Parser.AttributeContext):
-        attr_name = ctx.IDENTIFIER().getText()
-        attr_value_info = self.visit(ctx.attributeValue())
-        attr_value, attr_type = attr_value_info
-        return (attr_name, attr_value, attr_type)
-
-    def visitAttributeValue(self, ctx: IDLV2Parser.AttributeValueContext):
-        if ctx.braceList():
-            brace_info = self.visit(ctx.braceList())
-            return (brace_info, 'BRACELIST')
-        elif ctx.value():
-            value_ctx = ctx.value()
-            value_text = value_ctx.getText()
-
-            if value_ctx.INT():
-                value_type = 'INT'
-            elif value_ctx.IDENTIFIER():
-                value_type = 'IDENTIFIER'
-            elif value_ctx.EXPRESSION():
-                value_type = 'EXPRESSION'
-            else:
-                value_type = 'UNKNOWN'
-
-            return (value_text, value_type)
 
 
 def generate_rewrite_rule(metadata, templates):

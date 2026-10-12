@@ -96,7 +96,7 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
     generate_globals_file(backend_gen_dir, accelerator.data_model)
     print(f'Generated globals.cc')
 
-    generate_instructions_file(backend_gen_dir, accelerator.instructions, accelerator.data_model)
+    generate_instructions_file(backend_gen_dir, accelerator.instructions)
     print(f'Generated instructions.h')
 
     generate_parser_file(backend_gen_dir, accelerator.instructions)

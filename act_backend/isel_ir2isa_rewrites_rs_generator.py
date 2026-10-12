@@ -1,6 +1,6 @@
 import os
 import re
-from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
+from taidl.antlr4 import IDLV2Visitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -128,10 +128,8 @@ class RustGeneratorVisitor(IDLV2Visitor):
             operand_type = 'INT'
         elif value_ctx.IDENTIFIER():
             operand_type = 'IDENTIFIER'
-        elif value_ctx.EXPRESSION():
-            operand_type = 'EXPRESSION'
         else:
-            operand_type = 'UNKNOWN'
+            operand_type = 'EXPRESSION'
 
         return (value_text, operand_type)
 
@@ -232,10 +230,7 @@ def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
         return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
 
 
-def generate_precond_function(instruction_name, semantics_data, rhs_size, templates):
-    if not semantics_data:
-        return ''
-
+def generate_precond_function(instruction_name, semantics_data, templates):
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
     comp_attrs = semantics_data['comp_attributes']
@@ -291,9 +286,6 @@ def generate_precond_function(instruction_name, semantics_data, rhs_size, templa
 
 
 def generate_metadata_function(instruction_name, semantics_data, rhs_size, templates):
-    if not semantics_data:
-        return ''
-
     assignments = semantics_data['assignments']
     comp_attrs = semantics_data['comp_attributes']
     root_assignment = semantics_data['root_assignment']
@@ -328,9 +320,6 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
 
 
 def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, templates):
-    if not semantics_data:
-        return ''
-
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
     comp_attrs = semantics_data['comp_attributes']
@@ -342,6 +331,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         comp_attr = extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
 
     # Generate metadata extraction - use unified logic same as other functions
+    metadata_code = ''
     if comp_attr:
         metadata_code = (
             '  let lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
@@ -349,13 +339,6 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
             '    .map(|id| egraph[*id].data.clone())\n'
             '    .collect();\n'
             + generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
-        )
-    else:
-        metadata_code = (
-            '  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
-            '    .iter()\n'
-            '    .map(|id| egraph[*id].data.clone())\n'
-            '    .collect();\n'
         )
 
     # Generate shape setting
@@ -386,8 +369,12 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
             dtype=dtype_rust,
         )
 
+    # Without a root the function reads no e-graph
+    egraph_param = 'egraph' if root_assignment else '_'
+
     return templates.render(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt',
+        egraph_param=egraph_param,
         instruction_name=instruction_name,
         num_assignments=str(num_assignments),
         rhs_size=str(rhs_size),
@@ -399,10 +386,8 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
 def generate_ir2isa_rust_functions(metadata, templates):
     visitor = RustGeneratorVisitor()
     semantics_data = visitor.visit(metadata.semantics_ast)
-    if not semantics_data:
-        return f'// Failed to parse semantics for {metadata.name}\n'
 
-    precond = generate_precond_function(metadata.name, semantics_data, metadata.rhs_size, templates)
+    precond = generate_precond_function(metadata.name, semantics_data, templates)
     metadata_func = generate_metadata_function(
         metadata.name, semantics_data, metadata.rhs_size, templates
     )

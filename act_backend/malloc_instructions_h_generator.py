@@ -85,10 +85,6 @@ def generate_instruction_class(instruction, templates):
     if comp_attrs:
         comp_attr_init = ', ' + ', '.join(f'{attr}({attr})' for attr in comp_attrs)
 
-    # No validations needed
-    validations = ''
-    str_bound_checks = ''
-
     str_format = ''
     for attr in comp_attrs:
         if str_format:
@@ -112,15 +108,13 @@ def generate_instruction_class(instruction, templates):
         GET_H_METHODS=get_h_methods,
         COMP_ATTR_PARAMS=comp_attr_params,
         COMP_ATTR_INIT=comp_attr_init,
-        CONSTRUCTOR_VALIDATIONS=validations,
-        STR_BOUND_CHECKS=str_bound_checks,
         STR_FORMAT=str_format,
         GET_H_CASES=get_h_cases,
         GET_INT_VAR_LIST=get_int_var_list,
     )
 
 
-def generate_instructions_file(backend_gen_dir, instructions, data_models):
+def generate_instructions_file(backend_gen_dir, instructions):
     """Template instructions.h from generic file"""
     templates = get_backend_template_loader()
 
@@ -132,8 +126,7 @@ def generate_instructions_file(backend_gen_dir, instructions, data_models):
     # Generate all instruction classes
     classes = ''
     for instruction in instructions:
-        if hasattr(instruction, 'instr_inputs') and hasattr(instruction, 'instr_outputs'):
-            classes += generate_instruction_class(instruction, templates) + '\n'
+        classes += generate_instruction_class(instruction, templates) + '\n'
 
     # Replace placeholder
     content = fill_placeholders(content, {'INSTRUCTION_CLASSES': classes}, generic_file)
