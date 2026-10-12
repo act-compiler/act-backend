@@ -1,6 +1,6 @@
 import os
 from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 class RewriteRuleVisitor(IDLV2Visitor):
@@ -218,7 +218,7 @@ def generate_ir2isa_rewrites_txt_file(backend_gen_dir: str, instruction_metadata
     all_rules = '\n'.join(rules)
 
     # Replace placeholder
-    content = content.replace('{{IR2ISA_REWRITE_RULES}}', all_rules)
+    content = fill_placeholders(content, {'IR2ISA_REWRITE_RULES': all_rules}, rewrites_file)
 
     # Write back
     with open(rewrites_file, 'w') as f:

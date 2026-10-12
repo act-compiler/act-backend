@@ -13,7 +13,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
     let lhs: Pattern<TensorOp> = eqn[0].parse().unwrap();
     let rhs: Pattern<TensorOp> = eqn[1].parse().unwrap();
     let precond_fn = match name {
-{{ISA_PRECOND_MATCH_ARMS}}
+        // {{ISA_PRECOND_MATCH_ARMS}}
         "0" => precond_0,
         "1" => precond_1,
         "2" => precond_2,
@@ -27,7 +27,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
         _ => panic!("No precondition function for rule {}!", name),
     };
     let metadata_fn = match name {
-{{ISA_METADATA_MATCH_ARMS}}
+        // {{ISA_METADATA_MATCH_ARMS}}
         "0" => metadata_0,
         "1" => metadata_1,
         "2" => metadata_2,
@@ -41,7 +41,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
         _ => panic!("No metadata function for rule {}!", name),
     };
     let set_shapes_fn = match name {
-{{ISA_SET_SHAPES_MATCH_ARMS}}
+        // {{ISA_SET_SHAPES_MATCH_ARMS}}
         "0" => set_shapes_0,
         "1" => set_shapes_1,
         "2" => set_shapes_2,

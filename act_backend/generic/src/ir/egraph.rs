@@ -5,7 +5,7 @@ use crate::ir::dtype::Dtype;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum TensorOp {
     // ISA instructions
-{{ISA_ENUM_VARIANTS}}
+    // {{ISA_ENUM_VARIANTS}}
     // IR operators
     OpAdd([Id; 2]),
     OpBitcvt([Id; 1]),
@@ -34,7 +34,7 @@ pub enum TensorOp {
 impl TensorOp {
     pub fn num_children(&self) -> usize {
         match self {
-{{ISA_NUM_CHILDREN_MATCH_ARMS}}
+            // {{ISA_NUM_CHILDREN_MATCH_ARMS}}
             TensorOp::OpAdd(..) => 2,
             TensorOp::OpBitcvt(..) => 1,
             TensorOp::OpBroadcast(..) => 1,
@@ -68,7 +68,7 @@ impl TensorOp {
 
     pub fn set_metadata(&mut self, metadata: Option<String>) {
         match self {
-{{ISA_SET_METADATA_MATCH_ARMS}}
+            // {{ISA_SET_METADATA_MATCH_ARMS}}
             TensorOp::OpBroadcast(data, _) => {
                 *data = metadata.expect("OpBroadcast needs metadata!")
             }
@@ -104,7 +104,7 @@ impl Language for TensorOp {
 
     fn children(&self) -> &[Id] {
         match self {
-{{ISA_CHILDREN_MATCH_ARMS}}
+            // {{ISA_CHILDREN_MATCH_ARMS}}
             TensorOp::OpAdd(ids) => LanguageChildren::as_slice(ids),
             TensorOp::OpBitcvt(ids) => LanguageChildren::as_slice(ids),
             TensorOp::OpBroadcast(_, ids) => LanguageChildren::as_slice(ids),
@@ -131,7 +131,7 @@ impl Language for TensorOp {
 
     fn children_mut(&mut self) -> &mut [Id] {
         match self {
-{{ISA_CHILDREN_MUT_MATCH_ARMS}}
+            // {{ISA_CHILDREN_MUT_MATCH_ARMS}}
             TensorOp::OpAdd(ids) => LanguageChildren::as_mut_slice(ids),
             TensorOp::OpBitcvt(ids) => LanguageChildren::as_mut_slice(ids),
             TensorOp::OpBroadcast(_, ids) => LanguageChildren::as_mut_slice(ids),
@@ -163,7 +163,7 @@ impl FromOp for TensorOp {
     // define_language picks the first variant where it is possible to parse data into type
     fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
         match op {
-{{ISA_FROM_OP_MATCH_ARMS}}
+            // {{ISA_FROM_OP_MATCH_ARMS}}
             op if op == "add" && <[Id; 2] as LanguageChildren>::can_be_length(children.len()) => {
                 let children = <[Id; 2] as LanguageChildren>::from_vec(children);
                 Ok(TensorOp::OpAdd(children))
@@ -284,7 +284,7 @@ impl FromOp for TensorOp {
 impl std::fmt::Display for TensorOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-{{ISA_DISPLAY_MATCH_ARMS}}
+            // {{ISA_DISPLAY_MATCH_ARMS}}
             TensorOp::OpAdd(_) => write!(f, "add"),
             TensorOp::OpBitcvt(_) => write!(f, "bitcvt"),
             TensorOp::OpBroadcast(data, _) => write!(f, "broadcast[dims='{}']", data),

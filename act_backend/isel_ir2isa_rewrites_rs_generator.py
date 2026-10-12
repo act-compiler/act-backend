@@ -1,7 +1,7 @@
 import os
 import re
 from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 class RustGeneratorVisitor(IDLV2Visitor):
@@ -424,7 +424,7 @@ def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_
     all_functions = ''.join(functions)
 
     # Replace placeholder
-    content = content.replace('{{IR2ISA_REWRITE_FUNCTIONS}}', all_functions)
+    content = fill_placeholders(content, {'IR2ISA_REWRITE_FUNCTIONS': all_functions}, rust_file)
 
     # Write back
     with open(rust_file, 'w') as f:

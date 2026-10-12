@@ -1,7 +1,7 @@
 import os
 from typing import List
 from dataclasses import dataclass
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 @dataclass
@@ -97,13 +97,12 @@ def generate_buffer_rs_file(act_dest_dir, instructions, data_models):
     buffer_assignment_arms = generate_buffer_assignment_arms(instructions_info, templates)
 
     replacements = {
-        '{{BUFFER_VARIANTS}}': '\n'.join(buffer_variants),
-        '{{BUFFER_DISPLAY_MATCH_ARMS}}': '\n'.join(buffer_display_arms),
-        '{{ISA_BUFFER_ASSIGNMENT_MATCH_ARMS}}': '\n'.join(buffer_assignment_arms),
+        'BUFFER_VARIANTS': '\n'.join(buffer_variants),
+        'BUFFER_DISPLAY_MATCH_ARMS': '\n'.join(buffer_display_arms),
+        'ISA_BUFFER_ASSIGNMENT_MATCH_ARMS': '\n'.join(buffer_assignment_arms),
     }
 
-    for placeholder, replacement in replacements.items():
-        content = content.replace(placeholder, replacement)
+    content = fill_placeholders(content, replacements, buffer_file)
 
     with open(buffer_file, 'w') as f:
         f.write(content)

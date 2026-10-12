@@ -50,7 +50,7 @@ public:
 };
 
 
-{{INSTRUCTION_CLASSES}}
+// {{INSTRUCTION_CLASSES}}
 
 class Slice : public Instruction {
 private:

@@ -1,6 +1,7 @@
 import os
 from typing import List
 from dataclasses import dataclass
+from .template_loader import fill_placeholders
 
 
 @dataclass
@@ -44,11 +45,10 @@ def generate_globals_file(act_dest_dir: str, data_models) -> None:
     globals_models = generate_globals_models(data_models)
 
     replacements = {
-        '{{GLOBALS_DATA_MODELS}}': '\n'.join(globals_models),
+        'GLOBALS_DATA_MODELS': '\n'.join(globals_models),
     }
 
-    for placeholder, replacement in replacements.items():
-        globals_content = globals_content.replace(placeholder, replacement)
+    globals_content = fill_placeholders(globals_content, replacements, globals_file)
 
     with open(globals_file, 'w') as f:
         f.write(globals_content)

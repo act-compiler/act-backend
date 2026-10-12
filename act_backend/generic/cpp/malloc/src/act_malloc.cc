@@ -41,7 +41,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
             << std::endl;
 
   auto scheduled =
-      scheduler::topological(instructions, root, {{{BUFFER_NAMES}}});
+      scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
   if (scheduled.size() != instructions.size()) {
     std::cerr << "Warning: scheduled instructions size (" << scheduled.size()
               << ") does not match original instructions size ("

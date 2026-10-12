@@ -1,5 +1,5 @@
 import os
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 def generate_buffer_names(data_models, templates):
@@ -25,7 +25,7 @@ def generate_act_malloc_file(act_dest_dir, data_models):
         content = f.read()
 
     buffer_names = generate_buffer_names(data_models, templates)
-    content = content.replace('{{BUFFER_NAMES}}', buffer_names)
+    content = fill_placeholders(content, {'BUFFER_NAMES': buffer_names}, file_path)
 
     with open(file_path, 'w') as f:
         f.write(content)

@@ -1,7 +1,7 @@
 import os
 from typing import List
 from dataclasses import dataclass
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 @dataclass
@@ -151,17 +151,16 @@ def generate_egraph_rs_file(act_dest_dir, instructions):
     instruction_parts = generate_instruction_variants(instructions_info, templates)
 
     replacements = {
-        '{{ISA_ENUM_VARIANTS}}': '\n'.join(instruction_parts['enum_variants']),
-        '{{ISA_NUM_CHILDREN_MATCH_ARMS}}': '\n'.join(instruction_parts['num_children_arms']),
-        '{{ISA_SET_METADATA_MATCH_ARMS}}': '\n'.join(instruction_parts['set_metadata_arms']),
-        '{{ISA_CHILDREN_MATCH_ARMS}}': '\n'.join(instruction_parts['children_arms']),
-        '{{ISA_CHILDREN_MUT_MATCH_ARMS}}': '\n'.join(instruction_parts['children_mut_arms']),
-        '{{ISA_FROM_OP_MATCH_ARMS}}': '\n'.join(instruction_parts['from_op_arms']),
-        '{{ISA_DISPLAY_MATCH_ARMS}}': '\n'.join(instruction_parts['display_arms']),
+        'ISA_ENUM_VARIANTS': '\n'.join(instruction_parts['enum_variants']),
+        'ISA_NUM_CHILDREN_MATCH_ARMS': '\n'.join(instruction_parts['num_children_arms']),
+        'ISA_SET_METADATA_MATCH_ARMS': '\n'.join(instruction_parts['set_metadata_arms']),
+        'ISA_CHILDREN_MATCH_ARMS': '\n'.join(instruction_parts['children_arms']),
+        'ISA_CHILDREN_MUT_MATCH_ARMS': '\n'.join(instruction_parts['children_mut_arms']),
+        'ISA_FROM_OP_MATCH_ARMS': '\n'.join(instruction_parts['from_op_arms']),
+        'ISA_DISPLAY_MATCH_ARMS': '\n'.join(instruction_parts['display_arms']),
     }
 
-    for placeholder, replacement in replacements.items():
-        content = content.replace(placeholder, replacement)
+    content = fill_placeholders(content, replacements, egraph_file)
 
     with open(egraph_file, 'w') as f:
         f.write(content)
