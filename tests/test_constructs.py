@@ -81,6 +81,31 @@ ENTRY main {
 """
 
 
+def add_slice(acc):
+    """An instruction that takes the exponentials of 64 rows of d1 and keeps the first 32"""
+    instr = acc.add_instruction('upper', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %a = bf16[64,64] exponential(%In0);
+    ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:32], [0:64]};
+}
+""")
+
+
+# A kernel keeping 32 rows of its input's exponentials
+SLICED = """HloModule sliced, entry_computation_layout={(bf16[64,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %y = bf16[64,64] exponential(%x)
+  ROOT %out = bf16[32,64] slice(%y), slice={[0:32], [0:64]}
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -99,6 +124,7 @@ def work_dir(tmp_path_factory):
     def with_constructs(acc, *args, **kwargs):
         add_concatenate(acc)
         add_rank_0_result(acc)
+        add_slice(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -149,6 +175,13 @@ def test_rank_0_result_is_selected(work_dir, tmp_path):
     calls = compiled_calls(work_dir, tmp_path, SPREAD)
     # The rank-0 sum is matched inside the instruction
     assert [name for name, _ in calls] == ['load_rm', 'spread', 'mov', 'store_rm']
+
+
+def test_attribute_named_by_an_operation_word_is_read(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, SLICED)
+    # The attribute named slice is read: upper keeps 32 rows
+    assert [name for name, _ in calls] == ['load_rm', 'upper', 'mov', 'store_rm']
+    assert [call['n'] for _, call in calls if 'n' in call] == ['64', '32', '32']
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
