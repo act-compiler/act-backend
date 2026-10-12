@@ -36,18 +36,16 @@ macro_rules! binary_op_match {
     };
 }
 
-pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(
-  path: P,
-) -> Result<
-  (
-    EGraph<TensorOp, TensorInfo>,
-    Vec<(Option<Id>, i32)>,
-    Id,
-    HashSet<Id>,
-    MetaData,
-  ),
-  io::Error,
-> {
+// A kernel as an e-graph: the graph, its HBM offsets, its root, its inputs and its metadata
+pub type ParsedModule = (
+  EGraph<TensorOp, TensorInfo>,
+  Vec<(Option<Id>, i32)>,
+  Id,
+  HashSet<Id>,
+  MetaData,
+);
+
+pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(path: P) -> Result<ParsedModule, io::Error> {
   let mut egraph = EGraph::<TensorOp, TensorInfo>::default();
   let mut inputs = HashSet::default();
   let mut table = EggSymbolTable::default();
@@ -115,7 +113,7 @@ fn fill_offsets_from_header(
     metadata.input.push(MetaDataInfo {
       addr: curr_bytes,
       shape: shape_vec,
-      dtype: dtype,
+      dtype,
     });
 
     curr_bytes += bytes;
@@ -130,7 +128,7 @@ fn fill_offsets_from_header(
   metadata.output.push(MetaDataInfo {
     addr: curr_bytes,
     shape: shape_vec.clone(),
-    dtype: dtype,
+    dtype,
   });
 }
 
@@ -139,7 +137,7 @@ fn add_expr_to_egraph(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   inputs: &mut HashSet<Id>,
   table: &mut EggSymbolTable,
-  offsets: &mut Vec<(Option<Id>, i32)>,
+  offsets: &mut [(Option<Id>, i32)],
   root: &mut Option<Id>,
   parsing_root: bool,
 ) {
@@ -151,9 +149,9 @@ fn add_expr_to_egraph(
       ttype,
       tidx,
     } => {
-      assert!(parsing_root == false); // parameters should not be in root
-      if offsets[tidx.clone() as usize].0.is_none() {
-        offsets[tidx.clone() as usize].0 = Some(add_parameter(
+      assert!(!parsing_root); // parameters should not be in root
+      if offsets[*tidx as usize].0.is_none() {
+        offsets[*tidx as usize].0 = Some(add_parameter(
           tsymbol, tshape, ttile, ttype, egraph, inputs, table,
         ));
       } else {
@@ -168,7 +166,7 @@ fn add_expr_to_egraph(
       tshape,
       value,
     } => {
-      assert!(parsing_root == false); // constants should not be in root
+      assert!(!parsing_root); // constants should not be in root
       add_constant(tsymbol, ttype, tshape, value, egraph, table);
       return;
     }
@@ -319,7 +317,7 @@ pub fn add_parameter(
   let dtype_size = dtype.size_in_bytes();
 
   let bytes = get_bytes(tshape, dtype_size);
-  if ttile == "" {
+  if ttile.is_empty() {
     // no tile supplied case
     let var_node = egraph.add(TensorOp::Var(tsymbol.to_string()));
     egraph.set_analysis_data(
@@ -353,14 +351,14 @@ pub fn add_parameter(
       node,
       TensorInfo {
         shape: bitcvt_vec.clone(),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );
 
     table.insert(tsymbol.to_string(), node);
     inputs.insert(var_node);
-    return var_node;
+    var_node
   } else {
     let var_node = egraph.add(TensorOp::Var(tsymbol.to_string()));
     egraph.set_analysis_data(
@@ -396,7 +394,7 @@ pub fn add_parameter(
       node,
       TensorInfo {
         shape: bitcvt_vec.clone(),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );
@@ -407,7 +405,7 @@ pub fn add_parameter(
       node,
       TensorInfo {
         shape: bitcvt_vec.clone(),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );
@@ -423,14 +421,14 @@ pub fn add_parameter(
       node,
       TensorInfo {
         shape: reshape_vec.clone(),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );
 
     table.insert(tsymbol.to_string(), node);
     inputs.insert(var_node);
-    return var_node;
+    var_node
   }
 }
 
@@ -467,6 +465,8 @@ fn add_broadcast(
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
+// One argument per field of the kernel's line
+#[allow(clippy::too_many_arguments)]
 fn add_binary_op(
   tsymbol: &str,
   ttype: &str,
@@ -497,7 +497,7 @@ fn add_slice(
   ttype: &str,
   tshape: &str,
   source: &str,
-  slices: &Vec<String>,
+  slices: &[String],
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
 ) {
@@ -530,8 +530,8 @@ fn add_concatenate(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
-  inputs: &Vec<String>,
-  dimensions: &Vec<u32>,
+  inputs: &[String],
+  dimensions: &[u32],
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
 ) {
@@ -655,7 +655,7 @@ fn add_root_operations(
   let dtype_size = dtype.size_in_bytes();
   let bytes = get_bytes(tshape, dtype_size);
 
-  if ttile == "" {
+  if ttile.is_empty() {
     let mut shape_with_size = tshape.to_string();
     if dtype_size != 1 {
       shape_with_size += &format!(",{}", dtype_size);
@@ -696,7 +696,7 @@ fn add_root_operations(
       node,
       TensorInfo {
         shape: reshape_vec.clone(),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );
@@ -709,7 +709,7 @@ fn add_root_operations(
       node,
       TensorInfo {
         shape: shape_to_vec(&transposed_reshape_str),
-        dtype: dtype,
+        dtype,
         is_const: false,
       },
     );

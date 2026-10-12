@@ -60,7 +60,7 @@ int64 esun(Instruction *instr, const std::string &d, EsunCache &esun_cache) {
   }
 
   int64 tau_x_min = INT64_MAX;
-  for (int i = 0; i < rhs_instrs.size(); ++i) {
+  for (size_t i = 0; i < rhs_instrs.size(); ++i) {
     int esun_x_i;
     if (rhs_instrs[i]) {
       esun_x_i = esun(rhs_instrs[i], d, esun_cache);

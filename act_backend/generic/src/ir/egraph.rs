@@ -60,10 +60,7 @@ impl TensorOp {
   }
 
   pub fn is_detected_const(&self) -> bool {
-    match self {
-      TensorOp::DetectedConst(_) => true,
-      _ => false,
-    }
+    matches!(self, TensorOp::DetectedConst(_))
   }
 
   pub fn set_metadata(&mut self, metadata: Option<String>) {
@@ -169,27 +166,27 @@ impl FromOp for TensorOp {
       op if op.split('_').next().unwrap() == "broadcast"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpBroadcast(data.to_string(), children))
       }
       op if op.split('_').next().unwrap() == "concat"
         && <[Id; 2] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 2] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpConcat(data.to_string(), children))
       }
       op if op.split('_').next().unwrap() == "constant"
         && <[Id; 0] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         Ok(TensorOp::OpConstant(data.to_string()))
       }
       op if op.split('_').next().unwrap() == "convert"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpConvert(data.to_string(), children))
       }
@@ -212,7 +209,7 @@ impl FromOp for TensorOp {
       op if op.split('_').next().unwrap() == "eye"
         && <[Id; 0] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         Ok(TensorOp::OpEye(data.to_string()))
       }
       op if op == "or" && <[Id; 2] as LanguageChildren>::can_be_length(children.len()) => {
@@ -222,14 +219,14 @@ impl FromOp for TensorOp {
       op if op.split('_').next().unwrap() == "reduce"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpReduceSum(data.to_string(), children))
       }
       op if op.split('_').next().unwrap() == "reshape"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpReshape(data.to_string(), children))
       }
@@ -246,7 +243,7 @@ impl FromOp for TensorOp {
       op if op.split('_').next().unwrap() == "slice"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpSlice(data.to_string(), children))
       }
@@ -257,7 +254,7 @@ impl FromOp for TensorOp {
       op if op.split('_').next().unwrap() == "transpose"
         && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) =>
       {
-        let data = op.split('_').last().unwrap();
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpTranspose(data.to_string(), children))
       }
@@ -323,12 +320,10 @@ impl Analysis<TensorOp> for TensorInfo {
   type Data = TensorInfo;
 
   fn make(_: &mut EGraph<TensorOp, Self>, enode: &TensorOp) -> Self::Data {
-    let mut data = TensorInfo::default();
-    data.is_const = match enode {
-      TensorOp::DetectedConst(_) => true,
-      _ => false,
-    };
-    data
+    TensorInfo {
+      is_const: matches!(enode, TensorOp::DetectedConst(_)),
+      ..Default::default()
+    }
   }
 
   // TODO: ensure that the two eclasses have the same shape

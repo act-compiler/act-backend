@@ -59,14 +59,19 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
   })
 }
 
+// The three functions a rule is applied through
+type PrecondFn = fn(&EGraph<TensorOp, TensorInfo>, &[Id]) -> bool;
+type MetadataFn =
+  fn(&EGraph<TensorOp, TensorInfo>, &[Id], &[Option<TensorOp>]) -> Vec<Option<String>>;
+type SetShapesFn = fn(&mut EGraph<TensorOp, TensorInfo>, &[Id], &[Id]);
+
 #[derive(Debug, Clone)]
 struct ApplyRewrite {
   lhs: Pattern<TensorOp>,
   rhs: Pattern<TensorOp>,
-  precond_fn: fn(&EGraph<TensorOp, TensorInfo>, &Vec<Id>) -> bool,
-  metadata_fn:
-    fn(&EGraph<TensorOp, TensorInfo>, &Vec<Id>, &Vec<Option<TensorOp>>) -> Vec<Option<String>>,
-  set_shapes_fn: fn(&mut EGraph<TensorOp, TensorInfo>, &Vec<Id>, &Vec<Id>),
+  precond_fn: PrecondFn,
+  metadata_fn: MetadataFn,
+  set_shapes_fn: SetShapesFn,
 }
 
 impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
@@ -130,7 +135,7 @@ fn apply_pat(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   rhs_pat: &[ENodeOrVar<TensorOp>],
   rhs_eclasses: &mut [Id],
-  rhs_metadata: &Vec<Option<String>>,
+  rhs_metadata: &[Option<String>],
   subst: &Subst,
 ) -> Id {
   for (i, pat_node) in rhs_pat.iter().enumerate() {
@@ -161,7 +166,7 @@ fn find_matches(
   pat: &[ENodeOrVar<TensorOp>],
 ) -> Vec<Vec<(Id, Option<TensorOp>)>> {
   let mut matches = vec![];
-  let pat_node = pat.iter().nth(pat_idx).unwrap();
+  let pat_node = pat.get(pat_idx).unwrap();
   match pat_node {
     ENodeOrVar::Var(_) => {
       if limit > 0 {

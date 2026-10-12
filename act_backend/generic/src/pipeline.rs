@@ -134,7 +134,7 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
   println!("Starting Performance Cost Evaluation for {:?}", asm_path);
   println!();
 
-  let cost: i32 = backend::cost::python_bridge(&asm_path);
+  let cost: i32 = backend::cost::python_bridge(asm_path);
   let time = start.elapsed();
 
   print!("New ASM has performance cost {}. ", cost);
@@ -150,10 +150,10 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
           cost,
           timestamp: time,
         });
-        return true;
+        true
       } else {
         println!("Not better than the previous best ({}).", best_cost);
-        return false;
+        false
       }
     }
     None => {
@@ -163,7 +163,7 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
         cost,
         timestamp: time,
       });
-      return true;
+      true
     }
   }
 }
@@ -299,7 +299,10 @@ fn main() {
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
         PROCESSED.lock().unwrap().clear();
-        if runner.iterations.len() % N == 0 && runner.iterations.len() > 0 {
+        // N is a constant of the search, 1 today
+        #[allow(clippy::modulo_one)]
+        let extract_now = runner.iterations.len() % N == 0 && !runner.iterations.is_empty();
+        if extract_now {
           check_termination(best.borrow().clone(), &start, &output_path_for_hook);
           println!(
             "Starting Phase 1 Module 3: Graph Extractor (limit {})",
@@ -330,7 +333,7 @@ fn main() {
             backend::malloc::cpp_bridge(&pii_path, &metadata_path_for_hook, &asm_path);
 
             // Check cost and update best if necessary
-            update_best(&mut *best.borrow_mut(), &asm_path, &start);
+            update_best(&mut best.borrow_mut(), &asm_path, &start);
             println!();
 
             *pii_counter.borrow_mut() += 1;
@@ -402,7 +405,7 @@ fn main() {
           backend::malloc::cpp_bridge(&pii_path, &metadata_path, &asm_path);
 
           // Check cost and update best if necessary
-          update_best(&mut *best.borrow_mut(), &asm_path, &start);
+          update_best(&mut best.borrow_mut(), &asm_path, &start);
           println!();
 
           *pii_counter.borrow_mut() += 1;

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use pyo3::types::{PyAnyMethods, PyModule};
@@ -24,7 +24,7 @@ fn init_cost_func() -> &'static Py<PyAny> {
   })
 }
 
-pub fn python_bridge(asm_file_path: &PathBuf) -> i32 {
+pub fn python_bridge(asm_file_path: &Path) -> i32 {
   let py_func = init_cost_func();
 
   Python::attach(|py| {

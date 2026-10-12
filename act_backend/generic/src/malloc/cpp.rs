@@ -1,4 +1,4 @@
-use std::{ffi::CString, path::PathBuf};
+use std::{ffi::CString, path::Path};
 
 use libc::c_char;
 
@@ -11,15 +11,15 @@ unsafe extern "C" {
   ) -> i32;
 }
 
-pub fn cpp_bridge(pii_path: &PathBuf, metadata_path: &PathBuf, asm_path: &PathBuf) -> bool {
+pub fn cpp_bridge(pii_path: &Path, metadata_path: &Path, asm_path: &Path) -> bool {
   let pii_path = CString::new(pii_path.to_str().unwrap()).unwrap();
   let metadata_path = CString::new(metadata_path.to_str().unwrap()).unwrap();
   let asm_path = CString::new(asm_path.to_str().unwrap()).unwrap();
 
   unsafe {
-    match act_malloc(pii_path.as_ptr(), metadata_path.as_ptr(), asm_path.as_ptr()) {
-      0 => true,
-      _ => false,
-    }
+    matches!(
+      act_malloc(pii_path.as_ptr(), metadata_path.as_ptr(), asm_path.as_ptr()),
+      0
+    )
   }
 }

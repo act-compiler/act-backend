@@ -34,3 +34,6 @@ jobs:
 
       - name: Run tests
         run: ./tests/pytest.sh
+
+      - name: Lint the generated backends
+        run: ./tests/lint.sh

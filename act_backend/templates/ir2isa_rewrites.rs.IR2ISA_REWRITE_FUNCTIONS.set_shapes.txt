@@ -1,7 +1,7 @@
 pub fn set_shapes_{{instruction_name}}(
   {{egraph_param}}: &mut EGraph<TensorOp, TensorInfo>,
-  lhs_eclasses: &Vec<Id>,
-  rhs_eclasses: &Vec<Id>,
+  lhs_eclasses: &[Id],
+  rhs_eclasses: &[Id],
 ) {
   assert_eq!(lhs_eclasses.len(), {{num_assignments}});
   assert_eq!(rhs_eclasses.len(), {{rhs_size}});
