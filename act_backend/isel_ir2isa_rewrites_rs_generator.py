@@ -1,7 +1,7 @@
 import os
 import re
 from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 class RustGeneratorVisitor(IDLV2Visitor):
@@ -227,9 +227,9 @@ def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
         division_factor = 1
         for factor in factors:
             division_factor *= factor
-        return f'    let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {division_factor};\n'
+        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {division_factor};\n'
     else:
-        return f'    let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
+        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
 
 
 def generate_precond_function(instruction_name, semantics_data, rhs_size, templates):
@@ -344,11 +344,19 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
     # Generate metadata extraction - use unified logic same as other functions
     if comp_attr:
         metadata_code = (
-            '    let lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n'
+            '  let lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
+            '    .iter()\n'
+            '    .map(|id| egraph[*id].data.clone())\n'
+            '    .collect();\n'
             + generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
         )
     else:
-        metadata_code = '    let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses.iter().map(|id| egraph[*id].data.clone()).collect();\n'
+        metadata_code = (
+            '  let _lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
+            '    .iter()\n'
+            '    .map(|id| egraph[*id].data.clone())\n'
+            '    .collect();\n'
+        )
 
     # Generate shape setting
     shape_setting = ''
@@ -402,7 +410,7 @@ def generate_ir2isa_rust_functions(metadata, templates):
         metadata.name, semantics_data, metadata.rhs_size, templates
     )
 
-    return f'{precond}\n\n{metadata_func}\n\n{set_shapes}\n\n'
+    return f'{precond}\n{metadata_func}\n{set_shapes}'
 
 
 def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_list):
@@ -420,11 +428,11 @@ def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_
         func_code = generate_ir2isa_rust_functions(metadata, templates)
         functions.append(func_code)
 
-    # Join functions with newlines
-    all_functions = ''.join(functions)
+    # Join functions with one blank line between, none at the end
+    all_functions = '\n'.join(functions).rstrip('\n')
 
     # Replace placeholder
-    content = content.replace('{{IR2ISA_REWRITE_FUNCTIONS}}', all_functions)
+    content = fill_placeholders(content, {'IR2ISA_REWRITE_FUNCTIONS': all_functions}, rust_file)
 
     # Write back
     with open(rust_file, 'w') as f:

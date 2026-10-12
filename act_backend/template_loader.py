@@ -5,6 +5,7 @@ mutable global variables.
 """
 
 import os
+import re
 from typing import Dict
 
 
@@ -54,6 +55,29 @@ class TemplateLoader:
             placeholder = f'{{{{{key}}}}}'
             result = result.replace(placeholder, str(value))
         return result
+
+
+# A skeleton's placeholder: a comment line of its own, a block comment inside a line, or bare
+PLACEHOLDER = re.compile(
+    r'^[ \t]*// \{\{([A-Z0-9_]+)\}\}$|/\* \{\{([A-Z0-9_]+)\}\} \*/|\{\{([A-Z0-9_]+)\}\}',
+    re.MULTILINE,
+)
+
+
+def fill_placeholders(content: str, replacements: Dict[str, str], source: str) -> str:
+    """
+    Replace each placeholder of a skeleton with its generated code
+
+    Raises ValueError naming `source` when a placeholder has no value or a value no placeholder.
+    """
+    names = {match.group(match.lastindex) for match in PLACEHOLDER.finditer(content)}
+    unfilled = sorted(names - replacements.keys())
+    if unfilled:
+        raise ValueError(f'{source}: no value for the placeholder {", ".join(unfilled)}')
+    unknown = sorted(replacements.keys() - names)
+    if unknown:
+        raise ValueError(f'{source}: no placeholder for the value {", ".join(unknown)}')
+    return PLACEHOLDER.sub(lambda match: replacements[match.group(match.lastindex)], content)
 
 
 def get_backend_template_loader() -> TemplateLoader:

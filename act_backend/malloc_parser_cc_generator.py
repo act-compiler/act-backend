@@ -1,5 +1,5 @@
 import os
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 def to_camel_case(snake_str):
@@ -44,7 +44,7 @@ def generate_parser_file(act_dest_dir, instructions):
 
     instruction_cases = generate_parser_instructions(instructions, templates)
 
-    content = content.replace('{{INSTRUCTION_CASES}}', instruction_cases)
+    content = fill_placeholders(content, {'INSTRUCTION_CASES': instruction_cases}, parser_file)
 
     with open(parser_file, 'w') as f:
         f.write(content)

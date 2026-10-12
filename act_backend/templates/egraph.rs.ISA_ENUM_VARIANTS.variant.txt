@@ -1,1 +1,1 @@
-    {{variant_name}}{{signature}},
+  {{variant_name}}{{signature}},

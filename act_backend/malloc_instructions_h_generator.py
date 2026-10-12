@@ -2,7 +2,7 @@
 
 import os
 import re
-from .template_loader import get_backend_template_loader
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 def to_camel_case(snake_str):
@@ -136,7 +136,7 @@ def generate_instructions_file(backend_gen_dir, instructions, data_models):
             classes += generate_instruction_class(instruction, templates) + '\n'
 
     # Replace placeholder
-    content = content.replace('{{INSTRUCTION_CLASSES}}', classes)
+    content = fill_placeholders(content, {'INSTRUCTION_CLASSES': classes}, generic_file)
 
     # Write back
     with open(generic_file, 'w') as f:

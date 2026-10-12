@@ -3,7 +3,13 @@
 import os
 import tempfile
 import pytest
-from conftest import EXAMPLES_DIR, generate_oracle_and_backend, compile_hlo, run_compiled_kernel
+from conftest import (
+    EXAMPLES_DIR,
+    generate_oracle_and_backend,
+    unfilled_sources,
+    compile_hlo,
+    run_compiled_kernel,
+)
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV_new')
 WORK_DIR = tempfile.mkdtemp()
@@ -15,6 +21,9 @@ generate_oracle_and_backend(QKV_DIR, WORK_DIR)
 class TestQKVNew:
     def test_backend_binary_exists(self):
         assert os.path.exists(os.path.join(WORK_DIR, 'backends', 'QKV'))
+
+    def test_backend_sources_filled(self):
+        assert unfilled_sources(WORK_DIR) == []
 
     def test_compile_hlo(self):
         output_path = compile_hlo(WORK_DIR, QKV_DIR)
