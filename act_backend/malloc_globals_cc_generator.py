@@ -7,18 +7,16 @@ from .template_loader import fill_placeholders
 def generate_globals_models(data_models):
     models = []
 
-    for idx, data_model in enumerate(data_models, 1):
+    for data_model in data_models:
         if data_model.var_name != 'd0':
             buffer_name = get_buffer_name(data_model.var_name)
 
-            access_dims = '{' + ','.join(str(dim) for dim in data_model.access_dim) + '}'
+            access_dims = '{' + ', '.join(str(dim) for dim in data_model.access_dim) + '}'
             num_unit = len(data_model.unit_dim)
-            out_str = (
-                f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}}'
+            # Every entry ends in a comma, the last one too
+            models.append(
+                f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}},'
             )
-            if idx < len(data_models):
-                out_str += ','
-            models.append(out_str)
 
     return models
 

@@ -96,9 +96,9 @@ def test_size_written_from_its_tree(templates):
 def test_storages(accelerator):
     models = generate_globals_models(accelerator.data_model)
     # One storage per data model but d0: its access dimensions, then its unit dimension count
-    assert [squeeze(model).rstrip(',') for model in models] == [
-        '{"D1", new Storage("D1", {128}, 1)}',
-        '{"D2", new Storage("D2", {64}, 1)}',
+    assert [squeeze(model) for model in models] == [
+        '{"D1", new Storage("D1", {128}, 1)},',
+        '{"D2", new Storage("D2", {64}, 1)},',
     ]
 
 
@@ -106,7 +106,7 @@ def test_storage_with_no_access_dimension():
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [], [64], 'bf16')
     (model,) = generate_globals_models(acc.data_model)
-    assert squeeze(model) == '{"D1", new Storage("D1", {}, 1)}'
+    assert squeeze(model) == '{"D1", new Storage("D1", {}, 1)},'
 
 
 def test_rule_functions(accelerator):
