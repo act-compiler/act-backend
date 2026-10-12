@@ -19,10 +19,10 @@ def add_concatenate(acc):
     instr.set_inputs([['d1', ['@a.addr_1'], ['32']], ['d1', ['@a.addr_2'], ['32']]])
     instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
     instr.add_semantics("""
-ENTRY join {
-    %In1 = bf16[32,64] parameter(0);
-    %In2 = bf16[32,64] parameter(1);
-    ROOT %Out0 = bf16[64,64] concatenate(%In1, %In2), dimensions={0};
+ENTRY {
+    %In0 = bf16[32,64] parameter(0);
+    %In1 = bf16[32,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] concatenate(%In0, %In1), dimensions={0};
 }
 """)
 

@@ -7,6 +7,7 @@ import pytest
 from taidl import Accelerator
 
 import taidl.antlr4
+import taidl.operations
 
 import act_backend
 from act_backend import generate_backend, spec_checks
@@ -24,9 +25,9 @@ def add_load(acc, instruction='load', attribute='n', address='addr_out', model='
     instr.set_inputs([['d0', ['@a.addr_in'], [f'@c.{attribute} * 128']]])
     instr.set_outputs([[model, [f'@a.{address}'], [f'@c.{attribute}']]])
     instr.add_semantics(f"""
-ENTRY load {{
-    %In1 = u8[`@c.{attribute} * 128`] parameter(0);
-    %a = u8[`@c.{attribute}`,64,2] reshape(%In1);
+ENTRY {{
+    %In0 = u8[`@c.{attribute} * 128`] parameter(0);
+    %a = u8[`@c.{attribute}`,64,2] reshape(%In0);
     ROOT %Out0 = bf16[`@c.{attribute}`,64] bitcast_convert(%a);
 }}
 """)
@@ -42,25 +43,33 @@ def loader(name='ONE', model='d1', **names):
 
 
 def with_semantics(lines, inputs=2):
-    """An accelerator whose one instruction, gemm, has the given inputs and semantics lines"""
+    """An accelerator whose one instruction, gemm, has the given inputs and semantics lines
+
+    With inputs None the instruction never gives its inputs.
+    """
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [128], [64], 'bf16')
     acc.add_data_model('d2', [64], [64], 'bf16')
-    addresses = [f'addr_{number}' for number in range(1, inputs + 1)]
+    addresses = [f'addr_{number}' for number in range(1, (inputs or 0) + 1)]
     instr = acc.add_instruction('gemm', [], [*addresses, 'addr_out'])
-    instr.set_inputs([['d1', [f'@a.{address}'], ['64']] for address in addresses])
+    if inputs is not None:
+        instr.set_inputs([['d1', [f'@a.{address}'], ['64']] for address in addresses])
     instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
-    instr.add_semantics('ENTRY gemm {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
     return acc
 
 
 # The two inputs of gemm, and its result by an operation
-IN1 = '%In1 = bf16[64,64] parameter(0)'
-IN2 = '%In2 = bf16[64,64] parameter(1)'
+IN0 = '%In0 = bf16[64,64] parameter(0)'
+IN1 = '%In1 = bf16[64,64] parameter(1)'
 
 
 def result(operation):
     return f'ROOT %Out0 = bf16[64,64] {operation}'
+
+
+# The product of gemm's two inputs
+DOT = 'dot(%In0, %In1), lhs_contracting_dims={1}, rhs_contracting_dims={0}'
 
 
 def grammar_words():
@@ -71,8 +80,11 @@ def grammar_words():
     return re.findall(r"'(\w+)'", rule)
 
 
-def with_operands(inputs=None, outputs=None, addresses=None, models=()):
-    """An accelerator whose one instruction, gemm, has the given operands and address attributes"""
+def with_operands(inputs=None, outputs=None, addresses=None, models=(), lines=None):
+    """An accelerator whose one instruction, gemm, has the given operands and address attributes
+
+    With outputs False the instruction never gives its outputs.
+    """
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [128], [64], 'bf16')
     acc.add_data_model('d2', [64], [64], 'bf16')
@@ -86,10 +98,10 @@ def with_operands(inputs=None, outputs=None, addresses=None, models=()):
         addresses = ['addr_1', 'addr_2', 'addr_out']
     instr = acc.add_instruction('gemm', [], addresses)
     instr.set_inputs(inputs)
-    instr.set_outputs(outputs)
-    instr.add_semantics(
-        f'ENTRY gemm {{\n    {IN1};\n    {IN2};\n    {result("dot(%In1, %In2)")};\n}}\n'
-    )
+    if outputs is not False:
+        instr.set_outputs(outputs)
+    lines = lines or [IN0, IN1, result(DOT)]
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
     return acc
 
 
@@ -236,28 +248,48 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
 
 
 def test_operation_the_selector_lacks_refused(tmp_path):
-    message = refusal(with_semantics([IN1, IN2, result('maximum(%In1, %In2)')]), tmp_path)
+    message = refusal(with_semantics([IN0, IN1, result('maximum(%In0, %In1)')]), tmp_path)
     assert message == (
         "gemm: its semantics uses the operation 'maximum', which the selector does not have"
     )
 
 
+def line_of(word):
+    """A line taidl reads for an operation word: its operands, and each attribute it needs"""
+    takes, attributes = taidl.operations.OPERATIONS[word]
+    if takes == taidl.operations.LITERAL:
+        operands = ['0']
+    else:
+        # The operator's value count, or the fewest taidl reads
+        least = takes[0] if isinstance(takes, tuple) else takes
+        operands = ['%In0'] * OPERATIONS.get(word, (word, least))[1]
+    forms = {
+        taidl.operations.INT: '0',
+        taidl.operations.INTS: '{0}',
+        taidl.operations.ONE_INT: '{0}',
+        taidl.operations.RANGES: '{[0:1]}',
+        taidl.operations.BOOL: 'true',
+        taidl.operations.NUMBER: '0',
+    }
+    # A closed set of words is given by its first
+    given = [
+        f'{name}={forms[form] if isinstance(form, str) else form[0]}'
+        for name, (form, required) in attributes.items()
+        if required
+    ]
+    return result(', '.join([f'{word}({", ".join(operands)})', *given]))
+
+
 @pytest.mark.parametrize('word', [word for word in grammar_words() if word != 'parameter'])
 def test_operation_word_handled_or_refused(word):
     lines = spec_checks.SemanticsChecker('gemm')
+    semantics = with_semantics([IN0, line_of(word)], 1).instructions[0].instr_semantics_ast
     # Handled: a line that gives the word the values it takes passes
     if word in OPERATIONS:
-        _, count = OPERATIONS[word]
-        operands = ', '.join(['%In1'] * count)
-        lines.visit(
-            with_semantics([IN1, result(f'{word}({operands})')], 1)
-            .instructions[0]
-            .instr_semantics_ast
-        )
+        lines.visit(semantics)
     else:
-        acc = with_semantics([IN1, result(f'{word}(%In1)')], 1)
         with pytest.raises(ValueError, match=f"uses the operation '{word}', which the selector"):
-            lines.visit(acc.instructions[0].instr_semantics_ast)
+            lines.visit(semantics)
 
 
 def test_operations_are_the_egraphs_own():
@@ -276,7 +308,7 @@ def test_operations_are_the_egraphs_own():
 
 
 def test_concatenate_of_three_refused(tmp_path):
-    lines = [IN1, IN2, result('concatenate(%In1, %In2, %In1), dimensions={0}')]
+    lines = [IN0, IN1, result('concatenate(%In0, %In1, %In0), dimensions={0}')]
     message = refusal(with_semantics(lines), tmp_path)
     assert message == (
         "gemm: its semantics gives the operation 'concatenate' 3 values, "
@@ -288,8 +320,8 @@ def test_concatenate_of_three_refused(tmp_path):
     'lines, inputs, value',
     [
         # An input no operation reads, and a line whose value none reads
-        ([IN1, IN2, '%In3 = bf16[64,64] parameter(2)', result('dot(%In1, %In2)')], 3, '%In3'),
-        ([IN1, IN2, '%a = bf16[64,64] exponential(%In1)', result('dot(%In1, %In2)')], 2, '%a'),
+        ([IN0, IN1, '%In2 = bf16[64,64] parameter(2)', result(DOT)], 3, '%In2'),
+        ([IN0, IN1, '%a = bf16[64,64] exponential(%In0)', result(DOT)], 2, '%a'),
     ],
 )
 def test_value_no_line_reads_refused(lines, inputs, value, tmp_path):
@@ -298,26 +330,15 @@ def test_value_no_line_reads_refused(lines, inputs, value, tmp_path):
 
 
 def test_root_above_the_last_line_refused(tmp_path):
-    lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
+    lines = [IN0, IN1, result(DOT), '%after = bf16[64,64] exponential(%Out0)']
     message = refusal(with_semantics(lines), tmp_path)
     assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"
 
 
-@pytest.mark.parametrize(
-    'lines, inputs, reason',
-    [
-        (
-            [IN1, IN2, result('dot(%In1, %In2)')],
-            1,
-            'reads 2 inputs by parameter, and the instruction has 1',
-        ),
-        ([IN1, result('copy(%In1)')], 2, 'reads 1 inputs by parameter, and the instruction has 2'),
-        ([result('constant(0)')], 2, 'reads 0 inputs by parameter, and the instruction has 2'),
-    ],
-)
-def test_semantics_that_reads_other_inputs_refused(lines, inputs, reason, tmp_path):
-    message = refusal(with_semantics(lines, inputs), tmp_path)
-    assert message == f'gemm: its semantics {reason}'
+def test_semantics_that_reads_inputs_never_given_refused(tmp_path):
+    # taidl ties a parameter to a region after set_inputs
+    message = refusal(with_semantics([IN0, IN1, result(DOT)], None), tmp_path)
+    assert message == 'gemm: its semantics reads 2 inputs by parameter, and the instruction has 0'
 
 
 def test_instruction_with_no_inputs_refused(tmp_path):
@@ -326,7 +347,7 @@ def test_instruction_with_no_inputs_refused(tmp_path):
 
 
 def test_computational_attribute_no_line_names_refused(tmp_path):
-    acc = with_semantics([IN1, IN2, result('dot(%In1, %In2)')])
+    acc = with_semantics([IN0, IN1, result(DOT)])
     acc.instructions[0].comp_attr.append('k')
     message = refusal(acc, tmp_path)
     assert message == "gemm: no line of its semantics names the computational attribute 'k'"
@@ -338,14 +359,24 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
 @pytest.mark.parametrize(
     'operands, reason',
     [
-        (
-            {'outputs': [['d2', ['@a.addr_out'], ['64']], ['d2', ['@a.addr_1'], ['64']]]},
-            'the instruction has 2 outputs, and the allocator places one',
-        ),
-        ({'outputs': []}, 'the instruction has 0 outputs, and the allocator places one'),
+        # Two outputs, neither reading the other
         (
             {
-                'inputs': [['d3', ['@a.addr_1'], ['64']], SECOND],
+                'outputs': [['d2', ['@a.addr_out'], ['64']], ['d2', ['@a.addr_1'], ['64']]],
+                'lines': [
+                    IN0,
+                    IN1,
+                    f'%Out0 = bf16[64,64] {DOT}',
+                    'ROOT %Out1 = bf16[64,64] copy(%In0)',
+                ],
+            },
+            'the instruction has 2 outputs, and the allocator places one',
+        ),
+        # An instruction that never gives its outputs
+        ({'outputs': False}, 'the instruction has 0 outputs, and the allocator places one'),
+        (
+            {
+                'inputs': [['d3', ['@a.addr_1', '0'], ['64', '4']], SECOND],
                 'models': [('d3', [64, 4], [64], 'bf16')],
             },
             "its operand on 'd3' is addressed along 2 dimensions, and the allocator addresses one",

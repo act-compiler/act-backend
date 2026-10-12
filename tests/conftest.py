@@ -198,9 +198,9 @@ def accelerator():
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
     instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
     instr.add_semantics("""
-ENTRY load_rm {
-    %In1 = u8[`@c.n * 128`] parameter(0);
-    %a = u8[`@c.n`,64,2] reshape(%In1);
+ENTRY {
+    %In0 = u8[`@c.n * 128`] parameter(0);
+    %a = u8[`@c.n`,64,2] reshape(%In0);
     ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
 }
 """)
@@ -209,10 +209,10 @@ ENTRY load_rm {
     instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]])
     instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
     instr.add_semantics("""
-ENTRY gemm {
-    %In1 = bf16[64,64] parameter(0);
-    %In2 = bf16[64,64] parameter(1);
-    ROOT %Out0 = bf16[64,64] dot(%In1, %In2), lhs_contracting_dims={1}, rhs_contracting_dims={0};
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] dot(%In0, %In1), lhs_contracting_dims={1}, rhs_contracting_dims={0};
 }
 """)
     return acc
