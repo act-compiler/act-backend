@@ -30,8 +30,8 @@ if __name__ == '__main__':
     # The generated trees go with their directory
     with tempfile.TemporaryDirectory() as work_dir:
         generate_oracle_and_backend(example_dir, work_dir)
-        compile_hlo(work_dir, example_dir)
-        output = np.asarray(run_compiled_kernel(work_dir, data_dir))
+        assembly = compile_hlo(work_dir, example_dir)
+        output = np.asarray(run_compiled_kernel(work_dir, assembly, data_dir))
 
     # Never write a golden the reference rejects
     reference, tol = attention_reference(data_dir)

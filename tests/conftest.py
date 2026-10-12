@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import importlib
 import importlib.util
+import itertools
 
 import pytest
 import numpy as np
@@ -38,6 +39,8 @@ def pytest_runtest_setup(item):
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
 # The platform every oracle simulates on
 PLATFORM = 'CPU'
+# Each imported oracle gets a package name of its own
+oracle_ids = itertools.count()
 
 
 def load_bf16_matrix(path, shape):
@@ -94,18 +97,28 @@ def compile_hlo(work_dir, example_dir):
     return output_path
 
 
-def run_compiled_kernel(work_dir, data_dir):
+def import_oracle(work_dir):
+    """Import the oracle in work_dir as a package of its own and return (decorator, api)"""
+    oracle_dir = os.path.join(work_dir, 'targets', 'QKV', 'oracle')
+    name = f'oracle_{next(oracle_ids)}'
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(oracle_dir, '__init__.py'), submodule_search_locations=[oracle_dir]
+    )
+    sys.modules[name] = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sys.modules[name])
+    decorator = importlib.import_module(f'{name}.decorator')
+    decorator.set_simulation_backend(PLATFORM)
+    return decorator, importlib.import_module(f'{name}.api')
+
+
+def run_compiled_kernel(work_dir, assembly_path, data_dir):
     """Import oracle + compiled kernel, run simulation, return its output"""
-    oracle_dir = os.path.join(work_dir, 'targets', 'QKV')
-    sys.path.insert(0, oracle_dir)
+    oracle_decorator, oracle_api = import_oracle(work_dir)
 
-    oracle_decorator = importlib.import_module('oracle.decorator')
-    oracle_api = importlib.import_module('oracle.api')
-    oracle_decorator.set_simulation_backend(PLATFORM)
-
-    asm_dir = os.path.join(work_dir, 'asm')
-    sys.path.insert(0, asm_dir)
-    kernel_module = importlib.import_module('compiled_qkv')
+    # The compiled kernel, loaded from its own path
+    spec = importlib.util.spec_from_file_location('compiled_qkv', assembly_path)
+    kernel_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(kernel_module)
 
     qkv_kernel = kernel_module.qkv(oracle_decorator.kernel, oracle_api)
     qkv_kernel('fsim-compile')()
@@ -166,4 +179,4 @@ def assembly(request, work_dir):
 @pytest.fixture(scope='module')
 def output(request, work_dir, assembly):
     """Simulate the module's compiled kernel once and return its output"""
-    return run_compiled_kernel(work_dir, request.module.DATA_DIR)
+    return run_compiled_kernel(work_dir, assembly, request.module.DATA_DIR)
