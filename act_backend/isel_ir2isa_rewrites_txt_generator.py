@@ -5,21 +5,31 @@ from .instruction_info import get_kebab_name
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
-class RewriteRuleVisitor(OperandVisitor):
-    OP_MAP = {
-        'reshape': 'reshape_?',
-        'convert': 'convert_?',
-        'slice': 'slice_?',
-        'transpose': 'transpose_?',
-        'broadcast': 'broadcast_?',
-        'concat': 'concat_?',
-        'constant': 'constant_?',
-        'bitcast_convert': 'bitcvt',
-        'reduce_add': 'reduce_?',
-        'shift_left': 'shift-left',
-        'shift_right_logical': 'shift-right-logical',
-    }
+# Each operation the e-graph has: the word a rule spells it with, and the values it takes
+OPERATIONS = {
+    'add': ('add', 2),
+    'bitcast_convert': ('bitcvt', 1),
+    'broadcast': ('broadcast_?', 1),
+    'concat': ('concat_?', 2),
+    'constant': ('constant_?', 0),
+    'convert': ('convert_?', 1),
+    'copy': ('copy', 1),
+    'divide': ('divide', 2),
+    'dot': ('dot', 2),
+    'exponential': ('exponential', 1),
+    'or': ('or', 2),
+    'reduce': ('reduce', 1),
+    'reduce_add': ('reduce_?', 1),
+    'reshape': ('reshape_?', 1),
+    'shift_left': ('shift-left', 2),
+    'shift_right_logical': ('shift-right-logical', 2),
+    'slice': ('slice_?', 1),
+    'transpose': ('transpose_?', 1),
+    'xor': ('xor', 2),
+}
 
+
+class RewriteRuleVisitor(OperandVisitor):
     def __init__(self):
         super().__init__()
         self.pattern_stack = []
@@ -61,14 +71,12 @@ class RewriteRuleVisitor(OperandVisitor):
             self.root_variable = lhs_name
 
         if op_name == 'parameter':
-            if ctx.operands():
-                operand_info = self.visit(ctx.operands())
-                if operand_info:
-                    param_num = int(operand_info[0][0])
-                    var = self.get_next_variable()
-                    self.parameter_variables[param_num] = var
-                    self.variable_definitions[lhs_name] = var
-                    return var
+            operand_info = self.visit(ctx.operands())
+            param_num = int(operand_info[0][0])
+            var = self.get_next_variable()
+            self.parameter_variables[param_num] = var
+            self.variable_definitions[lhs_name] = var
+            return var
 
         operand_patterns = []
         if ctx.operands():
@@ -94,7 +102,7 @@ class RewriteRuleVisitor(OperandVisitor):
                         var = self.get_next_variable()
                         operand_patterns.append(var)
 
-        rewrite_op_name = self.OP_MAP.get(op_name, op_name)
+        rewrite_op_name, _ = OPERATIONS[op_name]
         pattern = (
             f'({rewrite_op_name} {" ".join(operand_patterns)})'
             if operand_patterns

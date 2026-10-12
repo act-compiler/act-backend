@@ -6,10 +6,13 @@ import re
 import pytest
 from taidl import Accelerator
 
+import taidl.antlr4
+
 import act_backend
 from act_backend import generate_backend, spec_checks
 from act_backend.generator import get_instruction_metadata
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
+from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
 from act_backend.template_loader import get_backend_template_loader
@@ -36,6 +39,36 @@ def loader(name='ONE', model='d1', **names):
     acc.add_data_model(model, [128], [64], 'bf16')
     add_load(acc, model=model, **names)
     return acc
+
+
+def with_semantics(lines, inputs=2):
+    """An accelerator whose one instruction, gemm, has the given inputs and semantics lines"""
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [64], [64], 'bf16')
+    addresses = [f'addr_{number}' for number in range(1, inputs + 1)]
+    instr = acc.add_instruction('gemm', [], [*addresses, 'addr_out'])
+    instr.set_inputs([['d1', [f'@a.{address}'], ['64']] for address in addresses])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
+    instr.add_semantics('ENTRY gemm {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+    return acc
+
+
+# The two inputs of gemm, and its result by an operation
+IN1 = '%In1 = bf16[64,64] parameter(0)'
+IN2 = '%In2 = bf16[64,64] parameter(1)'
+
+
+def result(operation):
+    return f'ROOT %Out0 = bf16[64,64] {operation}'
+
+
+def grammar_words():
+    """The operation words the installed grammar lexes"""
+    with open(os.path.join(os.path.dirname(taidl.antlr4.__file__), 'IDLV2.g4')) as f:
+        grammar = re.sub(r'//.*', '', f.read())
+    rule = re.search(r'^OPERATION\s*:(.*?);', grammar, re.M | re.S).group(1)
+    return re.findall(r"'(\w+)'", rule)
 
 
 def refusal(accelerator, tmp_path):
@@ -199,3 +232,61 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
         in_class | in_case - spec_checks.CPP_KEYWORDS | in_functions - spec_checks.RUST_KEYWORDS
     )
     assert beside == spec_checks.COMPUTATIONAL_ATTRIBUTE_NAMES
+
+
+@pytest.mark.parametrize(
+    'lines, reason',
+    [
+        (
+            [IN1, IN2, result('maximum(%In1, %In2)')],
+            "uses the operation 'maximum', which the selector does not have",
+        ),
+        (
+            [IN1, IN2, result('add(%In1, %In2, %In1)')],
+            "gives the operation 'add' 3 values, where the selector's takes 2",
+        ),
+        (
+            [IN1, IN2, '%a = bf16[64,64] add(%In1, %In2)', result('divide(%a, 2)')],
+            "gives the operation 'divide' 1 values, where the selector's takes 2",
+        ),
+        (
+            [IN1, '%In2 = bf16[64,64] parameter(%In1)', result('dot(%In1, %In2)')],
+            "reads parameter(%In1), not one input's number",
+        ),
+    ],
+)
+def test_operation_the_selector_lacks_refused(lines, reason, tmp_path):
+    assert refusal(with_semantics(lines), tmp_path) == f'gemm: its semantics {reason}'
+
+
+@pytest.mark.parametrize('word', [word for word in grammar_words() if word != 'parameter'])
+def test_operation_word_handled_or_refused(word):
+    lines = spec_checks.SemanticsChecker('gemm')
+    # Handled: a line that gives the word the values it takes passes
+    if word in OPERATIONS:
+        _, count = OPERATIONS[word]
+        operands = ', '.join(['%In1'] * count)
+        lines.visit(
+            with_semantics([IN1, result(f'{word}({operands})')], 1)
+            .instructions[0]
+            .instr_semantics_ast
+        )
+    else:
+        acc = with_semantics([IN1, result(f'{word}(%In1)')], 1)
+        with pytest.raises(ValueError, match=f"uses the operation '{word}', which the selector"):
+            lines.visit(acc.instructions[0].instr_semantics_ast)
+
+
+def test_operations_are_the_egraphs_own():
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    with open(os.path.join(generic, 'src', 'ir', 'egraph.rs')) as f:
+        egraph = f.read()
+    # Each operator's word, whether it carries an attribute, and its number of children
+    arms = re.findall(
+        r"op(\.split\('_'\)\.next\(\)\.unwrap\(\))? == \"([a-z-]+)\"\s+&& <\[Id; (\d)\]", egraph
+    )
+    carries = {word for carried, word, _ in arms if carried}
+    # eye is no operation of the grammar
+    children = {word: int(count) for _, word, count in arms if word != 'eye'}
+    assert {word.removesuffix('_?'): count for word, count in OPERATIONS.values()} == children
+    assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries

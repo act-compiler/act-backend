@@ -5,6 +5,8 @@ import re
 import keyword
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
+from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
+from .semantics_visitor import OperandVisitor
 
 # A name the generated sources can spell as an identifier
 IDENTIFIER = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
@@ -275,3 +277,42 @@ def check_names(instructions, data_models):
     for instruction in instructions:
         check_attribute_names(instruction)
     check_data_model_names(data_models)
+
+
+class SemanticsChecker(OperandVisitor):
+    """Refuses each line of a semantics the selector cannot write into a rule"""
+
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+
+    def visitInstruction(self, ctx):
+        word = ctx.OPERATION().getText()
+        operands = self.visit(ctx.operands()) if ctx.operands() else []
+        if word == 'parameter':
+            # An input, read by its number
+            if [kind for _, kind in operands] != ['INT']:
+                given = ctx.operands().getText() if ctx.operands() else ''
+                raise ValueError(
+                    f"{self.name}: its semantics reads parameter({given}), not one input's number"
+                )
+        else:
+            if word not in OPERATIONS:
+                raise ValueError(
+                    f"{self.name}: its semantics uses the operation '{word}', "
+                    'which the selector does not have'
+                )
+            # The operands that name a value are what the operator takes
+            named = [text for text, kind in operands if kind == 'IDENTIFIER']
+            _, count = OPERATIONS[word]
+            if len(named) != count:
+                raise ValueError(
+                    f"{self.name}: its semantics gives the operation '{word}' {len(named)} values, "
+                    f"where the selector's takes {count}"
+                )
+
+
+def check_semantics(instructions):
+    """Refuse a semantics the selector cannot write a rule from"""
+    for instruction in instructions:
+        SemanticsChecker(instruction.instruction).visit(instruction.instr_semantics_ast)
