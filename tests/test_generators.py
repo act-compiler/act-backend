@@ -80,6 +80,18 @@ def test_address_ranges(accelerator, templates):
     assert 'get_h1() { return {{addr_in, MAKE_SUM(addr_in, n * 128)}}; }' in load_rm
 
 
+def test_size_written_from_its_tree(templates):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    instr = acc.add_instruction('load', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['(@c.n+1)*2-@c.n/2']]])
+    instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
+    load = squeeze(generate_instruction_class(instr, templates))
+    # Operators spaced, the spec's brackets, attributes by name
+    assert 'MAKE_SUM(addr_in, (n + 1) * 2 - n / 2)' in load
+    assert 'MAKE_SUM(addr_out, 64)' in load
+
+
 def test_storages(accelerator):
     models = generate_globals_models(accelerator.data_model)
     # One storage per data model but d0: its access dimensions, then its unit dimension count

@@ -1,7 +1,9 @@
 """What a backend cannot be generated for: each refused by name, before anything is written"""
 
 import re
-import ast
+
+from antlr4.tree.Tree import TerminalNode
+from taidl.antlr4 import IDLV2ExprParser
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
 from .isel_ir2isa_rewrites_rs_generator import RustGeneratorVisitor
@@ -332,31 +334,34 @@ def check_semantics(instructions):
                 )
 
 
-# The address the allocator reads for an operand: one address attribute, alone
-ADDRESS = re.compile(r'@a\.(\w+)')
+def address_attribute(start):
+    """Return the address attribute a start is, alone, or None"""
+    token = start.start
+    if token is start.stop and token.type == IDLV2ExprParser.ADDRESSING:
+        return token.text[3:]
+    return None
 
-# What a size is written with beside integers and computational attributes
-SIZE_SYNTAX = (ast.BinOp, ast.Mult, ast.Div, ast.Add, ast.Sub, ast.Name, ast.Load, ast.Constant)
+
+# Tokens a size may not hold, beside a negation
+SIZE_TOKENS = (IDLV2ExprParser.PERCENT, IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.STATE)
 
 
-def check_size(what, size, attributes):
+def beyond_allocator(size):
+    """Whether a size holds a remainder, a negation, an address attribute or a state variable"""
+    if isinstance(size, TerminalNode):
+        return size.getSymbol().type in SIZE_TOKENS
+    if isinstance(size, IDLV2ExprParser.UnaryContext) and size.MINUS():
+        return True
+    return any(beyond_allocator(part) for part in size.getChildren())
+
+
+def check_size(what, text, size):
     """Refuse a size the allocator's C++ cannot take as it is written"""
-    refusal = ValueError(
-        f"{what} has the size '{size}', which is not integers and computational attributes "
-        "joined by '*', '/', '+' and '-'"
-    )
-    try:
-        tree = ast.parse(re.sub(r'@c\.', '', str(size)).strip(), mode='eval')
-    except SyntaxError:
-        raise refusal from None
-    for node in ast.walk(tree.body):
-        known = (
-            isinstance(node, SIZE_SYNTAX)
-            and (not isinstance(node, ast.Name) or node.id in attributes)
-            and (not isinstance(node, ast.Constant) or type(node.value) is int)
+    if beyond_allocator(size):
+        raise ValueError(
+            f"{what} has the size '{text}', which is not integers and computational attributes "
+            "joined by '*', '/', '+' and '-'"
         )
-        if not known:
-            raise refusal
 
 
 def check_operands(instructions, data_models):
@@ -367,21 +372,24 @@ def check_operands(instructions, data_models):
     for instruction in instructions:
         name = instruction.instruction
         read = set()
-        for buffer, addresses, sizes in [*instruction.instr_outputs, *instruction.instr_inputs]:
+        # Each operand as written and as taidl parsed it
+        written = [*instruction.instr_outputs, *instruction.instr_inputs]
+        parsed = [*instruction.instr_output_asts, *instruction.instr_input_asts]
+        for (buffer, addresses, sizes), (_, starts, extents) in zip(written, parsed):
             what = f"{name}: its operand on '{buffer}'"
             if access_dimensions[buffer] != 1:
                 raise ValueError(
                     f'{what} is addressed along {access_dimensions[buffer]} dimensions, '
                     'and the allocator addresses one'
                 )
-            address = ADDRESS.fullmatch(str(addresses[0]).strip())
-            if not address:
+            address = address_attribute(starts[0])
+            if address is None:
                 raise ValueError(
                     f"{what} has the address '{addresses[0]}', "
                     'which is not one address attribute of the instruction'
                 )
-            check_size(what, sizes[0], instruction.comp_attr)
-            read.add(address.group(1))
+            check_size(what, sizes[0], extents[0])
+            read.add(address)
         for attribute in instruction.parameters:
             if attribute not in read:
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")

@@ -1,20 +1,9 @@
 """Generator for instructions.h - templates the generic file with instruction classes"""
 
 import os
-import re
+from .expression_writer import source
 from .instruction_info import to_camel_case
 from .template_loader import fill_placeholders, get_backend_template_loader
-
-
-def extract_addr_var(expr):
-    return re.search(r'@a\.(\w+)', expr).group(1)
-
-
-def extract_size_expr(expr):
-    if isinstance(expr, int):
-        return str(expr)
-    result = re.sub(r'@c\.', '', str(expr))
-    return result.strip()
 
 
 def generate_get_h_method(index, addr_var, size_expr, templates):
@@ -45,10 +34,10 @@ def generate_instruction_class(instruction, templates):
     get_h_cases = ''
 
     # The output's range first, then each input's
-    operands = [*instruction.instr_outputs, *instruction.instr_inputs]
-    for h_index, (_, addr_expr_list, size_expr_list) in enumerate(operands):
-        addr_var = extract_addr_var(addr_expr_list[0])
-        size_expr = extract_size_expr(size_expr_list[0])
+    operands = [*instruction.instr_output_asts, *instruction.instr_input_asts]
+    for h_index, (_, starts, sizes) in enumerate(operands):
+        addr_var = source(starts[0])
+        size_expr = source(sizes[0])
 
         get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
         get_h_cases += templates.render_lines(

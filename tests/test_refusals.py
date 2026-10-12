@@ -80,7 +80,7 @@ def grammar_words():
     return re.findall(r"'(\w+)'", rule)
 
 
-def with_operands(inputs=None, outputs=None, addresses=None, models=(), lines=None):
+def with_operands(inputs=None, outputs=None, addresses=None, models=(), lines=None, state=()):
     """An accelerator whose one instruction, gemm, has the given operands and address attributes
 
     With outputs False the instruction never gives its outputs.
@@ -90,6 +90,8 @@ def with_operands(inputs=None, outputs=None, addresses=None, models=(), lines=No
     acc.add_data_model('d2', [64], [64], 'bf16')
     for model in models:
         acc.add_data_model(*model)
+    for variable in state:
+        acc.add_initial_state(variable, 0)
     if inputs is None:
         inputs = [['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]]
     if outputs is None:
@@ -401,9 +403,10 @@ def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path
     assert refusal(with_operands(**operands), tmp_path) == f'gemm: {reason}'
 
 
-@pytest.mark.parametrize('size', ['-64'])
+@pytest.mark.parametrize('size', ['-64', '64 % 48', '@a.addr_out', '@s.rows', '64 * (2 - -1)'])
 def test_size_the_allocator_cannot_read_refused(size, tmp_path):
-    message = refusal(with_operands(outputs=[['d2', ['@a.addr_out'], [size]]]), tmp_path)
+    acc = with_operands(outputs=[['d2', ['@a.addr_out'], [size]]], state=['rows'])
+    message = refusal(acc, tmp_path)
     assert message == (
         f"gemm: its operand on 'd2' has the size '{size}', which is not integers and "
         "computational attributes joined by '*', '/', '+' and '-'"
