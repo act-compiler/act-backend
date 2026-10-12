@@ -1,5 +1,5 @@
 pub fn set_shapes_{{instruction_name}}(
-  {{egraph_param}}: &mut EGraph<TensorOp, TensorInfo>,
+  egraph: &mut EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &[Id],
   rhs_eclasses: &[Id],
 ) {

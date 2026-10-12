@@ -23,11 +23,10 @@ class RustGeneratorVisitor(OperandVisitor):
         non_duplicates = [a for a in self.assignments if not a['lhs'].endswith('_dup')]
         self.assignments = duplicates + non_duplicates
 
-        if self.root_assignment:
-            for assignment in self.assignments:
-                if assignment['lhs'] == self.root_assignment['lhs']:
-                    self.root_assignment = assignment
-                    break
+        for assignment in self.assignments:
+            if assignment['lhs'] == self.root_assignment['lhs']:
+                self.root_assignment = assignment
+                break
 
         return {
             'assignments': self.assignments,
@@ -138,7 +137,7 @@ def root_comp_attr(semantics_data):
     # The attribute the root's shape names, if the semantics has one
     root_assignment = semantics_data['root_assignment']
     comp_attrs = semantics_data['comp_attributes']
-    if root_assignment and comp_attrs:
+    if comp_attrs:
         return extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
     return None
 
@@ -167,7 +166,7 @@ def parse_comp_attr_expression(shape_expr, comp_attr):
 
 def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
     # Generate computational attribute extraction code from ROOT assignment
-    if not comp_attr or not root_assignment:
+    if not comp_attr:
         return ''
 
     comp_attr, factors = parse_comp_attr_expression(root_assignment['shape'], comp_attr)
@@ -267,23 +266,17 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         )
 
     # Generate shape setting
-    shape_setting = ''
-    if root_assignment:
-        dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
-        shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
+    dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
+    shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
 
-        shape_setting = templates.render_lines(
-            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
-            shape_vec=shape_vec,
-            dtype=dtype_rust,
-        )
-
-    # Without a root the function reads no e-graph
-    egraph_param = 'egraph' if root_assignment else '_'
+    shape_setting = templates.render_lines(
+        'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
+        shape_vec=shape_vec,
+        dtype=dtype_rust,
+    )
 
     return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt',
-        egraph_param=egraph_param,
         instruction_name=instruction_name,
         num_assignments=str(num_assignments),
         rhs_size=str(rhs_size),
