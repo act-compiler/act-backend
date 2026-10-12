@@ -1,4 +1,5 @@
 import os
+from .instruction_info import get_buffer_name
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -7,7 +8,7 @@ def generate_buffer_names(data_models, templates):
     buffer_names = []
     for dm in data_models:
         if dm.var_name != 'd0':
-            buffer_name = dm.var_name.upper()
+            buffer_name = get_buffer_name(dm.var_name)
             buffer_names.append(
                 templates.render(
                     'act_malloc.cc.BUFFER_NAMES.name.txt', buffer_name=f'"{buffer_name}"'

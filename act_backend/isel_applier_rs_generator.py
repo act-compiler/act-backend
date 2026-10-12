@@ -1,4 +1,5 @@
 import os
+from .instruction_info import get_kebab_name
 from .template_loader import fill_placeholders
 
 
@@ -8,7 +9,7 @@ def generate_function_mappings(instructions):
 
     for instruction in instructions:
         name = instruction.instruction
-        kebab_name = name.replace('_', '-')
+        kebab_name = get_kebab_name(name)
 
         mappings['precond'].append(f'    "{kebab_name}" => precond_{name},')
         mappings['metadata'].append(f'    "{kebab_name}" => metadata_{name},')

@@ -1,32 +1,12 @@
 import os
 from typing import List
-from dataclasses import dataclass
+from .instruction_info import (
+    InstructionInfo,
+    extract_instruction_info,
+    get_kebab_name,
+    get_rust_variant_name,
+)
 from .template_loader import fill_placeholders, get_backend_template_loader
-
-
-@dataclass
-class InstructionInfo:
-    name: str
-    arity: int
-    has_metadata: bool
-
-
-def get_rust_variant_name(instr_name: str) -> str:
-    words = instr_name.replace('-', '_').split('_')
-    return ''.join(word.capitalize() for word in words)
-
-
-def extract_instruction_info(instructions) -> List[InstructionInfo]:
-    info_list = []
-
-    for instruction in instructions:
-        name = instruction.instruction
-        arity = len(instruction.instr_inputs)
-        has_metadata = len(instruction.comp_attr) > 0
-
-        info_list.append(InstructionInfo(name, arity, has_metadata))
-
-    return info_list
 
 
 def generate_instruction_variants(instructions_info: List[InstructionInfo], templates):
@@ -41,7 +21,7 @@ def generate_instruction_variants(instructions_info: List[InstructionInfo], temp
 
     for info in instructions_info:
         variant_name = get_rust_variant_name(info.name)
-        kebab_name = info.name.replace('_', '-')
+        kebab_name = get_kebab_name(info.name)
 
         # Enum variant
         if info.has_metadata:

@@ -143,7 +143,7 @@ fn add_expr_to_egraph(
   root: &mut Option<Id>,
   parsing_root: bool,
 ) {
-  match expr {
+  let (tsymbol, ttype, tshape, ttile) = match expr {
     HLOExpr::Parameter {
       tsymbol,
       tshape,
@@ -159,6 +159,7 @@ fn add_expr_to_egraph(
       } else {
         panic!("Duplicate parameter index: {}", tidx);
       }
+      return;
     }
 
     HLOExpr::Constant {
@@ -169,6 +170,7 @@ fn add_expr_to_egraph(
     } => {
       assert!(parsing_root == false); // constants should not be in root
       add_constant(tsymbol, ttype, tshape, value, egraph, table);
+      return;
     }
 
     HLOExpr::Broadcast {
@@ -179,9 +181,7 @@ fn add_expr_to_egraph(
       source,
     } => {
       add_broadcast(tsymbol, ttype, tshape, source, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::BinaryOp {
@@ -194,9 +194,7 @@ fn add_expr_to_egraph(
       rhs,
     } => {
       add_binary_op(tsymbol, ttype, tshape, op_name, lhs, rhs, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Slice {
@@ -208,9 +206,7 @@ fn add_expr_to_egraph(
       slices,
     } => {
       add_slice(tsymbol, ttype, tshape, source, slices, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Concatenate {
@@ -222,9 +218,7 @@ fn add_expr_to_egraph(
       dimensions,
     } => {
       add_concatenate(tsymbol, ttype, tshape, tinputs, dimensions, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Reshape {
@@ -235,9 +229,7 @@ fn add_expr_to_egraph(
       source,
     } => {
       add_reshape(tsymbol, ttype, tshape, source, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Transpose {
@@ -249,9 +241,7 @@ fn add_expr_to_egraph(
       dimensions,
     } => {
       add_transpose(tsymbol, ttype, tshape, source, dimensions, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Convert {
@@ -262,9 +252,7 @@ fn add_expr_to_egraph(
       source,
     } => {
       add_convert(tsymbol, ttype, tshape, source, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::ReduceSum {
@@ -276,9 +264,7 @@ fn add_expr_to_egraph(
       dimensions,
     } => {
       add_reduce(tsymbol, ttype, tshape, source, dimensions, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
 
     HLOExpr::Exponential {
@@ -289,11 +275,35 @@ fn add_expr_to_egraph(
       source,
     } => {
       add_exponential(tsymbol, ttype, tshape, source, egraph, table);
-      if parsing_root {
-        add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
-      }
+      (tsymbol, ttype, tshape, ttile)
     }
+  };
+
+  // The last instruction is written back as bytes
+  if parsing_root {
+    add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root);
   }
+}
+
+// Give a node its type and shape, and the kernel's name for it
+fn bind_node(
+  tsymbol: &str,
+  node: Id,
+  shape: Vec<i32>,
+  dtype: Dtype,
+  is_const: bool,
+  egraph: &mut EGraph<TensorOp, TensorInfo>,
+  table: &mut EggSymbolTable,
+) {
+  egraph.set_analysis_data(
+    node,
+    TensorInfo {
+      shape,
+      dtype,
+      is_const,
+    },
+  );
+  table.insert(tsymbol.to_string(), node);
 }
 
 pub fn add_parameter(
@@ -436,17 +446,7 @@ fn add_constant(
   let shape = shape_to_vec(tshape);
 
   let node = egraph.add(TensorOp::OpConstant(value.to_string()));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: true,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, true, egraph, table);
 }
 
 fn add_broadcast(
@@ -464,17 +464,7 @@ fn add_broadcast(
     tshape.to_string(),
     [*table.get(source).unwrap()],
   ));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_binary_op(
@@ -499,17 +489,7 @@ fn add_binary_op(
       "dot" => TensorOp::OpDot,
       "divide" => TensorOp::OpDivide
   });
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_slice(
@@ -543,16 +523,7 @@ fn add_slice(
     slice_str.to_string(),
     [*table.get(source).unwrap()],
   ));
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_concatenate(
@@ -579,17 +550,7 @@ fn add_concatenate(
       *table.get(&inputs[1]).unwrap(),
     ],
   ));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_reshape(
@@ -607,17 +568,7 @@ fn add_reshape(
     tshape.to_string(),
     [*table.get(source).unwrap()],
   ));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_transpose(
@@ -636,17 +587,7 @@ fn add_transpose(
     dimensions.to_string(),
     [*table.get(source).unwrap()],
   ));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_convert(
@@ -664,17 +605,7 @@ fn add_convert(
     ttype.to_string(),
     [*table.get(source).unwrap()],
   ));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_reduce(
@@ -693,16 +624,7 @@ fn add_reduce(
     dimensions.to_string(),
     [*table.get(source).unwrap()],
   ));
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_exponential(
@@ -717,17 +639,7 @@ fn add_exponential(
   let shape = shape_to_vec(tshape);
 
   let node = egraph.add(TensorOp::OpExp([*table.get(source).unwrap()]));
-
-  egraph.set_analysis_data(
-    node,
-    TensorInfo {
-      shape: shape.clone(),
-      dtype,
-      is_const: false,
-    },
-  );
-
-  table.insert(tsymbol.to_string(), node);
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
 }
 
 fn add_root_operations(

@@ -1,4 +1,5 @@
 import os
+from .instruction_info import get_buffer_name
 from .template_loader import fill_placeholders
 
 
@@ -9,7 +10,7 @@ def generate_globals_models(data_models):
     for data_model in data_models:
         idx += 1
         if data_model.var_name != 'd0':
-            buffer_name = data_model.var_name.upper()
+            buffer_name = get_buffer_name(data_model.var_name)
 
             access_dims = '{'
             for dim in data_model.access_dim:

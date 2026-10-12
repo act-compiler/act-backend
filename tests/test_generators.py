@@ -5,8 +5,9 @@ import re
 import pytest
 from taidl import Accelerator
 
-from act_backend import ir_buffer_rs_generator, ir_egraph_rs_generator
+from act_backend import ir_egraph_rs_generator
 from act_backend.generator import get_instruction_metadata
+from act_backend.instruction_info import extract_instruction_info
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
 from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
@@ -68,7 +69,7 @@ def test_rewrite_rules(accelerator, templates):
 
 
 def test_buffer_assignments(accelerator):
-    info = ir_buffer_rs_generator.extract_instruction_info(accelerator.instructions)
+    info = extract_instruction_info(accelerator.instructions)
     # The output's buffer first, then each input's, d0 as HBM
     assert [i.buffer_assignment for i in info] == [
         'Some(vec![Buffer::D1, Buffer::HBM])',
@@ -77,7 +78,7 @@ def test_buffer_assignments(accelerator):
 
 
 def test_enum_variants(accelerator, templates):
-    info = ir_egraph_rs_generator.extract_instruction_info(accelerator.instructions)
+    info = extract_instruction_info(accelerator.instructions)
     parts = ir_egraph_rs_generator.generate_instruction_variants(info, templates)
     # A computational attribute is carried as a string beside the inputs
     assert [squeeze(variant) for variant in parts['enum_variants']] == [
