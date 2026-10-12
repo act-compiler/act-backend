@@ -65,7 +65,7 @@ class RustGeneratorVisitor(OperandVisitor):
             operands = self.visit(ctx.operands())
             for operand_text, operand_type in operands:
                 self.extract_comp_attrs_from_text(operand_text)
-                if operand_type == 'IDENTIFIER':
+                if operand_type == 'VALUE':
                     operand_names.append(operand_text)
 
         for operand_text in operand_names:

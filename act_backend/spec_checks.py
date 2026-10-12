@@ -417,7 +417,7 @@ class SemanticsChecker(OperandVisitor):
                     'which the selector does not have'
                 )
             # The operands that name a value are what the operator takes
-            named = [text for text, kind in operands if kind == 'IDENTIFIER']
+            named = [text for text, kind in operands if kind == 'VALUE']
             _, count = OPERATIONS[word]
             if len(named) != count:
                 raise ValueError(
