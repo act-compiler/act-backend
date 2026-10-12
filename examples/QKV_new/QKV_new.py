@@ -72,8 +72,8 @@ ENTRY store_30 {
 
 # (5) transpose_13: Moves data from d1 to d3 in row-major format (with transpose)
 instr = qkv.add_instruction('transpose_13', [], ['addr_in', 'addr_out'])
-instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])  # bf16[@c.n, 64]
-instr.set_outputs([['d3', ['@a.addr_out'], ['64']]])  # bf16[64, @c.n]
+instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])  # bf16[64, 64]
+instr.set_outputs([['d3', ['@a.addr_out'], ['64']]])  # bf16[64, 64]
 instr.add_semantics("""
 ENTRY transpose_13 {
     %In1 = bf16[64,64] parameter(0);
@@ -96,7 +96,7 @@ ENTRY mov_21 {
 # (7) mov_23: Copies data from d2 to d3
 instr = qkv.add_instruction('mov_23', ['n'], ['addr_in', 'addr_out'])
 instr.set_inputs([['d2', ['@a.addr_in'], ['@c.n']]])  # bf16[@c.n, 64]
-instr.set_outputs([['d3', ['@a.addr_out'], ['@c.n']]])  # bf16[@c.n, 64] (ignore last 64 columns)
+instr.set_outputs([['d3', ['@a.addr_out'], ['@c.n']]])  # bf16[@c.n, 64]
 instr.add_semantics("""
 ENTRY mov_23 {
     %In1 = bf16[`@c.n`,64] parameter(0);
