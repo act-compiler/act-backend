@@ -82,6 +82,82 @@ DECLARATION_WORDS = ('Var', 'DCC')
 # Buffers the selector holds beside the data models'
 BUFFERS = {'HBM', 'ANY'}
 
+RUST_KEYWORDS = set(
+    'abstract as async await become box break const continue crate do dyn else enum extern false '
+    'final fn for if impl in let loop macro match mod move mut override priv pub ref return self '
+    'Self static struct super trait true try type typeof unsafe unsized use virtual where while '
+    'yield'.split()
+)
+
+CPP_KEYWORDS = set(
+    'alignas alignof and and_eq asm auto bitand bitor bool break case catch char char16_t '
+    'char32_t class compl const const_cast constexpr continue decltype default delete do double '
+    'dynamic_cast else enum explicit export extern false float for friend goto if inline int long '
+    'mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public '
+    'register reinterpret_cast return short signed sizeof static static_assert static_cast struct '
+    'switch template this thread_local throw true try typedef typeid typename union unsigned '
+    'using virtual void volatile wchar_t while xor xor_eq'.split()
+)
+
+# Names the generated class of the allocator spells beside an attribute
+ADDRESS_ATTRIBUTE_NAMES = {
+    'Constraints',
+    'INT64_MAX',
+    'INT64_MIN',
+    'Instruction',
+    'IntExpr',
+    'IntVar',
+    'MAKE_INT_VAR',
+    'MAKE_SUM',
+    'Tensor',
+    'X',
+    'assert',
+    'constraints',
+    'get_e',
+    'get_h',
+    'get_int_var',
+    'int64',
+    'num',
+    'op_name',
+    'override',
+    'solver',
+    'std',
+    'str',
+    'y',
+}
+
+# Those, and the names the parser's case and the rule functions spell beside a computational one
+COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
+    'attr_str',
+    'end',
+    'lhs_tensor',
+    'panic',
+    'rhs_tensors',
+    'start',
+    'Dtype',
+    'EGraph',
+    'Id',
+    'None',
+    'Option',
+    'Some',
+    'String',
+    'TensorInfo',
+    'TensorOp',
+    'Vec',
+    'assert_eq',
+    'bool',
+    'egraph',
+    'id',
+    'lhs_eclasses',
+    'lhs_metadata',
+    'rhs_eclasses',
+    'rhs_metadata',
+    'vec',
+}
+
+# The method the generated class gives each operand's range
+RANGE_METHOD = re.compile(r'get_h\d+')
+
 
 def check_accelerator_name(name):
     """Refuse an accelerator name that is no directory's name: the backend is written under it"""
@@ -137,6 +213,41 @@ def check_instruction_names(instructions):
         carried[generated] = name
 
 
+def check_attribute_names(instruction):
+    """Refuse an attribute name the generated sources cannot carry beside their own names"""
+    name = instruction.instruction
+    seen = set()
+    for kind, attributes, languages, keywords, held in [
+        (
+            'computational',
+            instruction.comp_attr,
+            'Rust or C++',
+            RUST_KEYWORDS | CPP_KEYWORDS,
+            COMPUTATIONAL_ATTRIBUTE_NAMES,
+        ),
+        ('address', instruction.parameters, 'C++', CPP_KEYWORDS, ADDRESS_ATTRIBUTE_NAMES),
+    ]:
+        for attribute in attributes:
+            what = f'{name}: {kind} attribute'
+            check_assembly_name(what, attribute)
+            if attribute in keywords:
+                raise ValueError(
+                    f"{what} '{attribute}' is a {languages} keyword, "
+                    'which the generated code cannot spell'
+                )
+            # The parser's case reads a computational attribute through <name>_str
+            spelled = {attribute, f'{attribute}_str'} if kind == 'computational' else {attribute}
+            if (
+                spelled & held
+                or RANGE_METHOD.fullmatch(attribute)
+                or attribute == to_camel_case(name)
+            ):
+                raise ValueError(f"{what} '{attribute}' is a name the backend already holds")
+            if attribute in seen:
+                raise ValueError(f"{name}: attribute '{attribute}' is given twice")
+            seen.add(attribute)
+
+
 def check_data_model_names(data_models):
     """Refuse a data model name that gives no buffer of its own"""
     carried = {}
@@ -161,4 +272,6 @@ def check_data_model_names(data_models):
 def check_names(instructions, data_models):
     """Refuse a spec whose names the generated backend cannot carry"""
     check_instruction_names(instructions)
+    for instruction in instructions:
+        check_attribute_names(instruction)
     check_data_model_names(data_models)

@@ -8,6 +8,11 @@ from taidl import Accelerator
 
 import act_backend
 from act_backend import generate_backend, spec_checks
+from act_backend.generator import get_instruction_metadata
+from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
+from act_backend.malloc_instructions_h_generator import generate_instruction_class
+from act_backend.malloc_parser_cc_generator import generate_parser_instructions
+from act_backend.template_loader import get_backend_template_loader
 
 
 def add_load(acc, instruction='load', attribute='n', address='addr_out', model='d1'):
@@ -78,6 +83,49 @@ def test_instruction_names_that_fold_to_one_refused(tmp_path):
 
 
 @pytest.mark.parametrize(
+    'names, reason',
+    [
+        ({'attribute': 'n-1'}, "computational attribute 'n-1' is not an identifier"),
+        (
+            {'address': 'class'},
+            "address attribute 'class' is a Python keyword, which no assembly can spell",
+        ),
+        (
+            {'attribute': 'type'},
+            "computational attribute 'type' is a Rust or C++ keyword, which the generated code cannot spell",
+        ),
+        (
+            {'address': 'register'},
+            "address attribute 'register' is a C++ keyword, which the generated code cannot spell",
+        ),
+        (
+            {'attribute': 'lhs_metadata'},
+            "computational attribute 'lhs_metadata' is a name the backend already holds",
+        ),
+        (
+            {'attribute': 'start'},
+            "computational attribute 'start' is a name the backend already holds",
+        ),
+        (
+            {'attribute': 'attr'},
+            "computational attribute 'attr' is a name the backend already holds",
+        ),
+        (
+            {'attribute': 'Load'},
+            "computational attribute 'Load' is a name the backend already holds",
+        ),
+        ({'address': 'solver'}, "address attribute 'solver' is a name the backend already holds"),
+        ({'address': 'get_h0'}, "address attribute 'get_h0' is a name the backend already holds"),
+        ({'address': 'Tensor'}, "address attribute 'Tensor' is a name the backend already holds"),
+        ({'address': 'n'}, "attribute 'n' is given twice"),
+        ({'address': 'addr_in'}, "attribute 'addr_in' is given twice"),
+    ],
+)
+def test_attribute_name_refused(names, reason, tmp_path):
+    assert refusal(loader(**names), tmp_path) == f'load: {reason}'
+
+
+@pytest.mark.parametrize(
     'name, reason',
     [
         ('d-1', 'is not an identifier'),
@@ -95,7 +143,13 @@ def test_data_model_names_that_fold_to_one_refused(tmp_path):
     assert refusal(acc, tmp_path) == "Data model names 'd1' and 'D1' both give the buffer D1"
 
 
-def test_reserved_names_are_the_skeletons_own():
+def spelled(text):
+    """The names a generated source spells bare: outside a string, a comment and a member path"""
+    text = re.sub(r'"[^"\n]*"|//[^\n]*', '', text)
+    return set(re.findall(r'(?<![\w.:>])([A-Za-z_]\w*)\b(?!\s*:(?!:))', text))
+
+
+def test_reserved_names_are_the_skeletons_own(accelerator):
     generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
 
     def read(*path):
@@ -123,3 +177,25 @@ def test_reserved_names_are_the_skeletons_own():
     ]
     types = re.findall(r'^(?:class|struct) (\w+)|^using (\w+) =', '\n'.join(sources), re.M)
     assert {a or b for a, b in types} == spec_checks.ALLOCATOR_TYPES
+
+    # Each name the sources generated for load_rm spell, its own apart, with its macros' bodies
+    templates = get_backend_template_loader()
+    load_rm = accelerator.instructions[0]
+    own = {'LoadRm', 'n', 'n_str', 'addr_in', 'addr_out'}
+    in_class = spelled(generate_instruction_class(load_rm, templates))
+    macros = re.findall(
+        r'^#define (\w+)\(([^)]*)\) (.*)$', read(allocator, 'include', 'solver.h'), re.M
+    )
+    for macro, parameters, body in macros:
+        if macro in in_class:
+            in_class |= spelled(body) - set(re.findall(r'\w+', parameters))
+    in_class = {name for name in in_class - own if not spec_checks.RANGE_METHOD.fullmatch(name)}
+    in_class -= spec_checks.CPP_KEYWORDS
+    assert in_class == spec_checks.ADDRESS_ATTRIBUTE_NAMES
+    in_case = spelled(generate_parser_instructions([load_rm], templates)) - own
+    functions = generate_ir2isa_rust_functions(get_instruction_metadata([load_rm])[0], templates)
+    in_functions = {name for name in spelled(functions) - own if not name.endswith('_load_rm')}
+    beside = (
+        in_class | in_case - spec_checks.CPP_KEYWORDS | in_functions - spec_checks.RUST_KEYWORDS
+    )
+    assert beside == spec_checks.COMPUTATIONAL_ATTRIBUTE_NAMES
