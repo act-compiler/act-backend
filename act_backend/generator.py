@@ -112,21 +112,21 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
     if os.path.exists(cargo_build_dir):
         shutil.rmtree(cargo_build_dir)
-    subprocess.run(
+    build = subprocess.run(
         ['cargo', 'build', '--release'],
         cwd=backend_gen_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
+    # A failed build is reported with what cargo printed
+    if build.returncode != 0:
+        raise RuntimeError(f'Backend build failed in {backend_gen_dir}:\n{build.stdout}')
     print(f'Backend build complete for {accelerator.name}')
 
     # Copy built backend to final destination
     build_backend_path = os.path.join(cargo_build_dir, 'release', 'backend')
     final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
-    if os.path.exists(build_backend_path):
-        Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(build_backend_path, final_dest_path)
-        print(f'Final backend binary located at {final_dest_path}')
-    else:
-        raise RuntimeError('Backend build failed. Please check the build logs.')
+    Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(build_backend_path, final_dest_path)
+    print(f'Final backend binary located at {final_dest_path}')
