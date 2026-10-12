@@ -3,17 +3,6 @@
 version = 4
 
 [[package]]
-name = "backend"
-version = "1.4.0"
-dependencies = [
- "egg",
- "itertools",
- "libc",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -24,6 +13,17 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "backend"
+version = "1.4.0"
+dependencies = [
+ "egg",
+ "itertools",
+ "libc",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "bitflags"
