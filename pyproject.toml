@@ -22,4 +22,4 @@ include = ["act_backend*"]
 
 [tool.setuptools.package-data]
 "act_backend.templates" = ["*.txt"]
-"act_backend.generic" = ["**/*"]
+"act_backend.generic" = ["**/*", ".gitignore"]
