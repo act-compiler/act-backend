@@ -1,6 +1,7 @@
 """Shared test utilities for ACT-Backend tests"""
 
 import os
+import re
 import sys
 import shutil
 import subprocess
@@ -58,6 +59,22 @@ def generate_oracle_and_backend(example_dir, work_dir):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             break
+
+
+def unfilled_sources(work_dir):
+    """Return the generated backend sources that still hold a placeholder"""
+    backend_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    assert os.path.isdir(backend_dir), f'no generated backend at {backend_dir}'
+    unfilled = []
+    for root, dirs, names in os.walk(backend_dir):
+        # The build trees hold no generated source
+        dirs[:] = [d for d in dirs if d not in ('target', 'build')]
+        for name in names:
+            if name.endswith(('.rs', '.cc', '.h', '.txt')):
+                with open(os.path.join(root, name)) as f:
+                    if re.search(r'\{\{[A-Z0-9_]+\}\}', f.read()):
+                        unfilled.append(os.path.join(root, name))
+    return unfilled
 
 
 def compile_hlo(work_dir, example_dir):
