@@ -1,0 +1,4 @@
+# What the tests need beside the package
+pytest
+# The oracle that simulates a compiled kernel
+taidl-to @ git+https://github.com/act-compiler/act-oracle.git@v2.5
