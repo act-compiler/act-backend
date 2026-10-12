@@ -21,9 +21,10 @@ public:
   std::string dtype;
   std::string value = ""; // Optional, for constants
 
-  MetaDataInfo(int addr, const std::vector<int64> &shape,
-               const std::string &dtype, const std::string &value = "")
-      : addr(addr), shape(shape), dtype(dtype), value(value) {}
+  MetaDataInfo(int addr, const std::vector<int64> &shape, const std::string &dtype,
+               const std::string &value = "")
+      : addr(addr), shape(shape), dtype(dtype), value(value) {
+  }
 
   MetaDataInfo(nlohmann::json &j);
   std::string str() const;
@@ -43,8 +44,7 @@ public:
            const std::unordered_map<Tensor *, std::string> &known_constants);
 };
 
-bool assembly_dump(char *outpath,
-                   const std::vector<Instruction *> &instructions,
+bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions,
                    const MetaData &metadata);
 
 } // namespace emitter

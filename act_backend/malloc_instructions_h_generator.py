@@ -22,10 +22,10 @@ def extract_size_expr(expr):
 
 
 def generate_get_h_method(index, addr_var, size_expr, templates):
-    range_pair = f"{addr_var}, MAKE_SUM({addr_var}, {size_expr})"
-    return templates.render("instructions.h.INSTRUCTION_CLASSES.get_h_method.txt",
-                            index=index,
-                            ranges=range_pair)
+    range_pair = f'{addr_var}, MAKE_SUM({addr_var}, {size_expr})'
+    return templates.render(
+        'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=range_pair
+    )
 
 
 def generate_instruction_class(instruction, templates):
@@ -36,17 +36,17 @@ def generate_instruction_class(instruction, templates):
     params = instruction.parameters
 
     # Generate members
-    comp_attr_members = ""
+    comp_attr_members = ''
     for attr in comp_attrs:
-        comp_attr_members += f"  int64 {attr};\n"
+        comp_attr_members += f'  int64 {attr};\n'
 
-    addr_var_members = "\n"
+    addr_var_members = '\n'
     for param in params:
-        addr_var_members += f"  IntVar *{param} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n"
+        addr_var_members += f'  IntVar *{param} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
 
     # Generate get_h methods: output first (get_h0), then inputs (get_h1, get_h2, ...)
-    get_h_methods = ""
-    get_h_cases = ""
+    get_h_methods = ''
+    get_h_cases = ''
     h_index = 0
 
     # Process outputs
@@ -58,7 +58,8 @@ def generate_instruction_class(instruction, templates):
         if addr_var:
             get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
             get_h_cases += templates.render(
-                "instructions.h.INSTRUCTION_CLASSES.get_h_case.txt", index=h_index)
+                'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
+            )
             h_index += 1
 
     # Process inputs
@@ -70,70 +71,73 @@ def generate_instruction_class(instruction, templates):
         if addr_var:
             get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
             get_h_cases += templates.render(
-                "instructions.h.INSTRUCTION_CLASSES.get_h_case.txt", index=h_index)
+                'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
+            )
             h_index += 1
 
     # Generate constructor parameters
-    comp_attr_params = ""
+    comp_attr_params = ''
     if comp_attrs:
-        comp_attr_params = ", " + ", ".join(f"int64 {attr}" for attr in comp_attrs)
+        comp_attr_params = ', ' + ', '.join(f'int64 {attr}' for attr in comp_attrs)
 
     # Generate constructor initialization
-    comp_attr_init = ""
+    comp_attr_init = ''
     if comp_attrs:
-        comp_attr_init = ", " + ", ".join(f"{attr}({attr})" for attr in comp_attrs)
+        comp_attr_init = ', ' + ', '.join(f'{attr}({attr})' for attr in comp_attrs)
 
     # No validations needed
-    validations = ""
-    str_bound_checks = ""
+    validations = ''
+    str_bound_checks = ''
 
-    str_format = ""
+    str_format = ''
     for attr in comp_attrs:
         if str_format:
-            str_format += ", "
-        str_format += f"{attr} = \" + std::to_string({attr}) + \""
+            str_format += ', '
+        str_format += f'{attr} = " + std::to_string({attr}) + "'
     for param in params:
         if str_format:
-            str_format += ", "
-        str_format += f"{param} = \" + std::to_string({param}->Value()) + \""
+            str_format += ', '
+        str_format += f'{param} = " + std::to_string({param}->Value()) + "'
 
     # Generate get_int_var list
-    get_int_var_list = ", ".join(params)
+    get_int_var_list = ', '.join(params)
 
     # Generate complete class using template
-    return templates.render("instructions.h.INSTRUCTION_CLASSES.class.txt",
-                            CLASS_NAME=class_name,
-                            OP_NAME=op_name,
-                            COMP_ATTR_MEMBERS=comp_attr_members,
-                            ADDR_VAR_MEMBERS=addr_var_members,
-                            GET_H_METHODS=get_h_methods,
-                            COMP_ATTR_PARAMS=comp_attr_params,
-                            COMP_ATTR_INIT=comp_attr_init,
-                            CONSTRUCTOR_VALIDATIONS=validations,
-                            STR_BOUND_CHECKS=str_bound_checks,
-                            STR_FORMAT=str_format,
-                            GET_H_CASES=get_h_cases,
-                            GET_INT_VAR_LIST=get_int_var_list)
+    return templates.render(
+        'instructions.h.INSTRUCTION_CLASSES.class.txt',
+        CLASS_NAME=class_name,
+        OP_NAME=op_name,
+        COMP_ATTR_MEMBERS=comp_attr_members,
+        ADDR_VAR_MEMBERS=addr_var_members,
+        GET_H_METHODS=get_h_methods,
+        COMP_ATTR_PARAMS=comp_attr_params,
+        COMP_ATTR_INIT=comp_attr_init,
+        CONSTRUCTOR_VALIDATIONS=validations,
+        STR_BOUND_CHECKS=str_bound_checks,
+        STR_FORMAT=str_format,
+        GET_H_CASES=get_h_cases,
+        GET_INT_VAR_LIST=get_int_var_list,
+    )
 
 
 def generate_instructions_file(backend_gen_dir, instructions, data_models):
     """Template instructions.h from generic file"""
     templates = get_backend_template_loader()
-    
+
     # Read generic template file
     generic_file = os.path.join(backend_gen_dir, 'cpp', 'malloc', 'include', 'instructions.h')
     with open(generic_file, 'r') as f:
         content = f.read()
-    
+
     # Generate all instruction classes
-    classes = ""
+    classes = ''
     for instruction in instructions:
         if hasattr(instruction, 'instr_inputs') and hasattr(instruction, 'instr_outputs'):
-            classes += generate_instruction_class(instruction, templates) + "\n"
-    
+            classes += generate_instruction_class(instruction, templates) + '\n'
+
     # Replace placeholder
     content = content.replace('{{INSTRUCTION_CLASSES}}', classes)
-    
+
     # Write back
     with open(generic_file, 'w') as f:
         f.write(content)

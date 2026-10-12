@@ -51,7 +51,7 @@ class TemplateLoader:
         template = self.load(template_file)
         result = template
         for key, value in kwargs.items():
-            placeholder = f"{{{{{key}}}}}"
+            placeholder = f'{{{{{key}}}}}'
             result = result.replace(placeholder, str(value))
         return result
 

@@ -21,8 +21,7 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions) {
 
     for (size_t i = 0; i < lhs_offsets.size(); ++i) {
       solver.AddConstraint(MAKE_EQUALITY(h0[i].first, lhs_offsets[i]));
-      solver.AddConstraint(
-          MAKE_EQUALITY(h0[i].second, MAKE_SUM(lhs_offsets[i], lhs_size[i])));
+      solver.AddConstraint(MAKE_EQUALITY(h0[i].second, MAKE_SUM(lhs_offsets[i], lhs_size[i])));
     }
   }
 }
@@ -39,15 +38,13 @@ void def_use_constraints(const std::vector<Instruction *> &instructions) {
 
       for (size_t j = 0; j < offsets.size(); ++j) {
         solver.AddConstraint(MAKE_EQUALITY(h_i[j].first, offsets[j]));
-        solver.AddConstraint(
-            MAKE_EQUALITY(h_i[j].second, MAKE_SUM(offsets[j], sizes[j])));
+        solver.AddConstraint(MAKE_EQUALITY(h_i[j].second, MAKE_SUM(offsets[j], sizes[j])));
       }
     }
   }
 }
 
-void initial_constraints(
-    const std::unordered_map<Tensor *, int64> &known_offsets) {
+void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets) {
   for (const auto &pair : known_offsets) {
     // Input & Output Tensor addresses: 𝐼𝑠(𝑥𝑖) = 𝑐𝑜𝑛𝑠𝑡
 
@@ -60,10 +57,9 @@ void initial_constraints(
   }
 }
 
-void overlap_constraints(
-    const std::vector<Instruction *> &instructions,
-    const std::unordered_map<std::string, Tensor *> &tensor_map,
-    std::vector<IntVar *> &new_vars) {
+void overlap_constraints(const std::vector<Instruction *> &instructions,
+                         const std::unordered_map<std::string, Tensor *> &tensor_map,
+                         std::vector<IntVar *> &new_vars) {
 
   // Compute live ranges for all tensors
   std::unordered_map<Tensor *, LiveRange> live_ranges;
@@ -100,8 +96,8 @@ void overlap_constraints(
       // Enforce (b1 OR b2) by requiring b1 + b2 >= 1
       IntVar *b1 = solver.MakeIsLessOrEqualVar(end1, offsets2[i]);
       IntVar *b2 = solver.MakeIsLessOrEqualVar(end2, offsets1[i]);
-      solver.AddConstraint(solver.MakeGreaterOrEqual(
-          solver.MakeSum(std::vector<IntVar *>{b1, b2}), int64_t(1)));
+      solver.AddConstraint(
+          solver.MakeGreaterOrEqual(solver.MakeSum(std::vector<IntVar *>{b1, b2}), int64_t(1)));
       new_vars.push_back(b1);
       new_vars.push_back(b2);
     }
@@ -114,8 +110,7 @@ void overlap_constraints(
 // where 1 is the first instruction to be executed
 // and N is the last instruction to be executed
 // 0 refers to the time before any instruction is executed, i.e., initial state
-LiveRange compute_live_range(Tensor *a,
-                             const std::vector<Instruction *> &instructions) {
+LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions) {
   // Helper lambdas
   // (i) panic with error message
   auto panic = [&](const std::string &msg) -> LiveRange {
@@ -196,8 +191,8 @@ LiveRange compute_live_range(Tensor *a,
   return panic("unknown tensor type.");
 }
 
-InterferenceGraph build_interference_graph(
-    const std::unordered_map<Tensor *, LiveRange> &live_ranges) {
+InterferenceGraph
+build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ranges) {
   std::vector<std::pair<Tensor *, Tensor *>> interference_graph;
 
   for (auto it1 = live_ranges.begin(); it1 != live_ranges.end(); ++it1) {

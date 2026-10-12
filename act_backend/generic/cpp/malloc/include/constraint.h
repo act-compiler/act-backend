@@ -22,22 +22,19 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions);
 void def_use_constraints(const std::vector<Instruction *> &instructions);
 
 // CSP3: 𝐼𝑠(𝑥𝑖) = 𝑐𝑜𝑛𝑠𝑡
-void initial_constraints(
-    const std::unordered_map<Tensor *, int64> &known_offsets);
+void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets);
 
 // CSP4: NON_OVERLAP(ℎ(0), ℎ'(0))
-void overlap_constraints(
-    const std::vector<Instruction *> &instructions,
-    const std::unordered_map<std::string, Tensor *> &tensor_map,
-    std::vector<IntVar *> &new_vars);
+void overlap_constraints(const std::vector<Instruction *> &instructions,
+                         const std::unordered_map<std::string, Tensor *> &tensor_map,
+                         std::vector<IntVar *> &new_vars);
 
 } // namespace constraint
 
 /* Helper functions for CSP4 */
 
-LiveRange compute_live_range(Tensor *a,
-                             const std::vector<Instruction *> &instructions);
-InterferenceGraph build_interference_graph(
-    const std::unordered_map<Tensor *, LiveRange> &live_ranges);
+LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions);
+InterferenceGraph
+build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ranges);
 
 #endif // CONSTRAINT_H

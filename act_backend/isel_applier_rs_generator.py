@@ -29,7 +29,7 @@ def generate_applier_file(act_dest_dir: str, instructions) -> None:
     replacements = {
         '{{ISA_PRECOND_MATCH_ARMS}}': '\n'.join(precond_arms),
         '{{ISA_METADATA_MATCH_ARMS}}': '\n'.join(metadata_arms),
-        '{{ISA_SET_SHAPES_MATCH_ARMS}}': '\n'.join(set_shapes_arms)
+        '{{ISA_SET_SHAPES_MATCH_ARMS}}': '\n'.join(set_shapes_arms),
     }
 
     for placeholder, replacement in replacements.items():

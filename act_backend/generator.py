@@ -42,7 +42,7 @@ def _get_instruction_metadata(accelerator: Accelerator) -> List[InstructionMetad
                 name=instruction.instruction,
                 semantics_ast=instruction.instr_semantics_ast,
                 has_comp_attrs=len(instruction.comp_attr) > 0,
-                rhs_size=len(instruction.instr_inputs) + 1
+                rhs_size=len(instruction.instr_inputs) + 1,
             )
             metadata_list.append(metadata)
     return metadata_list
@@ -71,50 +71,55 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
         shutil.rmtree(backend_gen_dir)
     shutil.copytree(generic_dir, backend_gen_dir)
 
-    print(f"Copied generic backend structure to {backend_gen_dir}")
+    print(f'Copied generic backend structure to {backend_gen_dir}')
 
     instruction_metadata = _get_instruction_metadata(accelerator)
 
     # Generate rewrite rules
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)
-    print(f"Generated ir2isa_rewrites.txt")
+    print(f'Generated ir2isa_rewrites.txt')
 
     # Generate Rust files
     generate_ir2isa_rewrites_rs_file(backend_gen_dir, instruction_metadata)
-    print(f"Generated ir2isa_rewrites.rs")
+    print(f'Generated ir2isa_rewrites.rs')
 
     generate_buffer_rs_file(backend_gen_dir, accelerator.instructions, accelerator.data_model)
-    print(f"Generated buffer.rs")
+    print(f'Generated buffer.rs')
 
     generate_egraph_rs_file(backend_gen_dir, accelerator.instructions)
-    print(f"Generated egraph.rs")
+    print(f'Generated egraph.rs')
 
     generate_applier_file(backend_gen_dir, accelerator.instructions)
-    print(f"Generated applier.rs")
+    print(f'Generated applier.rs')
 
     # Generate C++ malloc files
     generate_globals_file(backend_gen_dir, accelerator.data_model)
-    print(f"Generated globals.cc")
+    print(f'Generated globals.cc')
 
     generate_instructions_file(backend_gen_dir, accelerator.instructions, accelerator.data_model)
-    print(f"Generated instructions.h")
+    print(f'Generated instructions.h')
 
     generate_parser_file(backend_gen_dir, accelerator.instructions)
-    print(f"Generated parser.cc")
+    print(f'Generated parser.cc')
 
     generate_act_malloc_file(backend_gen_dir, accelerator.data_model)
-    print(f"Generated act_malloc.cc")
+    print(f'Generated act_malloc.cc')
 
-    print(f"Backend generation complete for {accelerator.name}")
+    print(f'Backend generation complete for {accelerator.name}')
 
     # Build the backend
-    print(f"Building backend for {accelerator.name}")
+    print(f'Building backend for {accelerator.name}')
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
     if os.path.exists(cargo_build_dir):
         shutil.rmtree(cargo_build_dir)
-    subprocess.run(["cargo", "build", "--release"], cwd=backend_gen_dir,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    print(f"Backend build complete for {accelerator.name}")
+    subprocess.run(
+        ['cargo', 'build', '--release'],
+        cwd=backend_gen_dir,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
+    print(f'Backend build complete for {accelerator.name}')
 
     # Copy built backend to final destination
     build_backend_path = os.path.join(cargo_build_dir, 'release', 'backend')
@@ -122,6 +127,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
     if os.path.exists(build_backend_path):
         Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(build_backend_path, final_dest_path)
-        print(f"Final backend binary located at {final_dest_path}")
+        print(f'Final backend binary located at {final_dest_path}')
     else:
-        raise RuntimeError("Backend build failed. Please check the build logs.")
+        raise RuntimeError('Backend build failed. Please check the build logs.')

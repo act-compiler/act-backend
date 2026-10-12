@@ -14,8 +14,7 @@ int main(int argc, char *argv[]) {
   std::string metadata_path = argv[2];
   std::string asm_path;
   size_t extpos = std::string::npos;
-  if ((extpos = pii_path.rfind(".pii")) != std::string::npos &&
-      extpos + 4 == pii_path.size()) {
+  if ((extpos = pii_path.rfind(".pii")) != std::string::npos && extpos + 4 == pii_path.size()) {
     asm_path = pii_path.substr(0, extpos) + ".py";
   } else {
     std::cerr << "Input file must have .pii extension" << std::endl;

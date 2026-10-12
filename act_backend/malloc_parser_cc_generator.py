@@ -14,16 +14,18 @@ def generate_parser_instruction(instruction, templates):
     if comp_attrs:
         # Currently assuming single attribute
         attr_name = comp_attrs[0]
-        return templates.render("parser.cc.INSTRUCTION_CASES.case_with_attr.txt",
+        return templates.render(
+            'parser.cc.INSTRUCTION_CASES.case_with_attr.txt',
             op_name=op_name,
             ClassName=class_name,
-            attr_name=attr_name
+            attr_name=attr_name,
         )
     else:
-        return templates.render("parser.cc.INSTRUCTION_CASES.case_no_attr.txt",
-            op_name=op_name,
-            ClassName=class_name
+        return templates.render(
+            'parser.cc.INSTRUCTION_CASES.case_no_attr.txt', op_name=op_name, ClassName=class_name
         )
+
+
 def generate_parser_instructions(instructions, templates):
     cases = []
     for instruction in instructions:
