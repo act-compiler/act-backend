@@ -3,8 +3,7 @@ private:
 {{COMP_ATTR_MEMBERS}}{{ADDR_VAR_MEMBERS}}
 {{GET_H_METHODS}}
 public:
-  {{CLASS_NAME}}(Tensor *y, std::vector<Tensor *> X{{COMP_ATTR_PARAMS}})
-      : Instruction("{{OP_NAME}}", y, X){{COMP_ATTR_INIT}} {
+  {{CLASS_NAME}}(Tensor *y, std::vector<Tensor *> X{{COMP_ATTR_PARAMS}}) : Instruction("{{OP_NAME}}", y, X){{COMP_ATTR_INIT}} {
   }
 
   std::string str() override {
@@ -23,5 +22,7 @@ public:
     return constraints;
   }
 
-  std::vector<IntVar *> get_int_var() override { return {{{GET_INT_VAR_LIST}}}; }
+  std::vector<IntVar *> get_int_var() override {
+    return {{{GET_INT_VAR_LIST}}};
+  }
 };

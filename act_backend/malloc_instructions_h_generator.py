@@ -26,7 +26,8 @@ def generate_instruction_class(instruction, templates):
     for attr in comp_attrs:
         comp_attr_members += f'  int64 {attr};\n'
 
-    addr_var_members = '\n'
+    # A blank line parts the two kinds of member
+    addr_var_members = '\n' if comp_attrs else ''
     for param in params:
         addr_var_members += f'  IntVar *{param} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
 
@@ -93,10 +94,10 @@ def generate_instructions_file(backend_gen_dir, instructions):
     with open(generic_file, 'r') as f:
         content = f.read()
 
-    # Generate all instruction classes
-    classes = ''
-    for instruction in instructions:
-        classes += generate_instruction_class(instruction, templates) + '\n'
+    # Generate all instruction classes, a blank line between two
+    classes = '\n'.join(
+        generate_instruction_class(instruction, templates) for instruction in instructions
+    ).rstrip('\n')
 
     # Replace placeholder
     content = fill_placeholders(content, {'INSTRUCTION_CLASSES': classes}, generic_file)
