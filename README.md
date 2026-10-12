@@ -78,7 +78,7 @@ The author returns a large finite cost for a candidate the model cannot evaluate
 
 ## Examples
 
-- `examples/mini_trn/`: `mini_trn.py`, an accelerator with two on-chip buffers and seven instructions, and its `attention` kernel under `kernels/`
+- `examples/mini_trn/`: `mini_trn.py`, an AWS Trainium-like accelerator design with two on-chip buffers and seven instructions, and its `attention` kernel under `kernels/`
 - `examples/mini_trn_double/`: `mini_trn_double.py`, a variant with a third on-chip buffer and ten instructions, and the same kernel
 
 `pip install -r tests/requirements.txt` installs TAIDL-TO, which each spec needs for its oracle.
