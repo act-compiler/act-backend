@@ -373,3 +373,47 @@ def check_semantics(instructions):
                     f'{name}: no line of its semantics names the computational attribute '
                     f"'{attribute}'"
                 )
+
+
+# The address the allocator reads for an operand: one address attribute, alone
+ADDRESS = re.compile(r'@a\.(\w+)')
+
+
+def check_operands(instructions, data_models):
+    """Refuse an operand the allocator cannot address"""
+    access_dimensions = {model.var_name: len(model.access_dim) for model in data_models}
+    # The HBM is addressed along one dimension, its bytes
+    access_dimensions['d0'] = 1
+    for instruction in instructions:
+        name = instruction.instruction
+        if len(instruction.instr_outputs) != 1:
+            raise ValueError(
+                f'{name}: the instruction has {len(instruction.instr_outputs)} outputs, '
+                'and the allocator places one'
+            )
+        for operand in [*instruction.instr_outputs, *instruction.instr_inputs]:
+            lists = [part for part in operand[1:] if isinstance(part, (list, tuple))]
+            if len(operand) != 3 or len(lists) != 2:
+                raise ValueError(
+                    f'{name}: the operand {operand!r} is not [buffer, [address], [size]]'
+                )
+            buffer, addresses, sizes = operand
+            what = f"{name}: its operand on '{buffer}'"
+            if buffer not in access_dimensions:
+                raise ValueError(f'{what} names no data model')
+            if access_dimensions[buffer] != 1:
+                raise ValueError(
+                    f'{what} is addressed along {access_dimensions[buffer]} dimensions, '
+                    'and the allocator addresses one'
+                )
+            if len(addresses) != 1 or len(sizes) != 1:
+                raise ValueError(
+                    f'{what} gives {len(addresses)} addresses and {len(sizes)} sizes, '
+                    'where the buffer takes one of each'
+                )
+            address = ADDRESS.fullmatch(str(addresses[0]).strip())
+            if not address or address.group(1) not in instruction.parameters:
+                raise ValueError(
+                    f"{what} has the address '{addresses[0]}', "
+                    'which is not one address attribute of the instruction'
+                )

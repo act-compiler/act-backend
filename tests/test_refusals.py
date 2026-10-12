@@ -71,6 +71,28 @@ def grammar_words():
     return re.findall(r"'(\w+)'", rule)
 
 
+def with_operands(inputs=None, outputs=None, addresses=None, models=()):
+    """An accelerator whose one instruction, gemm, has the given operands and address attributes"""
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [64], [64], 'bf16')
+    for model in models:
+        acc.add_data_model(*model)
+    if inputs is None:
+        inputs = [['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]]
+    if outputs is None:
+        outputs = [['d2', ['@a.addr_out'], ['64']]]
+    if addresses is None:
+        addresses = ['addr_1', 'addr_2', 'addr_out']
+    instr = acc.add_instruction('gemm', [], addresses)
+    instr.set_inputs(inputs)
+    instr.set_outputs(outputs)
+    instr.add_semantics(
+        f'ENTRY gemm {{\n    {IN1};\n    {IN2};\n    {result("dot(%In1, %In2)")};\n}}\n'
+    )
+    return acc
+
+
 def refusal(accelerator, tmp_path):
     """Return the error a generation ends on, which has written nothing"""
     with pytest.raises(ValueError) as error:
@@ -391,3 +413,58 @@ def test_computational_attribute_no_line_names_refused(tmp_path):
     acc.instructions[0].comp_attr.append('k')
     message = refusal(acc, tmp_path)
     assert message == "gemm: no line of its semantics names the computational attribute 'k'"
+
+
+SECOND = ['d1', ['@a.addr_2'], ['64']]
+
+
+@pytest.mark.parametrize(
+    'operands, reason',
+    [
+        (
+            {'outputs': [['d2', ['@a.addr_out'], ['64']], ['d2', ['@a.addr_1'], ['64']]]},
+            'the instruction has 2 outputs, and the allocator places one',
+        ),
+        ({'outputs': []}, 'the instruction has 0 outputs, and the allocator places one'),
+        (
+            {'inputs': [['d1', '@a.addr_1', '64'], SECOND]},
+            "the operand ['d1', '@a.addr_1', '64'] is not [buffer, [address], [size]]",
+        ),
+        (
+            {'inputs': [['d9', ['@a.addr_1'], ['64']], SECOND]},
+            "its operand on 'd9' names no data model",
+        ),
+        (
+            {
+                'inputs': [['d3', ['@a.addr_1'], ['64']], SECOND],
+                'models': [('d3', [64, 4], [64], 'bf16')],
+            },
+            "its operand on 'd3' is addressed along 2 dimensions, and the allocator addresses one",
+        ),
+        (
+            {'inputs': [['d3', [], []], SECOND], 'models': [('d3', [], [64, 64], 'bf16')]},
+            "its operand on 'd3' is addressed along 0 dimensions, and the allocator addresses one",
+        ),
+        (
+            {'inputs': [['d1', ['@a.addr_1', '@a.addr_2'], ['64', '1']], SECOND]},
+            "its operand on 'd1' gives 2 addresses and 2 sizes, where the buffer takes one of each",
+        ),
+        (
+            {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
+            "its operand on 'd1' has the address '@a.addr_1 * 2', "
+            'which is not one address attribute of the instruction',
+        ),
+        (
+            {'inputs': [['d1', ['0'], ['64']], SECOND]},
+            "its operand on 'd1' has the address '0', "
+            'which is not one address attribute of the instruction',
+        ),
+        (
+            {'inputs': [['d1', ['@a.addr_9'], ['64']], SECOND]},
+            "its operand on 'd1' has the address '@a.addr_9', "
+            'which is not one address attribute of the instruction',
+        ),
+    ],
+)
+def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path):
+    assert refusal(with_operands(**operands), tmp_path) == f'gemm: {reason}'
