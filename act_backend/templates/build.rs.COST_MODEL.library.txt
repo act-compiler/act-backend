@@ -2,6 +2,8 @@
   println!("cargo:rerun-if-changed={}", cost_model);
   println!("cargo:rustc-link-arg={}", cost_model);
   // The libraries a C++ link ends with follow the last object
-  for library in ["-lstdc++", "-lm", "-lgcc_s", "-lgcc", "-lc", "-lgcc_s", "-lgcc"] {
+  for library in [
+    "-lstdc++", "-lm", "-lgcc_s", "-lgcc", "-lc", "-lgcc_s", "-lgcc",
+  ] {
     println!("cargo:rustc-link-arg={}", library);
   }
