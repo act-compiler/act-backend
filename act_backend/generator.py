@@ -77,33 +77,33 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None) -> None:
 
     # Generate rewrite rules
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)
-    print(f'Generated ir2isa_rewrites.txt')
+    print('Generated ir2isa_rewrites.txt')
 
     # Generate Rust files
     generate_ir2isa_rewrites_rs_file(backend_gen_dir, instruction_metadata)
-    print(f'Generated ir2isa_rewrites.rs')
+    print('Generated ir2isa_rewrites.rs')
 
     generate_buffer_rs_file(backend_gen_dir, accelerator.instructions, accelerator.data_model)
-    print(f'Generated buffer.rs')
+    print('Generated buffer.rs')
 
     generate_egraph_rs_file(backend_gen_dir, accelerator.instructions)
-    print(f'Generated egraph.rs')
+    print('Generated egraph.rs')
 
     generate_applier_file(backend_gen_dir, accelerator.instructions)
-    print(f'Generated applier.rs')
+    print('Generated applier.rs')
 
     # Generate C++ malloc files
     generate_globals_file(backend_gen_dir, accelerator.data_model)
-    print(f'Generated globals.cc')
+    print('Generated globals.cc')
 
     generate_instructions_file(backend_gen_dir, accelerator.instructions)
-    print(f'Generated instructions.h')
+    print('Generated instructions.h')
 
     generate_parser_file(backend_gen_dir, accelerator.instructions)
-    print(f'Generated parser.cc')
+    print('Generated parser.cc')
 
     generate_act_malloc_file(backend_gen_dir, accelerator.data_model)
-    print(f'Generated act_malloc.cc')
+    print('Generated act_malloc.cc')
 
     print(f'Backend generation complete for {accelerator.name}')
 
