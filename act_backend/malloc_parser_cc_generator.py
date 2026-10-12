@@ -1,9 +1,6 @@
 import os
+from .instruction_info import to_camel_case
 from .template_loader import fill_placeholders, get_backend_template_loader
-
-
-def to_camel_case(snake_str):
-    return ''.join(word.capitalize() for word in snake_str.split('_'))
 
 
 def generate_parser_instruction(instruction, templates):

@@ -1,5 +1,6 @@
 import os
 from taidl.antlr4 import IDLV2Parser, IDLV2Visitor
+from .instruction_info import get_kebab_name
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -130,7 +131,7 @@ def generate_rewrite_rule(metadata, templates):
     visitor = RewriteRuleVisitor()
     lhs_pattern = visitor.visit(metadata.semantics_ast)
     parameter_vars = visitor.get_parameter_variables()
-    kebab_name = metadata.name.replace('_', '-')
+    kebab_name = get_kebab_name(metadata.name)
 
     # No pattern or no parameter: a rule over a lone variable
     if not (lhs_pattern and parameter_vars):
