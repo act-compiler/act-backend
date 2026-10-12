@@ -78,20 +78,20 @@ The author returns a large finite cost for a candidate the model cannot evaluate
 
 ## Examples
 
-- `examples/QKV/`: `QKV.py`, an accelerator with two on-chip buffers and seven instructions, and its `attention` kernel under `kernels/`
-- `examples/QKV_new/`: `QKV_new.py`, a variant with a third on-chip buffer and ten instructions, and the same kernel
+- `examples/mini_trn/`: `mini_trn.py`, an accelerator with two on-chip buffers and seven instructions, and its `attention` kernel under `kernels/`
+- `examples/mini_trn_double/`: `mini_trn_double.py`, a variant with a third on-chip buffer and ten instructions, and the same kernel
 
 `pip install -r tests/requirements.txt` installs TAIDL-TO, which each spec needs for its oracle.
-Running a spec, such as `cd examples/QKV && python QKV.py`, generates its oracle and its backend there, and `./backends/QKV --input kernels/attention.hlo --output attention.py` then compiles the kernel.
+Running a spec, such as `cd examples/mini_trn && python mini_trn.py`, generates its oracle and its backend there, and `./backends/mini_trn --input kernels/attention.hlo --output attention.py` then compiles the kernel.
 `tests/conftest.py` does both in a temporary directory and simulates the compiled kernel on the matrices under `data/`.
 
 ## Testing
 
 ```bash
-./tests/pytest.sh             # every test
-./tests/pytest.sh -k qkv_new  # its arguments go on to pytest
-./tests/regenerate.sh         # rewrite the goldens from the compiled kernels
-./tests/lint.sh               # lint the backend each example generates
+./tests/pytest.sh                     # every test
+./tests/pytest.sh -k mini_trn_double  # its arguments go on to pytest
+./tests/regenerate.sh                 # rewrite the goldens from the compiled kernels
+./tests/lint.sh                       # lint the backend each example generates
 ```
 
 `tests/pytest.sh` runs the tests in `devanshdvj/act-env:py3.14-jax0.11.2`, the image `docker/act.env` names, in its tag for the host's architecture, amd64 or arm64, and in its CUDA 13 tag where `nvidia-smi` succeeds and docker lists the nvidia runtime; the CI pulls its tag for the runner's architecture.

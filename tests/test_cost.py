@@ -10,7 +10,7 @@ from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_call
 import act_backend
 from act_backend import generate_backend
 
-QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
+EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn')
 COST_DIR = os.path.join(os.path.dirname(__file__), 'cost')
 
 
@@ -34,14 +34,14 @@ def build_library(kind, source, out_dir):
 
 @pytest.fixture(scope='module', params=['object', 'static', 'shared', 'soname'])
 def work_dir(request, tmp_path_factory):
-    """Generate QKV's backend with the test model, given as each kind of library"""
+    """Generate mini_trn's backend with the test model, given as each kind of library"""
     work_dir = str(tmp_path_factory.mktemp('cost'))
     library = build_library(request.param, os.path.join(COST_DIR, 'model.c'), work_dir)
     with pytest.MonkeyPatch.context() as patch:
-        # The spec calls generate_backend(qkv): name the library in that call
+        # The spec calls generate_backend(mini_trn): name the library in that call
         with_cost = functools.partial(generate_backend, cost=library)
         patch.setattr(act_backend, 'generate_backend', with_cost)
-        generate_oracle_and_backend(QKV_DIR, work_dir)
+        generate_oracle_and_backend(EXAMPLE_DIR, work_dir)
     # An object file or a static library is inside the binary
     if request.param in ('object', 'static'):
         os.remove(library)
@@ -54,7 +54,9 @@ def compile_attention(work_dir, tmp_path, mode=None):
     env = dict(os.environ)
     if mode is not None:
         env['ACT_TEST_COST'] = mode
-    return run_backend(os.path.join(work_dir, 'backends', 'QKV'), QKV_DIR, str(tmp_path), env)
+    return run_backend(
+        os.path.join(work_dir, 'backends', 'mini_trn'), EXAMPLE_DIR, str(tmp_path), env
+    )
 
 
 def test_model_ranks_the_candidates(work_dir, tmp_path):
@@ -85,17 +87,19 @@ def test_cost_that_is_no_number_ends_the_compile(work_dir, tmp_path):
 
 
 def test_crate_holds_no_default_model(work_dir):
-    assert not os.path.exists(os.path.join(work_dir, 'targets', 'QKV', 'backend', 'cpp', 'cost'))
+    assert not os.path.exists(
+        os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'cpp', 'cost')
+    )
 
 
 @pytest.mark.parametrize('work_dir', ['object'], indirect=True)
 def test_backend_relinks_when_the_library_changes(work_dir, tmp_path):
     # Another model where the first one lay, and the crate built again by hand
     build_library('object', os.path.join(COST_DIR, 'fail.c'), work_dir)
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     subprocess.run(['cargo', 'build', '--release', '--locked'], cwd=crate, check=True)
     backend = os.path.join(crate, 'target', 'release', 'backend')
-    run, _ = run_backend(backend, QKV_DIR, str(tmp_path))
+    run, _ = run_backend(backend, EXAMPLE_DIR, str(tmp_path))
     assert run.returncode == 1
     assert 'the cost model returned 5' in run.stderr
 

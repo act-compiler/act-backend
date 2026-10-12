@@ -1,4 +1,4 @@
-"""Tests of constructs a backend builds with: QKV's spec with each one added, generated once."""
+"""Tests of constructs a backend builds with: mini_trn's spec with each one added, generated once"""
 
 import os
 import re
@@ -10,7 +10,7 @@ from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_call
 import act_backend
 from act_backend import generate_backend
 
-QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
+EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn')
 
 
 def add_concatenate(acc):
@@ -239,7 +239,7 @@ def add_instruction_with_no_semantics(acc):
 
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
-    """Generate QKV's backend with every construct above added to its accelerator"""
+    """Generate mini_trn's backend with every construct above added to its accelerator"""
     work_dir = str(tmp_path_factory.mktemp('constructs'))
 
     def with_constructs(acc, *args, **kwargs):
@@ -255,16 +255,16 @@ def work_dir(tmp_path_factory):
         return generate_backend(acc, *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as patch:
-        # The spec calls generate_backend(qkv): add to the accelerator in that call
+        # The spec's generate_backend(mini_trn) call gets the constructs
         patch.setattr(act_backend, 'generate_backend', with_constructs)
-        generate_oracle_and_backend(QKV_DIR, work_dir)
+        generate_oracle_and_backend(EXAMPLE_DIR, work_dir)
     return work_dir
 
 
 def test_backend_compiles_with_the_constructs(work_dir, tmp_path):
-    # Every rule loads, and the kernel compiles as QKV's own does
+    # Every rewrite loads; the kernel compiles as on mini_trn
     run, output_path = run_backend(
-        os.path.join(work_dir, 'backends', 'QKV'), QKV_DIR, str(tmp_path)
+        os.path.join(work_dir, 'backends', 'mini_trn'), EXAMPLE_DIR, str(tmp_path)
     )
     assert run.returncode == 0, run.stderr
     assert sum(instruction_calls(output_path).values()) == 9
@@ -275,7 +275,7 @@ def compiled_calls(work_dir, tmp_path, kernel):
     path = tmp_path / 'kernel.hlo'
     path.write_text(kernel)
     output = tmp_path / 'kernel.py'
-    backend = os.path.join(work_dir, 'backends', 'QKV')
+    backend = os.path.join(work_dir, 'backends', 'mini_trn')
     log = str(tmp_path / 'log')
     arguments = ['--input', str(path), '--output', str(output), '--log', log]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
@@ -343,13 +343,13 @@ def test_constant_written_true_is_read(work_dir, tmp_path):
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
-    allocator = os.path.join(work_dir, 'targets', 'QKV', 'backend', 'cpp', 'malloc')
+    allocator = os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'cpp', 'malloc')
     with open(os.path.join(allocator, 'src', 'globals.cc')) as f:
         assert 'new Storage("D3", {}, 1)' in f.read()
 
 
 def test_instruction_with_no_semantics_is_left_out(work_dir):
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     for source in [('src', 'ir', 'egraph.rs'), ('cpp', 'malloc', 'include', 'instructions.h')]:
         with open(os.path.join(crate, *source)) as f:
             assert 'Configure' not in f.read()

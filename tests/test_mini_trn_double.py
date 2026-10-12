@@ -1,4 +1,4 @@
-"""End-to-end test for ACT-Backend using QKV_new ISA."""
+"""End-to-end test for ACT-Backend using mini_trn_double ISA."""
 
 import os
 
@@ -13,14 +13,14 @@ from conftest import (
     unfilled_sources,
 )
 
-QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV_new')
-DATA_DIR = os.path.join(QKV_DIR, 'data')
+EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn_double')
+DATA_DIR = os.path.join(EXAMPLE_DIR, 'data')
 
 
 @pytest.mark.incremental
-class TestQKVNew:
+class TestMiniTrnDouble:
     def test_backend_sources_filled(self, work_dir):
-        assert unfilled_sources(work_dir) == []
+        assert unfilled_sources(work_dir, EXAMPLE_DIR) == []
 
     def test_compile_hlo(self, assembly):
         assert os.path.exists(assembly)

@@ -13,7 +13,7 @@ import act_backend
 from act_backend import generate_backend
 from act_backend.build_rs_generator import generate_build_rs_file
 
-QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
+EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn')
 
 
 def test_failed_build_shows_its_error(accelerator, tmp_path, monkeypatch):
@@ -103,12 +103,12 @@ def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_
 
 def test_crate_holds_its_ignore_file(work_dir):
     # The crate comes whole from the installed package, its dot file too
-    assert os.path.isfile(os.path.join(work_dir, 'targets', 'QKV', 'backend', '.gitignore'))
+    assert os.path.isfile(os.path.join(work_dir, 'targets', 'mini_trn', 'backend', '.gitignore'))
 
 
 def test_cargo_leaves_the_lock_file_alone(work_dir):
     # A build by hand finds the lock file as cargo writes it and rewrites nothing
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     subprocess.run(['cargo', 'build', '--release'], cwd=crate, check=True, capture_output=True)
     package_dir = os.path.dirname(act_backend.__file__)
     with open(os.path.join(package_dir, 'generic', 'Cargo.lock')) as f:
@@ -138,11 +138,11 @@ def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
 
 def test_backend_runs_without_its_crate(work_dir, tmp_path):
     # The binary alone, copied away, and the crate it was built in moved
-    backend = shutil.copy(os.path.join(work_dir, 'backends', 'QKV'), tmp_path)
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    backend = shutil.copy(os.path.join(work_dir, 'backends', 'mini_trn'), tmp_path)
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     os.rename(crate, crate + '.moved')
     try:
-        run, output_path = run_backend(backend, QKV_DIR, str(tmp_path))
+        run, output_path = run_backend(backend, EXAMPLE_DIR, str(tmp_path))
     finally:
         os.rename(crate + '.moved', crate)
     assert run.returncode == 0, run.stderr
@@ -152,7 +152,9 @@ def test_backend_runs_without_its_crate(work_dir, tmp_path):
 def test_backend_finds_the_solver_by_itself(work_dir, tmp_path):
     # No library path in the environment: the binary's run path is all it has
     env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
-    run, _ = run_backend(os.path.join(work_dir, 'backends', 'QKV'), QKV_DIR, str(tmp_path), env)
+    run, _ = run_backend(
+        os.path.join(work_dir, 'backends', 'mini_trn'), EXAMPLE_DIR, str(tmp_path), env
+    )
     assert run.returncode == 0, run.stderr
 
 
@@ -259,7 +261,7 @@ def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
     # OR-Tools under another path, and the crate built again by hand
     solver_dir = tmp_path / 'solver'
     solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     env = dict(os.environ, ORTOOLS_DIR=str(solver_dir))
     subprocess.run(
         ['cargo', 'build', '--release', '--locked'],
@@ -275,7 +277,7 @@ def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
 
 def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
     # The default cost model's source taken away, and the crate built again by hand
-    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     source = os.path.join(crate, 'cpp', 'cost', 'count.cc')
     os.rename(source, source + '.moved')
     try:

@@ -53,24 +53,17 @@ def load_bf16_matrix(path, shape):
 
 def generate_oracle_and_backend(example_dir, work_dir):
     """Run the ISA spec to generate oracle + backend into work_dir"""
-    # Copy the spec into work_dir
-    for name in ['QKV.py', 'QKV_new.py']:
-        src = os.path.join(example_dir, name)
-        if os.path.exists(src):
-            shutil.copy(src, work_dir)
-
-    for name in ['QKV.py', 'QKV_new.py']:
-        path = os.path.join(work_dir, name)
-        if os.path.exists(path):
-            spec = importlib.util.spec_from_file_location('QKV_spec', path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            break
+    # An example's spec and accelerator are named as its directory
+    name = os.path.basename(example_dir)
+    path = shutil.copy(os.path.join(example_dir, f'{name}.py'), work_dir)
+    spec = importlib.util.spec_from_file_location(f'{name}_spec', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
 
 
-def unfilled_sources(work_dir):
+def unfilled_sources(work_dir, example_dir):
     """Return the generated backend sources that still hold a placeholder"""
-    backend_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    backend_dir = os.path.join(work_dir, 'targets', os.path.basename(example_dir), 'backend')
     assert os.path.isdir(backend_dir), f'no generated backend at {backend_dir}'
     unfilled = []
     for root, dirs, names in os.walk(backend_dir):
@@ -109,7 +102,7 @@ def unformatted_sources(backend_dir):
 
 def compile_hlo(work_dir, example_dir):
     """Run the backend binary on the HLO file to produce a compiled kernel"""
-    backend_bin = os.path.join(work_dir, 'backends', 'QKV')
+    backend_bin = os.path.join(work_dir, 'backends', os.path.basename(example_dir))
     hlo_path = os.path.join(example_dir, 'kernels', 'attention.hlo')
     asm_dir = os.path.join(work_dir, 'asm')
     os.makedirs(asm_dir, exist_ok=True)
@@ -148,9 +141,9 @@ def instruction_calls(assembly_path):
         return Counter(re.findall(r'api\.(\w+)\(', f.read()))
 
 
-def import_oracle(work_dir):
+def import_oracle(work_dir, example_dir):
     """Import the oracle in work_dir as a package of its own and return (decorator, api)"""
-    oracle_dir = os.path.join(work_dir, 'targets', 'QKV', 'oracle')
+    oracle_dir = os.path.join(work_dir, 'targets', os.path.basename(example_dir), 'oracle')
     name = f'oracle_{next(oracle_ids)}'
     spec = importlib.util.spec_from_file_location(
         name, os.path.join(oracle_dir, '__init__.py'), submodule_search_locations=[oracle_dir]
@@ -162,9 +155,9 @@ def import_oracle(work_dir):
     return decorator, importlib.import_module(f'{name}.api')
 
 
-def run_compiled_kernel(work_dir, assembly_path, data_dir):
+def run_compiled_kernel(work_dir, assembly_path, example_dir):
     """Import oracle + compiled kernel, run simulation, return its output"""
-    oracle_decorator, oracle_api = import_oracle(work_dir)
+    oracle_decorator, oracle_api = import_oracle(work_dir, example_dir)
 
     # The compiled kernel, loaded from its own path
     spec = importlib.util.spec_from_file_location('attention', assembly_path)
@@ -174,6 +167,7 @@ def run_compiled_kernel(work_dir, assembly_path, data_dir):
     kernel = kernel_module.attention(oracle_decorator.kernel, oracle_api)
     kernel('fsim-compile')()
 
+    data_dir = os.path.join(example_dir, 'data')
     Q = load_bf16_matrix(os.path.join(data_dir, 'Q.dat'), (64, 64))
     K = load_bf16_matrix(os.path.join(data_dir, 'K.dat'), (64, 64))
     V = load_bf16_matrix(os.path.join(data_dir, 'V.dat'), (64, 64))
@@ -246,7 +240,7 @@ def work_dir(request):
     """Generate the module's oracle and backend in a directory of its own, removed after"""
     work_dir = tempfile.mkdtemp()
     try:
-        generate_oracle_and_backend(request.module.QKV_DIR, work_dir)
+        generate_oracle_and_backend(request.module.EXAMPLE_DIR, work_dir)
         # The generated backends held to the tree's formatters
         targets = os.path.join(work_dir, 'targets')
         for name in os.listdir(targets):
@@ -260,10 +254,10 @@ def work_dir(request):
 @pytest.fixture(scope='module')
 def assembly(request, work_dir):
     """Compile the module's attention kernel and return the assembly's path"""
-    return compile_hlo(work_dir, request.module.QKV_DIR)
+    return compile_hlo(work_dir, request.module.EXAMPLE_DIR)
 
 
 @pytest.fixture(scope='module')
 def output(request, work_dir, assembly):
     """Simulate the module's compiled kernel once and return its output"""
-    return run_compiled_kernel(work_dir, assembly, request.module.DATA_DIR)
+    return run_compiled_kernel(work_dir, assembly, request.module.EXAMPLE_DIR)
