@@ -9,9 +9,7 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Phase 3: Graph Extractor
-/// Extraction phase to select instructions from the final e-graph.
-
+/// Phase 1 Module 3: Graph Extractor, which selects instructions from the e-graph.
 /// Slow exponential-time extraction algorithm. Computes all pii graphs with up to `limit` e-nodes
 /// by obtaining full extraction trees and collapsing them with GVN.
 pub fn extract_slow(

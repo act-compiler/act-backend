@@ -154,7 +154,7 @@ impl Language for TensorOp {
 impl FromOp for TensorOp {
   type Error = FromOpError;
 
-  // define_language picks the first variant where it is possible to parse data into type
+  // The first arm whose word and number of children match wins
   fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
     match op {
       // {{ISA_FROM_OP_MATCH_ARMS}}

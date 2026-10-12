@@ -8,11 +8,9 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Phase 3: Graph Extractor
-/// Extraction phase to select instructions from the final e-graph.
-
+/// Phase 1 Module 3: Graph Extractor, which selects instructions from the e-graph.
 /// Fast linear-time extraction algorithm. Computes one pii graph by visiting each e-class (at most
-/// once) and adds selected enodes to a `selected` HashSet.
+/// once) and adds selected enodes to a `selected` HashMap.
 pub fn extract_fast(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
@@ -115,7 +113,7 @@ fn get_pii_graph(
   false
 }
 
-/// Convert a HashSet of selected e-nodes into a pii graph.
+/// Convert a HashMap of selected e-nodes into a pii graph.
 /// Algorithm builds the pii graph bottom-up in topological order.
 fn select2pii_graph(
   selected: &HashMap<TensorOp, (Id, TensorInfo)>,
