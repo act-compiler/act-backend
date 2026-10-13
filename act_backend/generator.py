@@ -61,6 +61,13 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     if base_dir is None:
         base_dir = accelerator.base_dir
 
+    # An earlier binary and a part of one go first
+    final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
+    partial_path = final_dest_path + '.partial'
+    for path in (final_dest_path, partial_path):
+        if os.path.lexists(path):
+            os.remove(path)
+
     # The cost library is linked from where it lies
     if cost is not None:
         cost = os.path.abspath(cost)
@@ -87,10 +94,10 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     generic_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'generic')
     backend_gen_dir = os.path.join(target_dir, 'backend')
 
-    # Copy generic backend structure
+    # Copy generic backend structure, without a build directory left in it
     if os.path.exists(backend_gen_dir):
         shutil.rmtree(backend_gen_dir)
-    shutil.copytree(generic_dir, backend_gen_dir)
+    shutil.copytree(generic_dir, backend_gen_dir, ignore=shutil.ignore_patterns('target', 'build'))
 
     print(f'Copied generic backend structure to {backend_gen_dir}')
 
@@ -134,8 +141,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     # Build the backend
     print(f'Building backend for {accelerator.name}')
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
-    if os.path.exists(cargo_build_dir):
-        shutil.rmtree(cargo_build_dir)
     build = subprocess.run(
         ['cargo', 'build', '--release', '--locked'],
         cwd=backend_gen_dir,
@@ -150,7 +155,13 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
 
     # Copy built backend to final destination
     build_backend_path = os.path.join(cargo_build_dir, 'release', 'backend')
-    final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
     Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(build_backend_path, final_dest_path)
+    # The binary takes its name once it is whole
+    try:
+        shutil.copy(build_backend_path, partial_path)
+        os.replace(partial_path, final_dest_path)
+    finally:
+        # A copy that stops leaves no part
+        if os.path.lexists(partial_path):
+            os.remove(partial_path)
     print(f'Final backend binary located at {final_dest_path}')

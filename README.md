@@ -42,7 +42,7 @@ generate_backend(acc)  # acc: a TAIDL Accelerator
 ```
 
 `generate_backend(acc)` writes the backend's crate into `targets/<name>/backend/` under the accelerator's `base_dir`, by default the directory of the file that creates the accelerator, builds it and copies the compiler to `backends/<name>`.
-A build that fails raises `RuntimeError` with the build's own output.
+A build that fails raises `RuntimeError` with the build's own output, and a generation that fails leaves no `backends/<name>` from an earlier one.
 ACT-Backend reads TAIDL v2.3.
 
 ```bash

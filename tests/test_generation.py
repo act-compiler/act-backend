@@ -24,6 +24,82 @@ def test_failed_build_shows_its_error(accelerator, tmp_path, monkeypatch):
     assert os.path.join(str(tmp_path), 'targets', 'PAIR', 'backend') in str(error.value)
 
 
+@pytest.mark.parametrize('cost, error', [('model.c', ValueError), (None, RuntimeError)])
+def test_failed_generation_leaves_no_earlier_binary(
+    cost, error, accelerator, tmp_path, monkeypatch
+):
+    # What an earlier generation left
+    backend = tmp_path / 'backends' / 'PAIR'
+    backend.parent.mkdir()
+    backend.write_text('an earlier backend\n')
+    # A cost library that is refused, or a build that stops on a missing compiler
+    monkeypatch.setenv('CXX', 'no-such-compiler')
+    with pytest.raises(error):
+        generate_backend(accelerator, str(tmp_path), cost=cost)
+    assert not backend.exists()
+
+
+def built(command, cwd, **options):
+    """A build that passes without running and leaves a binary where cargo would"""
+    binary = os.path.join(cwd, 'target', 'release', 'backend')
+    os.makedirs(os.path.dirname(binary))
+    with open(binary, 'w') as f:
+        f.write('a new backend')
+    return subprocess.CompletedProcess(command, 0, stdout='')
+
+
+@pytest.mark.parametrize('name', ['PAIR', 'PAIR.partial'])
+def test_binary_is_not_written_through_a_link(name, accelerator, tmp_path, monkeypatch):
+    # A link an earlier run left under the binary's name, to a file outside
+    outside = tmp_path / 'outside'
+    outside.write_text('kept')
+    (tmp_path / 'backends').mkdir()
+    (tmp_path / 'backends' / name).symlink_to(outside)
+    monkeypatch.setattr(subprocess, 'run', built)
+    generate_backend(accelerator, str(tmp_path))
+    backend = tmp_path / 'backends' / 'PAIR'
+    assert not backend.is_symlink() and backend.read_text() == 'a new backend'
+    assert outside.read_text() == 'kept'
+
+
+def test_interrupted_copy_leaves_no_binary(accelerator, tmp_path, monkeypatch):
+    # A copy that stops halfway
+    def copy(source, destination):
+        with open(destination, 'w') as f:
+            f.write('half a backend')
+        raise OSError('No space left on device')
+
+    monkeypatch.setattr(subprocess, 'run', built)
+    monkeypatch.setattr(shutil, 'copy', copy)
+    with pytest.raises(OSError):
+        generate_backend(accelerator, str(tmp_path))
+    assert os.listdir(tmp_path / 'backends') == []
+
+
+def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_path, monkeypatch):
+    # Build directories in the package, as a build by hand there leaves them
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    left = [os.path.join(generic, 'target'), os.path.join(generic, 'cpp', 'malloc', 'build')]
+    for directory in left:
+        os.makedirs(directory)
+        open(os.path.join(directory, 'CMakeCache.txt'), 'w').close()
+
+    # The crate as its build finds it: a build that stops without running
+    def build(command, **options):
+        return subprocess.CompletedProcess(command, 1, stdout='')
+
+    monkeypatch.setattr(subprocess, 'run', build)
+    try:
+        with pytest.raises(RuntimeError):
+            generate_backend(accelerator, str(tmp_path))
+    finally:
+        for directory in left:
+            shutil.rmtree(directory)
+    crate = tmp_path / 'targets' / 'PAIR' / 'backend'
+    assert not (crate / 'target').exists()
+    assert not (crate / 'cpp' / 'malloc' / 'build').exists()
+
+
 def test_crate_holds_its_ignore_file(work_dir):
     # The crate comes whole from the installed package, its dot file too
     assert os.path.isfile(os.path.join(work_dir, 'targets', 'QKV', 'backend', '.gitignore'))
@@ -140,3 +216,37 @@ def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_pat
     monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
     generate_backend(accelerator, str(tmp_path))
     assert starts(str(tmp_path / 'backends' / 'PAIR'))
+
+
+def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
+    # OR-Tools under another path, and the crate built again by hand
+    solver_dir = tmp_path / 'solver'
+    solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
+    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    env = dict(os.environ, ORTOOLS_DIR=str(solver_dir))
+    subprocess.run(
+        ['cargo', 'build', '--release', '--locked'],
+        cwd=crate,
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    # The allocator's build looked for OR-Tools there, not where the last build found it
+    with open(os.path.join(crate, 'cpp', 'malloc', 'build', 'CMakeCache.txt')) as f:
+        assert f'ortools_DIR:PATH={solver_dir}/lib/cmake/ortools' in f.read()
+
+
+def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
+    # The default cost model's source taken away, and the crate built again by hand
+    crate = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    source = os.path.join(crate, 'cpp', 'cost', 'count.cc')
+    os.rename(source, source + '.moved')
+    try:
+        build = subprocess.run(
+            ['cargo', 'build', '--release', '--locked'], cwd=crate, capture_output=True, text=True
+        )
+    finally:
+        os.rename(source + '.moved', source)
+    # The link finds no model the last build left behind
+    assert build.returncode != 0
+    assert 'cost_static' in build.stderr

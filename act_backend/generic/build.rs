@@ -48,9 +48,12 @@ fn main() {
   // The JSON headers, which the allocator's build reads from NLOHMANN_JSON_DIR
   println!("cargo:rerun-if-env-changed=NLOHMANN_JSON_DIR");
 
-  // Create cpp/malloc/build, run `cmake ..` inside it, then `make -j4`
+  // Make cpp/malloc/build anew, run `cmake ..` inside it, then `make -j4`
   let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
   let cpp_build_dir = manifest.join("cpp").join("malloc").join("build");
+  if cpp_build_dir.exists() {
+    fs::remove_dir_all(&cpp_build_dir).expect("failed to remove cpp/malloc/build");
+  }
   fs::create_dir_all(&cpp_build_dir).expect("failed to create cpp/malloc/build");
 
   let status = Command::new("cmake")
