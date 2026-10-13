@@ -250,6 +250,16 @@ def check_names(instructions, data_models):
     check_data_model_names(data_models)
 
 
+def check_outputs(instructions):
+    """Refuse an instruction that does not have one output, which the allocator places"""
+    for instruction in instructions:
+        if len(instruction.instr_outputs) != 1:
+            raise ValueError(
+                f'{instruction.instruction}: the instruction has '
+                f'{len(instruction.instr_outputs)} outputs, and the allocator places one'
+            )
+
+
 class SemanticsChecker(OperandVisitor):
     """Refuses each line of a semantics the selector cannot write into a rule"""
 
@@ -356,11 +366,6 @@ def check_operands(instructions, data_models):
     access_dimensions['d0'] = 1
     for instruction in instructions:
         name = instruction.instruction
-        if len(instruction.instr_outputs) != 1:
-            raise ValueError(
-                f'{name}: the instruction has {len(instruction.instr_outputs)} outputs, '
-                'and the allocator places one'
-            )
         read = set()
         for buffer, addresses, sizes in [*instruction.instr_outputs, *instruction.instr_inputs]:
             what = f"{name}: its operand on '{buffer}'"
