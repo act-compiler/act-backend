@@ -299,3 +299,54 @@ def test_concatenate_of_three_refused(tmp_path):
         "gemm: its semantics gives the operation 'concatenate' 3 values, "
         "where the selector's takes 2"
     )
+
+
+@pytest.mark.parametrize(
+    'lines, value',
+    [
+        ([IN1, IN2, result('dot(%In1, %In3)')], '%In3'),
+        (
+            [
+                IN1,
+                IN2,
+                '%a = bf16[64,64] add(%In1, %b)',
+                '%b = bf16[64,64] copy(%In2)',
+                result('copy(%a)'),
+            ],
+            '%b',
+        ),
+    ],
+)
+def test_operand_that_names_no_value_refused(lines, value, tmp_path):
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == f"gemm: its semantics reads '{value}', which no line above defines"
+
+
+def test_value_defined_twice_refused(tmp_path):
+    lines = [
+        IN1,
+        IN2,
+        '%a = bf16[64,64] add(%In1, %In2)',
+        '%a = bf16[64,64] copy(%a)',
+        result('copy(%a)'),
+    ]
+    assert refusal(with_semantics(lines), tmp_path) == "gemm: its semantics defines '%a' twice"
+
+
+@pytest.mark.parametrize(
+    'lines, inputs, value',
+    [
+        # An input no operation reads, and a line whose value none reads
+        ([IN1, IN2, '%In3 = bf16[64,64] parameter(2)', result('dot(%In1, %In2)')], 3, '%In3'),
+        ([IN1, IN2, '%a = bf16[64,64] exponential(%In1)', result('dot(%In1, %In2)')], 2, '%a'),
+    ],
+)
+def test_value_no_line_reads_refused(lines, inputs, value, tmp_path):
+    message = refusal(with_semantics(lines, inputs), tmp_path)
+    assert message == f"gemm: its semantics defines '{value}', which no line below reads"
+
+
+def test_root_above_the_last_line_refused(tmp_path):
+    lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"

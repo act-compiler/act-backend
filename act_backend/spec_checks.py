@@ -285,9 +285,13 @@ class SemanticsChecker(OperandVisitor):
     def __init__(self, name):
         super().__init__()
         self.name = name
+        self.values = []
+        self.read = set()
+        self.roots = []
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
+        value = ctx.IDENTIFIER().getText()
         operands = self.visit(ctx.operands()) if ctx.operands() else []
         if word == 'parameter':
             # An input, read by its number
@@ -310,9 +314,30 @@ class SemanticsChecker(OperandVisitor):
                     f"{self.name}: its semantics gives the operation '{word}' {len(named)} values, "
                     f"where the selector's takes {count}"
                 )
+            for operand in named:
+                if operand not in self.values:
+                    raise ValueError(
+                        f"{self.name}: its semantics reads '{operand}', which no line above defines"
+                    )
+            self.read.update(named)
+        if value in self.values:
+            raise ValueError(f"{self.name}: its semantics defines '{value}' twice")
+        self.values.append(value)
+        if ctx.ROOT():
+            self.roots.append(value)
 
 
 def check_semantics(instructions):
     """Refuse a semantics the selector cannot write a rule from"""
     for instruction in instructions:
-        SemanticsChecker(instruction.instruction).visit(instruction.instr_semantics_ast)
+        name = instruction.instruction
+        checker = SemanticsChecker(name)
+        checker.visit(instruction.instr_semantics_ast)
+        # The rule's pattern is the last line's, and holds what that line reads
+        for value in checker.values[:-1]:
+            if value not in checker.read:
+                raise ValueError(
+                    f"{name}: its semantics defines '{value}', which no line below reads"
+                )
+            if value in checker.roots:
+                raise ValueError(f"{name}: its semantics marks '{value}' ROOT above its last line")
