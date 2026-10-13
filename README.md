@@ -19,7 +19,8 @@ The compiler backend has provable guarantees of soundness (i.e., it will never g
 Furthermore, the generated compiler backend supports integration with cost models to enable performance-aware code generation.
 The generated compiler backend is agnostic to the choice of the cost model and can be easily adapted to work with different cost models like cycle-accurate simulators, analytical models, or ML-based models.
 
-Details on automatically generating compiler backends from TAIDL definitions is present in our [arXiv release](https://arxiv.org/abs/2510.09932).
+Details on automatically generating compiler backends from TAIDL definitions is present in our [OOPSLA 2026](https://doi.org/10.1145/3839457) paper.
+For detailed evaluations, refer to our [OOPSLA 2026 Artifact](https://github.com/act-compiler/act-artifact-oopsla26).
 
 ## Installation
 
