@@ -350,3 +350,44 @@ def test_root_above_the_last_line_refused(tmp_path):
     lines = [IN1, IN2, result('dot(%In1, %In2)'), '%after = bf16[64,64] exponential(%Out0)']
     message = refusal(with_semantics(lines), tmp_path)
     assert message == "gemm: its semantics marks '%Out0' ROOT above its last line"
+
+
+def test_parameter_under_another_name_refused(tmp_path):
+    # The oracle would read %In1 as input 0, where this semantics says input 1
+    lines = ['%In1 = bf16[64,64] parameter(1)', '%In2 = bf16[64,64] parameter(0)']
+    message = refusal(with_semantics([*lines, result('dot(%In1, %In2)')]), tmp_path)
+    assert message == "gemm: its semantics names parameter(1) '%In1', not '%In2'"
+
+
+@pytest.mark.parametrize(
+    'lines, inputs, reason',
+    [
+        (
+            [IN1, IN2, result('dot(%In1, %In2)')],
+            1,
+            'reads 2 inputs by parameter, and the instruction has 1',
+        ),
+        ([IN1, result('copy(%In1)')], 2, 'reads 1 inputs by parameter, and the instruction has 2'),
+        ([result('constant(0)')], 2, 'reads 0 inputs by parameter, and the instruction has 2'),
+    ],
+)
+def test_semantics_that_reads_other_inputs_refused(lines, inputs, reason, tmp_path):
+    message = refusal(with_semantics(lines, inputs), tmp_path)
+    assert message == f'gemm: its semantics {reason}'
+
+
+def test_instruction_with_no_inputs_refused(tmp_path):
+    message = refusal(with_semantics([result('constant(0)')], inputs=0), tmp_path)
+    assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
+
+
+def test_semantics_with_no_operation_refused(tmp_path):
+    message = refusal(with_semantics([IN1], inputs=1), tmp_path)
+    assert message == 'gemm: its semantics holds no operation for the selector to match'
+
+
+def test_computational_attribute_no_line_names_refused(tmp_path):
+    acc = with_semantics([IN1, IN2, result('dot(%In1, %In2)')])
+    acc.instructions[0].comp_attr.append('k')
+    message = refusal(acc, tmp_path)
+    assert message == "gemm: no line of its semantics names the computational attribute 'k'"

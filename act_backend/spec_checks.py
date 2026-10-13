@@ -5,6 +5,7 @@ import re
 import keyword
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
+from .isel_ir2isa_rewrites_rs_generator import RustGeneratorVisitor
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
@@ -288,6 +289,8 @@ class SemanticsChecker(OperandVisitor):
         self.values = []
         self.read = set()
         self.roots = []
+        self.inputs = []
+        self.operations = 0
 
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
@@ -300,7 +303,16 @@ class SemanticsChecker(OperandVisitor):
                 raise ValueError(
                     f"{self.name}: its semantics reads parameter({given}), not one input's number"
                 )
+            number = int(operands[0][0])
+            # The oracle finds input k by the name %In<k+1>
+            if value != f'%In{number + 1}':
+                raise ValueError(
+                    f"{self.name}: its semantics names parameter({number}) '{value}', "
+                    f"not '%In{number + 1}'"
+                )
+            self.inputs.append(number)
         else:
+            self.operations += 1
             if word not in OPERATIONS:
                 raise ValueError(
                     f"{self.name}: its semantics uses the operation '{word}', "
@@ -341,3 +353,23 @@ def check_semantics(instructions):
                 )
             if value in checker.roots:
                 raise ValueError(f"{name}: its semantics marks '{value}' ROOT above its last line")
+        # The rule is matched over the inputs, each read by one parameter
+        if len(checker.inputs) != len(instruction.instr_inputs):
+            raise ValueError(
+                f'{name}: its semantics reads {len(checker.inputs)} inputs by parameter, '
+                f'and the instruction has {len(instruction.instr_inputs)}'
+            )
+        if not checker.inputs:
+            raise ValueError(
+                f'{name}: the instruction has no inputs, which the selector cannot match'
+            )
+        if not checker.operations:
+            raise ValueError(f'{name}: its semantics holds no operation for the selector to match')
+        # A computational attribute is read from a shape the semantics writes it in
+        named = RustGeneratorVisitor().visit(instruction.instr_semantics_ast)['comp_attributes']
+        for attribute in instruction.comp_attr:
+            if attribute not in named:
+                raise ValueError(
+                    f'{name}: no line of its semantics names the computational attribute '
+                    f"'{attribute}'"
+                )
