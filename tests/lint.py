@@ -1,35 +1,42 @@
 """Lint the backend an example generates: its crate with clippy, its allocator with the compiler
 
 Usage: python tests/lint.py <example_dir>...; tests/lint.sh runs it for every example in the
-image the tests run in.
+image the tests run in, and for the first one once more with a cost library.
 """
 
 import os
 import sys
+import functools
 import subprocess
 import tempfile
+from unittest import mock
 
+import act_backend
 from conftest import generate_oracle_and_backend
 
 # The warnings the allocator's build is held to
 CXX_FLAGS = '-Wall -Wextra -Werror'
+# The model a crate with a cost library is generated with
+COST_MODEL = os.path.join(os.path.dirname(__file__), 'cost', 'model.c')
+
+
+def lint_crate(work_dir):
+    """Lint the crate generated in work_dir, its generated sources and build script among them"""
+    backend_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+    subprocess.run(
+        ['cargo', 'clippy', '--release', '--', '-D', 'warnings'], cwd=backend_dir, check=True
+    )
+
 
 if __name__ == '__main__':
     for example in sys.argv[1:]:
         # The generated trees go with their directory
         with tempfile.TemporaryDirectory() as work_dir:
             generate_oracle_and_backend(os.path.abspath(example), work_dir)
-            backend_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend')
-
-            # The crate, its generated sources among them
-            subprocess.run(
-                ['cargo', 'clippy', '--release', '--', '-D', 'warnings'],
-                cwd=backend_dir,
-                check=True,
-            )
+            lint_crate(work_dir)
 
             # The allocator, in a build tree apart from the crate's own
-            allocator_dir = os.path.join(backend_dir, 'cpp', 'malloc')
+            allocator_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend', 'cpp', 'malloc')
             build_dir = os.path.join(work_dir, 'lint')
             subprocess.run(
                 ['cmake', '-S', allocator_dir, '-B', build_dir, f'-DCMAKE_CXX_FLAGS={CXX_FLAGS}'],
@@ -37,3 +44,15 @@ if __name__ == '__main__':
             )
             subprocess.run(['cmake', '--build', build_dir], check=True)
         print(f'{example}: no lint warning')
+
+    # A shared cost library: the build script takes every line that links one
+    example = sys.argv[1]
+    with tempfile.TemporaryDirectory() as work_dir:
+        library = os.path.join(work_dir, 'libmodel.so')
+        subprocess.run(['cc', '-shared', '-fPIC', COST_MODEL, '-o', library], check=True)
+        # The spec calls generate_backend(qkv): name the library in that call
+        with_cost = functools.partial(act_backend.generate_backend, cost=library)
+        with mock.patch.object(act_backend, 'generate_backend', with_cost):
+            generate_oracle_and_backend(os.path.abspath(example), work_dir)
+        lint_crate(work_dir)
+    print(f'{example} with a cost library: no lint warning')

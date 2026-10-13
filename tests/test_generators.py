@@ -132,3 +132,17 @@ def test_placeholder_without_value_refused():
 def test_value_without_placeholder_refused():
     with pytest.raises(ValueError, match=r'^e\.rs: no placeholder for the value NAMES$'):
         fill_placeholders('// {{VARIANTS}}\n', {'VARIANTS': '', 'NAMES': ''}, 'e.rs')
+
+
+def test_fragment_key_without_value_refused(templates):
+    fragment = 'egraph.rs.ISA_ENUM_VARIANTS.variant.txt'
+    with pytest.raises(
+        ValueError, match=rf'^{re.escape(fragment)}: no value for the key signature$'
+    ):
+        templates.render(fragment, variant_name='Gemm')
+
+
+def test_value_without_fragment_key_refused(templates):
+    fragment = 'egraph.rs.ISA_ENUM_VARIANTS.variant.txt'
+    with pytest.raises(ValueError, match=rf'^{re.escape(fragment)}: no key for the value arity$'):
+        templates.render(fragment, variant_name='Gemm', signature='([Id; 2])', arity='2')
