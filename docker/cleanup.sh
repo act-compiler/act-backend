@@ -11,6 +11,17 @@ if nvidia-smi >/dev/null 2>&1 &&
   docker info -f '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
   VARIANT="-cuda13"
 fi
+# --cpu or --cuda13 overrides the host's pick
+case "${1:-}" in
+  --cpu)
+    VARIANT=""
+    shift
+    ;;
+  --cuda13)
+    VARIANT="-cuda13"
+    shift
+    ;;
+esac
 
 # Detect architecture
 ARCH=$(uname -m)

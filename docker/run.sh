@@ -13,6 +13,19 @@ if nvidia-smi >/dev/null 2>&1 &&
   VARIANT="-cuda13"
   GPU_FLAGS=(--gpus all)
 fi
+# --cpu or --cuda13 overrides the host's pick
+case "${1:-}" in
+  --cpu)
+    VARIANT=""
+    shift
+    ;;
+  --cuda13)
+    VARIANT="-cuda13"
+    shift
+    ;;
+esac
+# The GPU is passed to the cuda13 image alone
+[ -n "${VARIANT}" ] || GPU_FLAGS=()
 
 # Detect architecture
 ARCH=$(uname -m)
@@ -36,9 +49,11 @@ DEFAULT_PERSISTENT_NAME="act-backend-default-${USER_NAME}"
 
 usage() {
   cat <<EOF
-Usage: $0 [--persistent] [--no-default] [-h|--help]
+Usage: $0 [--cpu|--cuda13] [--persistent] [--no-default] [-h|--help]
 
 Options:
+  --cpu           Run the CPU image, the default unless the host has a GPU and the nvidia runtime.
+  --cuda13        Run the cuda13 image, with jax's CUDA 13 runtime, the default on such a host.
   --persistent    Use or create a persistent container (default name: ${DEFAULT_PERSISTENT_NAME}).
   --no-default    Do NOT use the default name; present interactive selection/creation of persistent containers.
   -h, --help      Show this help message.
