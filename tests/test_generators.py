@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
 from act_backend.generator import get_instruction_metadata
@@ -86,6 +87,13 @@ def test_storages(accelerator):
         '{"D1", new Storage("D1", {128}, 1)}',
         '{"D2", new Storage("D2", {64}, 1)}',
     ]
+
+
+def test_storage_with_no_access_dimension():
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [], [64], 'bf16')
+    (model,) = generate_globals_models(acc.data_model)
+    assert squeeze(model) == '{"D1", new Storage("D1", {}, 1)}'
 
 
 def test_rule_functions(accelerator):

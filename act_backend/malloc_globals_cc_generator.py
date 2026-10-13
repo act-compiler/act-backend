@@ -12,10 +12,7 @@ def generate_globals_models(data_models):
         if data_model.var_name != 'd0':
             buffer_name = get_buffer_name(data_model.var_name)
 
-            access_dims = '{'
-            for dim in data_model.access_dim:
-                access_dims += str(dim) + ','
-            access_dims = access_dims[:-1] + '}'
+            access_dims = '{' + ','.join(str(dim) for dim in data_model.access_dim) + '}'
             num_unit = len(data_model.unit_dim)
             out_str = (
                 f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}}'

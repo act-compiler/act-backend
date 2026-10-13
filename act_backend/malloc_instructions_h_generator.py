@@ -7,8 +7,7 @@ from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 def extract_addr_var(expr):
-    match = re.search(r'@a\.(\w+)', expr)
-    return match.group(1) if match else None
+    return re.search(r'@a\.(\w+)', expr).group(1)
 
 
 def extract_size_expr(expr):
@@ -44,20 +43,17 @@ def generate_instruction_class(instruction, templates):
     # Generate get_h methods: output first (get_h0), then inputs (get_h1, get_h2, ...)
     get_h_methods = ''
     get_h_cases = ''
-    h_index = 0
 
     # The output's range first, then each input's
-    for operand in [*instruction.instr_outputs, *instruction.instr_inputs]:
-        _, addr_expr_list, size_expr_list = operand
+    operands = [*instruction.instr_outputs, *instruction.instr_inputs]
+    for h_index, (_, addr_expr_list, size_expr_list) in enumerate(operands):
         addr_var = extract_addr_var(addr_expr_list[0])
         size_expr = extract_size_expr(size_expr_list[0])
 
-        if addr_var:
-            get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
-            get_h_cases += templates.render_lines(
-                'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
-            )
-            h_index += 1
+        get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
+        get_h_cases += templates.render_lines(
+            'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
+        )
 
     # Generate constructor parameters
     comp_attr_params = ''
