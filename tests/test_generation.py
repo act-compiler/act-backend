@@ -20,6 +20,11 @@ def test_failed_build_shows_its_error(accelerator, tmp_path, monkeypatch):
     assert os.path.join(str(tmp_path), 'targets', 'PAIR', 'backend') in str(error.value)
 
 
+def test_crate_holds_its_ignore_file(work_dir):
+    # The crate comes whole from the installed package, its dot file too
+    assert os.path.isfile(os.path.join(work_dir, 'targets', 'QKV', 'backend', '.gitignore'))
+
+
 def test_backend_runs_without_its_crate(work_dir, tmp_path):
     # The binary alone, copied away, and the crate it was built in moved
     backend = shutil.copy(os.path.join(work_dir, 'backends', 'QKV'), tmp_path)
