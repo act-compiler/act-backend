@@ -1,5 +1,5 @@
 /* A cost model for the tests: it prefers more instructions, the opposite of the default.
-   Its first call takes 200 ms, so the search goes on to price the candidates after the first.
+   Its first call takes 200 ms, so the search goes on to evaluate the candidates after the first.
    ACT_TEST_COST makes it misbehave: "fail" returns non-zero and "nan" writes no number. */
 
 #include <math.h>
