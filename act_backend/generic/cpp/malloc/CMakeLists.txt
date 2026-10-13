@@ -13,11 +13,21 @@ set(LIB_SOURCE_FILES
     src/scheduler.cc
 )
 
-set(ORTOOLS_ROOT "/opt/ortools/")
+# OR-Tools, in the directory ORTOOLS_DIR names
+if(DEFINED ENV{ORTOOLS_DIR})
+  set(ORTOOLS_ROOT "$ENV{ORTOOLS_DIR}")
+else()
+  set(ORTOOLS_ROOT "/opt/ortools/")
+endif()
 set(CMAKE_PREFIX_PATH "${ORTOOLS_ROOT}" ${CMAKE_PREFIX_PATH})
-find_package(ortools REQUIRED)
+find_package(ortools REQUIRED PATHS "${ORTOOLS_ROOT}" NO_DEFAULT_PATH)
 
-set(JSON_INCLUDE_PATH "/opt/nlohmann_json/include")
+# The JSON headers, in the directory NLOHMANN_JSON_DIR names
+if(DEFINED ENV{NLOHMANN_JSON_DIR})
+  set(JSON_INCLUDE_PATH "$ENV{NLOHMANN_JSON_DIR}/include")
+else()
+  set(JSON_INCLUDE_PATH "/opt/nlohmann_json/include")
+endif()
 add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE ${JSON_INCLUDE_PATH})
 

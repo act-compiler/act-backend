@@ -66,3 +66,77 @@ def test_backend_runs_without_its_crate(work_dir, tmp_path):
         os.rename(crate + '.moved', crate)
     assert run.returncode == 0, run.stderr
     assert sum(instruction_calls(output_path).values()) == 9
+
+
+def test_backend_finds_the_solver_by_itself(work_dir, tmp_path):
+    # No library path in the environment: the binary's run path is all it has
+    env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
+    run, _ = run_backend(os.path.join(work_dir, 'backends', 'QKV'), QKV_DIR, str(tmp_path), env)
+    assert run.returncode == 0, run.stderr
+
+
+def starts(backend):
+    """Whether a backend starts with no library path in the environment"""
+    env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
+    return subprocess.run([backend, '--help'], env=env, capture_output=True).returncode == 0
+
+
+def test_solver_found_where_the_environment_says(accelerator, tmp_path, monkeypatch):
+    # OR-Tools under another path: a link to the directory that holds it
+    solver_dir = tmp_path / 'solver'
+    solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
+    monkeypatch.setenv('ORTOOLS_DIR', str(solver_dir))
+    generate_backend(accelerator, str(tmp_path))
+
+    # The backend loads it from that path and from no other
+    backend = str(tmp_path / 'backends' / 'PAIR')
+    assert starts(backend)
+    solver_dir.unlink()
+    assert not starts(backend)
+
+
+def test_solver_libraries_found_under_lib64(accelerator, tmp_path, monkeypatch):
+    # An install as other systems lay it out: the libraries under lib64, lib left with the package files
+    installed = os.environ.get('ORTOOLS_DIR', '/opt/ortools')
+    solver_dir = tmp_path / 'solver'
+    (solver_dir / 'lib64').mkdir(parents=True)
+    for name in ['bin', 'include', 'share']:
+        (solver_dir / name).symlink_to(os.path.join(installed, name))
+    for entry in os.scandir(os.path.join(installed, 'lib')):
+        if not entry.is_dir():
+            (solver_dir / 'lib64' / entry.name).symlink_to(entry.path)
+    shutil.copytree(os.path.join(installed, 'lib', 'cmake'), solver_dir / 'lib' / 'cmake')
+    for package_file in (solver_dir / 'lib' / 'cmake').rglob('*.cmake'):
+        content = package_file.read_text()
+        package_file.write_text(content.replace('_IMPORT_PREFIX}/lib/', '_IMPORT_PREFIX}/lib64/'))
+
+    monkeypatch.setenv('ORTOOLS_DIR', str(solver_dir))
+    generate_backend(accelerator, str(tmp_path))
+    assert starts(str(tmp_path / 'backends' / 'PAIR'))
+
+
+@pytest.mark.parametrize('name', ['empty', 'co:lon'])
+def test_wrong_solver_directory_named(name, accelerator, tmp_path, monkeypatch):
+    # A directory with no OR-Tools in it, and one no run path can carry
+    solver_dir = tmp_path / name
+    solver_dir.mkdir()
+    monkeypatch.setenv('ORTOOLS_DIR', str(solver_dir))
+    with pytest.raises(RuntimeError) as error:
+        generate_backend(accelerator, str(tmp_path / 'base'))
+    assert 'ORTOOLS_DIR' in str(error.value)
+    assert str(solver_dir) in str(error.value)
+
+
+def test_json_headers_sought_where_the_environment_says(accelerator, tmp_path, monkeypatch):
+    # A directory that holds no header stops the allocator's build
+    monkeypatch.setenv('NLOHMANN_JSON_DIR', str(tmp_path))
+    with pytest.raises(RuntimeError, match='nlohmann/json.hpp'):
+        generate_backend(accelerator, str(tmp_path))
+
+
+def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_path, monkeypatch):
+    # The defaults are where the environment image holds OR-Tools and the JSON headers
+    monkeypatch.delenv('ORTOOLS_DIR', raising=False)
+    monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
+    generate_backend(accelerator, str(tmp_path))
+    assert starts(str(tmp_path / 'backends' / 'PAIR'))

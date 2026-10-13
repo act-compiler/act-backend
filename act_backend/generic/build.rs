@@ -9,11 +9,44 @@ fn main() {
 
   println!("cargo:rustc-link-lib=dylib=stdc++");
 
-  println!("cargo:rustc-link-search=native=/opt/ortools/lib");
+  // OR-Tools, in the directory ORTOOLS_DIR names
+  println!("cargo:rerun-if-env-changed=ORTOOLS_DIR");
+  let ortools_dir = env::var("ORTOOLS_DIR").unwrap_or("/opt/ortools".to_string());
+  // A run path is split at colons
+  if ortools_dir.contains(':') {
+    panic!(
+      "ORTOOLS_DIR holds a colon, which no run path can carry: {}",
+      ortools_dir
+    );
+  }
+  // Its libraries lie under lib or lib64
+  let ortools_lib = ["lib", "lib64"]
+    .iter()
+    .map(|lib| PathBuf::from(&ortools_dir).join(lib))
+    .find(|lib| lib.join("libortools.so").exists())
+    .unwrap_or_else(|| {
+      panic!(
+        "no libortools.so under lib or lib64 of {}: ORTOOLS_DIR names where OR-Tools is installed",
+        ortools_dir
+      )
+    });
+  println!("cargo:rustc-link-search=native={}", ortools_lib.display());
   println!("cargo:rustc-link-lib=dylib=ortools");
   println!("cargo:rustc-link-lib=dylib=absl_base");
   println!("cargo:rustc-link-lib=dylib=absl_log_internal_check_op");
   println!("cargo:rustc-link-lib=dylib=absl_log_internal_message");
+  // The run path finds OR-Tools again at each run
+  for arg in [
+    "-Xlinker",
+    "-rpath",
+    "-Xlinker",
+    ortools_lib.to_str().unwrap(),
+  ] {
+    println!("cargo:rustc-link-arg={}", arg);
+  }
+
+  // The JSON headers, which the allocator's build reads from NLOHMANN_JSON_DIR
+  println!("cargo:rerun-if-env-changed=NLOHMANN_JSON_DIR");
 
   // Create cpp/malloc/build, run `cmake ..` inside it, then `make -j4`
   let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
