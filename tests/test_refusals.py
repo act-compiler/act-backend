@@ -491,6 +491,19 @@ def test_size_the_allocator_cannot_read_refused(size, tmp_path):
     )
 
 
+@pytest.mark.parametrize('dimension', ['64 / 0', '64 % 0', '64 / (0)', '64 % (1 - 1)'])
+def test_division_by_zero_in_a_semantics_refused(dimension, tmp_path):
+    lines = [IN0, IN1, f'ROOT %Out0 = bf16[`{dimension}`,64] {DOT}']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == f"gemm: its semantics divides by zero in '{dimension}'"
+
+
+@pytest.mark.parametrize('size', ['64 / 0', '64 / (0)'])
+def test_division_by_zero_in_a_size_refused(size, tmp_path):
+    message = refusal(with_operands(outputs=[['d2', ['@a.addr_out'], [size]]]), tmp_path)
+    assert message == f"gemm: its operand on 'd2' has the size '{size}', which divides by zero"
+
+
 def test_sizes_the_allocator_reads():
     acc = loader()
     (instruction,) = acc.instructions

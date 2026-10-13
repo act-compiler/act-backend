@@ -435,6 +435,49 @@ class SemanticsChecker(OperandVisitor):
             self.roots.append(value)
 
 
+# Each operator as the language reads it, `/` rounding down
+ARITHMETIC = {
+    '+': lambda a, b: a + b,
+    '-': lambda a, b: a - b,
+    '*': lambda a, b: a * b,
+    '/': lambda a, b: a // b,
+    '%': lambda a, b: a % b,
+}
+
+
+def integer(value):
+    """The integer a parsed value of integers alone holds, else None"""
+    if isinstance(value, IDLV2ExprParser.AtomContext):
+        if value.INT() is not None:
+            return int(value.getText())
+        return None if value.reference() is not None else integer(value.expression())
+    if isinstance(value, IDLV2ExprParser.UnaryContext):
+        if value.MINUS() is None:
+            return integer(value.atom())
+        negated = integer(value.unary())
+        return None if negated is None else -negated
+    # A sum or a product, its operands in order
+    parts = list(value.getChildren())
+    result = integer(parts[0])
+    for operator, operand in zip(parts[1::2], parts[2::2]):
+        right = integer(operand)
+        if result is None or right is None or (right == 0 and operator.getText() in ('/', '%')):
+            return None
+        result = ARITHMETIC[operator.getText()](result, right)
+    return result
+
+
+def divides_by_zero(expression):
+    """Whether a parsed value divides, or takes a remainder, by a constant zero"""
+    for node in Trees.descendants(expression):
+        if isinstance(node, IDLV2ExprParser.MultiplicativeContext):
+            for position, operand in enumerate(node.unary()[1:]):
+                operator = node.getChild(2 * position + 1).getText()
+                if operator in ('/', '%') and integer(operand) == 0:
+                    return True
+    return False
+
+
 def check_semantics(instructions):
     """Refuse a semantics the selector cannot write a rule from"""
     for instruction in instructions:
@@ -466,6 +509,12 @@ def check_semantics(instructions):
                 raise ValueError(
                     f"{name}: its semantics reads the address attribute '{placed[0].getText()}', "
                     'which is not known when an instruction is selected'
+                )
+        # A value whose generated code divides by zero
+        for written, expression in instruction.instr_expression_asts.items():
+            if divides_by_zero(expression):
+                raise ValueError(
+                    f"{name}: its semantics divides by zero in '{written.getText()[1:-1]}'"
                 )
         # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
@@ -517,6 +566,8 @@ def check_size(what, text, size):
             f"{what} has the size '{text}', which is not integers and computational attributes "
             "joined by '*', '/', '+' and '-'"
         )
+    if divides_by_zero(size):
+        raise ValueError(f"{what} has the size '{text}', which divides by zero")
 
 
 def check_operands(instructions, data_models):
