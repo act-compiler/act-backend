@@ -73,7 +73,7 @@ cc -c -fPIC model.c -o model.o
 
 The library's author is responsible for it being complete: beyond the C and C++ runtime libraries, the link adds nothing to it.
 An object file or a static library is carried inside the backend, while a shared library must stay where it is.
-The author returns a large finite cost for a candidate the model cannot price, and closes what the model opened in an `atexit` handler.
+The author returns a large finite cost for a candidate the model cannot evaluate, and closes what the model opened in an `atexit` handler.
 
 ## Examples
 

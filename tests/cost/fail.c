@@ -1,4 +1,4 @@
-/* A cost model that prices nothing */
+/* A cost model that evaluates nothing */
 
 int act_cost(const char *asm_path, double *cost) {
   (void)asm_path;
