@@ -17,7 +17,7 @@ pub const N: usize = 1;
 pub const SLOW_LIMIT_START: usize = 10;
 pub const SLOW_LIMIT_CUTOFF: usize = 15;
 // Ratio of termination time to time since last improvement
-pub const SATURATION_FACTOR: u32 = 2;
+pub const SATURATION_FACTOR: u32 = 10;
 
 pub mod cost;
 pub mod ir;
