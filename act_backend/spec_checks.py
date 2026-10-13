@@ -7,7 +7,11 @@ from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
-from .isel_ir2isa_rewrites_rs_generator import ELEMENT_TYPES, RustGeneratorVisitor
+from .isel_ir2isa_rewrites_rs_generator import (
+    ELEMENT_TYPES,
+    RustGeneratorVisitor,
+    attribute_factor,
+)
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
@@ -463,14 +467,25 @@ def check_semantics(instructions):
                     f"{name}: its semantics reads the address attribute '{placed[0].getText()}', "
                     'which is not known when an instruction is selected'
                 )
-        # A computational attribute is read from a shape the semantics writes it in
+        # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
-        named = visitor.visit(instruction.instr_semantics_ast)['comp_attributes']
+        lines = visitor.visit(instruction.instr_semantics_ast)
+        root = lines['root_assignment']
         for attribute in instruction.comp_attr:
-            if attribute not in named:
+            if attribute not in lines['comp_attributes']:
                 raise ValueError(
-                    f'{name}: no line of its semantics names the computational attribute '
+                    f'{name}: no shape of its semantics names the computational attribute '
                     f"'{attribute}'"
+                )
+            # Its value comes from the result's first dimension naming it
+            if root['first'] is None or attribute_factor(root['first'], attribute):
+                continue
+            references = Trees.findAllTokenNodes(root['first'], IDLV2ExprParser.COMPUTATIONAL)
+            if f'@c.{attribute}' in [reference.getText() for reference in references]:
+                dimension = root['shape'].split(',')[0].strip('`').strip()
+                raise ValueError(
+                    f"{name}: its result's first dimension '{dimension}' is not the computational "
+                    f"attribute '{attribute}' alone or times a positive integer"
                 )
 
 

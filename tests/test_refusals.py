@@ -44,7 +44,7 @@ def loader(name='ONE', model='d1', **names):
     return acc
 
 
-def with_semantics(lines, inputs=2):
+def with_semantics(lines, inputs=2, attributes=()):
     """An accelerator whose one instruction, gemm, has the given inputs and semantics lines
 
     With inputs None the instruction never gives its inputs.
@@ -53,7 +53,7 @@ def with_semantics(lines, inputs=2):
     acc.add_data_model('d1', [128], [64], 'bf16')
     acc.add_data_model('d2', [64], [64], 'bf16')
     addresses = [f'addr_{number}' for number in range(1, (inputs or 0) + 1)]
-    instr = acc.add_instruction('gemm', [], [*addresses, 'addr_out'])
+    instr = acc.add_instruction('gemm', list(attributes), [*addresses, 'addr_out'])
     if inputs is not None:
         instr.set_inputs([['d1', [f'@a.{address}'], ['64']] for address in addresses])
     instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
@@ -380,11 +380,44 @@ def test_instruction_with_no_inputs_refused(tmp_path):
     assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
 
 
-def test_computational_attribute_no_line_names_refused(tmp_path):
-    acc = with_semantics([IN0, IN1, result(DOT)])
-    acc.instructions[0].comp_attr.append('k')
-    message = refusal(acc, tmp_path)
-    assert message == "gemm: no line of its semantics names the computational attribute 'k'"
+@pytest.mark.parametrize(
+    'lines',
+    [
+        # Named nowhere, only in a constant, only in an attribute
+        [IN0, IN1, result(DOT)],
+        [
+            IN0,
+            IN1,
+            '%c = bf16[64,64] constant(`@c.k`)',
+            '%a = bf16[64,64] add(%In0, %c)',
+            result('add(%a, %In1)'),
+        ],
+        [
+            IN0,
+            IN1,
+            '%a = bf16[64,64] add(%In0, %In1)',
+            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k`], [0:64]}',
+        ],
+    ],
+)
+def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
+    message = refusal(with_semantics(lines, attributes=['k']), tmp_path)
+    assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
+
+
+@pytest.mark.parametrize(
+    'dimension', ['@c.k*(64+64)', '@c.k * @c.k', '2 * @c.k', '@c.k + 1', '@c.k * 0']
+)
+def test_first_dimension_that_hides_its_attribute_refused(dimension, tmp_path):
+    lines = [
+        '%In0 = bf16[`@c.k`,64] parameter(0)',
+        f'ROOT %Out0 = bf16[`{dimension}`,64] copy(%In0)',
+    ]
+    message = refusal(with_semantics(lines, 1, attributes=['k']), tmp_path)
+    assert message == (
+        f"gemm: its result's first dimension '{dimension}' is not the computational "
+        "attribute 'k' alone or times a positive integer"
+    )
 
 
 def test_address_attribute_in_a_semantics_refused(tmp_path):
