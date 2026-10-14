@@ -342,6 +342,30 @@ def test_constant_written_true_is_read(work_dir, tmp_path):
     assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
 
 
+# A kernel whose product takes the operands OPERANDS
+PRODUCT = """HloModule product, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  ROOT %c = bf16[64,64] dot(OPERANDS), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+"""
+
+
+@pytest.mark.parametrize('operands', ['%a', '%a, %b, %a'])
+def test_binary_operation_of_other_than_two_operands_refused(work_dir, tmp_path, operands):
+    kernel = tmp_path / 'kernel.hlo'
+    kernel.write_text(PRODUCT.replace('OPERANDS', operands))
+    backend = os.path.join(work_dir, 'backends', 'mini_trn')
+    output, log = str(tmp_path / 'kernel.py'), str(tmp_path / 'log')
+    arguments = ['--input', str(kernel), '--output', output, '--log', log]
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
+    assert run.returncode != 0
+    count = len(operands.split(','))
+    assert f'dot expects exactly 2 operands, got {count}: {operands}' in run.stderr
+
+
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
     allocator = os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'cpp', 'malloc')
     with open(os.path.join(allocator, 'src', 'globals.cc')) as f:

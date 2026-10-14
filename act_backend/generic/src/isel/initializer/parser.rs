@@ -300,9 +300,17 @@ pub fn parse_hlo_expr(
     | "dot"
     | "divide" => {
       // binary operators with two operands separated by comma
-      let mut parts = toperands.split(',').map(|s| s.trim().to_string());
-      let lhs = parts.next().unwrap_or_default();
-      let rhs = parts.next().unwrap_or_default();
+      let operands: Vec<&str> = toperands.split(',').map(|s| s.trim()).collect();
+      if operands.len() != 2 {
+        panic!(
+          "{} expects exactly 2 operands, got {}: {}",
+          toperator,
+          operands.len(),
+          toperands
+        );
+      }
+      let lhs = operands[0].to_string();
+      let rhs = operands[1].to_string();
 
       Some(HLOExpr::BinaryOp {
         tsymbol: tsymbol.to_string(),
