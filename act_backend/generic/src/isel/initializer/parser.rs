@@ -214,7 +214,7 @@ pub fn parse_region(
       };
 
       if !instruction_line.is_empty() {
-        if let Some((tsymbol, ttype, tshape, ttile, toperator, toperands, trest)) =
+        if let Some(((tsymbol, ttype, tshape, ttile, toperator, toperands, trest), _)) =
           parse_line(instruction_line)?
         {
           if let Some(expr) = parse_hlo_expr(
@@ -240,7 +240,7 @@ pub fn parse_region(
 
 pub fn parse_hlo_module_with_regions(
   lines: &[&str],
-) -> Result<(HloModuleHeader, Vec<HLOExpr>), String> {
+) -> Result<(HloModuleHeader, Vec<HLOExpr>, usize), String> {
   if lines.is_empty() {
     return Err("the kernel is empty".to_string());
   }
@@ -249,6 +249,8 @@ pub fn parse_hlo_module_with_regions(
 
   let mut regions = std::collections::HashMap::new();
   let mut entry_instructions = Vec::new();
+  // The ENTRY's ROOT lines, by their place among its instructions
+  let mut roots = vec![];
   let mut idx = 1;
 
   // Parse regions and entry computation
@@ -274,12 +276,15 @@ pub fn parse_hlo_module_with_regions(
           break; // End of entry computation
         }
 
-        if let Some((tsymbol, ttype, tshape, ttile, toperator, toperands, trest)) =
+        if let Some(((tsymbol, ttype, tshape, ttile, toperator, toperands, trest), is_root)) =
           parse_line(instruction_line)?
         {
           if let Some(expr) = parse_hlo_expr(
             &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, &regions,
           )? {
+            if is_root {
+              roots.push(entry_instructions.len());
+            }
             entry_instructions.push(expr);
           }
         }
@@ -298,5 +303,16 @@ pub fn parse_hlo_module_with_regions(
     }
   }
 
-  Ok((header, entry_instructions))
+  match roots[..] {
+    [root] => Ok((header, entry_instructions, root)),
+    // With no line marked, the last line is the root
+    [] => {
+      let last = entry_instructions.len().saturating_sub(1);
+      Ok((header, entry_instructions, last))
+    }
+    _ => Err(format!(
+      "the kernel's ENTRY marks {} lines ROOT, where the reader takes one",
+      roots.len()
+    )),
+  }
 }
