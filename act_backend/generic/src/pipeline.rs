@@ -151,7 +151,12 @@ impl Search {
           path, cost, timestamp
         );
 
-        std::fs::copy(&path, &self.output_path).expect("Failed to copy best ASM to output path");
+        // The output takes its name once it is whole
+        let partial = self
+          .output_path
+          .with_extension(format!("py.{}", process::id()));
+        std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
+        std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
         println!(
           "Best ASM copied to output path: {}",
           self.output_path.display()
