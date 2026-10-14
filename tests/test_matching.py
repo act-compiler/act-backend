@@ -86,6 +86,18 @@ def matching():
             'ROOT %Out0 = bf16[32,64] broadcast(%s_dup), dimensions={0}',
         ],
     )
+    # One input read 27 times, by 26 sums
+    add_on_d1(
+        acc,
+        'sums',
+        ['64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%a0 = bf16[64,64] add(%In0, %In0)',
+            *[f'%a{k} = bf16[64,64] add(%a{k - 1}, %In0)' for k in range(1, 25)],
+            'ROOT %Out0 = bf16[64,64] add(%a24, %In0)',
+        ],
+    )
     return acc
 
 
@@ -325,3 +337,23 @@ def test_accelerator_with_no_on_chip_data_model_compiles(hbm_backend, tmp_path):
     # The sum reads the product's output and the third input
     (_, product), (_, total) = calls
     assert (total['addr_1'], total['addr_2']) == (product['addr_out'], '16384')
+
+
+# The input added to itself and each sum: 26 sums
+SUMS = (
+    """HloModule sums, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %a0 = bf16[64,64] add(%x, %x)
+"""
+    + ''.join(f'  %a{k} = bf16[64,64] add(%a{k - 1}, %x)\n' for k in range(1, 25))
+    + """  ROOT %out = bf16[64,64] add(%a24, %x)
+}
+"""
+)
+
+
+def test_semantics_with_27_variables_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, SUMS)
+    assert [name for name, _ in calls] == ['load_rm', 'sums', 'store_rm']
