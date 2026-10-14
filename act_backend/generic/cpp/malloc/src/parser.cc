@@ -18,15 +18,7 @@ static int64 to_int(const std::string &token) {
 ParsedLine parse_line(const std::string &line) {
   ParsedLine pl;
 
-  // Helper lambdas
-  // (i) panic with error message
-  auto panic = [&](const std::string &msg) -> ParsedLine {
-    std::cerr << "parse_line error: " << msg << "\n  line: `" << line << "`" << std::endl;
-    assert(false && "unreachable");
-    ParsedLine pl;
-    return pl;
-  };
-  // (ii) trim whitespace from both ends of a string
+  // trim whitespace from both ends of a string
   auto trim = [](std::string &s) {
     s.erase(0, s.find_first_not_of(" \t\r\n"));
     s.erase(s.find_last_not_of(" \t\r\n") + 1);
@@ -35,8 +27,6 @@ ParsedLine parse_line(const std::string &line) {
   // parse line: lhs: rest
   // find first ':'
   auto colon_pos = line.find(':');
-  if (colon_pos == std::string::npos)
-    return panic("missing ':' separator");
 
   std::string lhs = line.substr(0, colon_pos);
   std::string rest = line.substr(colon_pos + 1);
@@ -48,8 +38,6 @@ ParsedLine parse_line(const std::string &line) {
   // parse rest: left = right
   // find first '='
   auto eq_pos = rest.find('=');
-  if (eq_pos == std::string::npos)
-    return panic("missing '=' separator");
 
   std::string left = rest.substr(0, eq_pos);
   std::string right = rest.substr(eq_pos + 1);
@@ -60,8 +48,6 @@ ParsedLine parse_line(const std::string &line) {
   // find first '[' and ']'
   auto br_open = left.find('[');
   auto br_close = left.find(']');
-  if (br_open == std::string::npos || br_close == std::string::npos || br_close < br_open)
-    return panic("missing '[' or ']' for storage offset");
 
   std::string storage_name = left.substr(0, br_open);
   std::string addr_str = left.substr(br_open + 1, br_close - br_open - 1);
@@ -75,8 +61,6 @@ ParsedLine parse_line(const std::string &line) {
   // parse right: datatype[shape] <operation>
   // find first space
   auto first_space = right.find(' ');
-  if (first_space == std::string::npos)
-    return panic("missing type/shape before operation (no space found)");
 
   std::string type_shape = right.substr(0, first_space);
   std::string op_and_rest = right.substr(first_space + 1);
@@ -87,8 +71,6 @@ ParsedLine parse_line(const std::string &line) {
   // find first '[' and ']'
   auto s_brkt = type_shape.find('[');
   auto e_brkt = type_shape.find(']');
-  if (s_brkt == std::string::npos || e_brkt == std::string::npos || e_brkt < s_brkt)
-    return panic("missing '[' or ']' for type shape");
 
   std::string shape_str = type_shape.substr(s_brkt + 1, e_brkt - s_brkt - 1);
   trim(shape_str);
@@ -110,8 +92,6 @@ ParsedLine parse_line(const std::string &line) {
   // find last '(' and ')'
   auto s_prn = op_and_rest.rfind('(');
   auto e_prn = op_and_rest.rfind(')');
-  if (s_prn == std::string::npos || e_prn == std::string::npos || e_prn <= s_prn)
-    return panic("missing '(' or ')' for operands");
 
   std::string op_name_and_attr = op_and_rest.substr(0, s_prn);
   std::string operands_str = op_and_rest.substr(s_prn + 1, e_prn - s_prn - 1);
@@ -175,11 +155,7 @@ Instruction *create_instruction(const ParsedLine &pl,
   const std::vector<std::string> &operands_names = pl.operand_names;
 
   // Find storage pointer
-  Storage *storage = nullptr;
-  if (g_storage.find(storage_name) != g_storage.end())
-    storage = g_storage[storage_name];
-  else
-    return panic("unknown storage: " + storage_name);
+  Storage *storage = g_storage.at(storage_name);
 
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
@@ -211,12 +187,8 @@ Instruction *create_instruction(const ParsedLine &pl,
 
   // For instructions, lookup operand tensors
   std::vector<Tensor *> rhs_tensors;
-  for (auto &operand : operands_names) {
-    if (tensor_map.find(operand) == tensor_map.end()) {
-      return panic("unknown operand: " + operand);
-    }
-    rhs_tensors.push_back(tensor_map[operand]);
-  }
+  for (auto &operand : operands_names)
+    rhs_tensors.push_back(tensor_map.at(operand));
 
   // Create instruction object based on op_name
   if (op_name == "slice") {
@@ -224,36 +196,24 @@ Instruction *create_instruction(const ParsedLine &pl,
     std::vector<std::pair<int64, int64>> slices;
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
-    if (start != std::string::npos && end != std::string::npos && end > start) {
-      std::string slices_str = attr_str.substr(start + 1, end - start - 1);
-      std::stringstream ss(slices_str);
-      std::string tok;
-      // The first range, the buffer's access dimension
-      if (std::getline(ss, tok, ',')) {
-        if (!tok.empty()) {
-          auto colon_pos = tok.find(':');
-          if (colon_pos == std::string::npos)
-            return panic("missing ':' in slice specification");
-          std::string start_str = tok.substr(0, colon_pos);
-          std::string end_str = tok.substr(colon_pos + 1);
-          slices.push_back({to_int(start_str), to_int(end_str)});
-        }
+    std::stringstream ss(attr_str.substr(start + 1, end - start - 1));
+    std::string tok;
+    // The first range, the buffer's access dimension
+    if (std::getline(ss, tok, ',')) {
+      if (!tok.empty()) {
+        auto colon_pos = tok.find(':');
+        std::string start_str = tok.substr(0, colon_pos);
+        std::string end_str = tok.substr(colon_pos + 1);
+        slices.push_back({to_int(start_str), to_int(end_str)});
       }
-    } else {
-      return panic("missing slices attribute");
     }
 
     return new Slice(lhs_tensor, rhs_tensors, slices);
   } else if (op_name == "concat") {
     // currently only implemented for one attribute: dimension
-    int64 dimension = 0;
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
-    if (start != std::string::npos && end != std::string::npos && end > start) {
-      dimension = to_int(attr_str.substr(start + 1, end - start - 1));
-    } else {
-      return panic("missing dimension attribute");
-    }
+    int64 dimension = to_int(attr_str.substr(start + 1, end - start - 1));
 
     return new Concat(lhs_tensor, rhs_tensors, dimension);
     // {{INSTRUCTION_CASES}}

@@ -1,12 +1,7 @@
   } else if (op_name == "{{op_name}}") {
     // currently only implemented for one attribute: {{attr_name}}
-    int64 {{attr_name}} = 0;
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
-    if (start != std::string::npos && end != std::string::npos && end > start) {
-      {{attr_name}} = to_int(attr_str.substr(start + 1, end - start - 1));
-    } else {
-      return panic("missing {{attr_name}} attribute");
-    }
+    int64 {{attr_name}} = to_int(attr_str.substr(start + 1, end - start - 1));
 
     return new {{ClassName}}(lhs_tensor, rhs_tensors, {{attr_name}});

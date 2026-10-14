@@ -261,7 +261,6 @@ COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'attr_str',
     'end',
     'lhs_tensor',
-    'panic',
     'rhs_tensors',
     'start',
     'to_int',
