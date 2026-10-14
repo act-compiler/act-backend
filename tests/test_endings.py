@@ -59,6 +59,15 @@ ENTRY main {
 """
 
 
+# A sum of an input and an undefined value
+UNDEFINED = """HloModule undefined, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  ROOT %c = bf16[64,64] add(%a, %b)
+}
+"""
+
 # One exponential, which no instruction computes
 EXPONENTIAL = """HloModule exponential, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
 
@@ -91,3 +100,20 @@ def test_no_assembly_says_no_candidate_was_extracted(backend, tmp_path):
         'Error: no assembly found: the time limit of 10s ran out, and no candidate was extracted\n'
     )
     assert not output.exists()
+
+
+def test_failed_compile_leaves_no_earlier_output(backend, tmp_path):
+    (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
+    run, output = compiled(backend, tmp_path, UNDEFINED)
+    assert run.returncode != 0
+    assert not output.exists()
+
+
+def test_usage_error_leaves_the_earlier_output(backend, tmp_path):
+    (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
+    (tmp_path / 'kernel.hlo').write_text(UNDEFINED)
+    # No directory after --log, a usage error
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    run = subprocess.run([backend, *command, '--log'], capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    assert (tmp_path / 'kernel.py').read_text() == '# an earlier compile\n'
