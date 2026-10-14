@@ -36,7 +36,7 @@ macro_rules! binary_op_match {
     };
 }
 
-// A kernel as an e-graph: the graph, its HBM offsets, its root, its inputs and its metadata
+// A kernel's e-graph, HBM offsets, root, inputs and metadata
 pub type ParsedModule = (
   EGraph<TensorOp, TensorInfo>,
   Vec<(Option<Id>, i32)>,
@@ -283,7 +283,7 @@ fn add_expr_to_egraph(
   }
 }
 
-// Give a node its type and shape, and the kernel's name for it
+// Give a node its type, shape and kernel name
 fn bind_node(
   tsymbol: &str,
   node: Id,

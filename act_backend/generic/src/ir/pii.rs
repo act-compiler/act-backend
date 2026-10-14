@@ -34,7 +34,7 @@ impl PiiGraph {
       None => panic!("Not a valid pii node operation: {:?}", op),
     };
     if buffer == Buffer::ANY {
-      // If all children have the same buffer, we use that buffer else panic
+      // The children's one buffer, or a panic
       let child_buffers: Vec<Buffer> = children.iter().map(|&c| self.nodes[c].buffer).collect();
       if child_buffers.is_empty() {
         panic!("ANY buffer requires at least one child to infer buffer type");
