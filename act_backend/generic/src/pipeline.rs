@@ -245,18 +245,24 @@ impl Search {
 fn main() {
   let args: Vec<String> = env::args().collect();
 
-  if args.contains(&"--help".to_string())
-    || !args.contains(&"--input".to_string())
-    || !args.contains(&"--output".to_string())
-  {
+  if args.contains(&"--help".to_string()) {
     print_help(args[0].clone());
     process::exit(0);
+  }
+
+  // A run without a required flag is a usage error
+  for flag in ["--input", "--output"] {
+    if !args.contains(&flag.to_string()) {
+      print_help(args[0].clone());
+      eprintln!("Error: missing the required flag {}", flag);
+      process::exit(1);
+    }
   }
 
   // Process input file
   let input_index = args.iter().position(|x| x == "--input").unwrap() + 1;
   if input_index >= args.len() {
-    eprintln!("Error: Missing file name after --input");
+    eprintln!("Error: missing file name after --input");
     process::exit(1);
   }
 
@@ -266,14 +272,14 @@ fn main() {
 
   if hlo_path.extension().and_then(|s| s.to_str()) != Some("hlo") {
     eprintln!(
-      "Error: Input file '{}' is not an .hlo file.",
+      "Error: input file '{}' is not an .hlo file",
       hlo_path.display()
     );
     process::exit(1);
   }
 
   if !hlo_path.exists() {
-    eprintln!("Error: Input file '{}' does not exist.", hlo_path.display());
+    eprintln!("Error: input file '{}' does not exist", hlo_path.display());
     process::exit(1);
   }
 
@@ -282,7 +288,7 @@ fn main() {
   // Process output file
   let output_index = args.iter().position(|x| x == "--output").unwrap() + 1;
   if output_index >= args.len() {
-    eprintln!("Error: Missing file name after --output");
+    eprintln!("Error: missing file name after --output");
     process::exit(1);
   }
   let output_path_arg = &args[output_index];
@@ -290,7 +296,7 @@ fn main() {
 
   if output_path.extension().and_then(|s| s.to_str()) != Some("py") {
     eprintln!(
-      "Error: Output file '{}' does not have a .py extension.",
+      "Error: output file '{}' does not have a .py extension",
       output_path.display()
     );
     process::exit(1);
@@ -302,7 +308,7 @@ fn main() {
   let log_dir_arg: String = if args.contains(&"--log".to_string()) {
     let log_index = args.iter().position(|x| x == "--log").unwrap() + 1;
     if log_index >= args.len() {
-      eprintln!("Error: Missing directory after --log");
+      eprintln!("Error: missing directory after --log");
       process::exit(1);
     }
     args[log_index].clone()
