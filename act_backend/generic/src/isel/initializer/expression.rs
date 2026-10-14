@@ -113,6 +113,50 @@ pub fn validate_region_exists(
   Ok(())
 }
 
+// A line's attributes after its operands, as names and values
+fn read_attributes(trest: &str) -> Vec<(String, String)> {
+  let mut attributes = vec![];
+  let mut piece = String::new();
+  let mut depth = 0;
+  let mut quoted = false;
+  // Commas inside brackets or quotes belong to a value
+  for c in trest.trim().trim_start_matches(',').chars().chain([',']) {
+    match c {
+      '"' => quoted = !quoted,
+      '{' | '[' | '(' if !quoted => depth += 1,
+      '}' | ']' | ')' if !quoted => depth -= 1,
+      ',' if depth == 0 && !quoted => {
+        let text = std::mem::take(&mut piece);
+        if text.trim().is_empty() {
+          continue;
+        }
+        // A piece with no name is skipped
+        if let Some((name, value)) = text.split_once('=') {
+          attributes.push((name.trim().to_string(), value.trim().to_string()));
+        }
+        continue;
+      }
+      _ => {}
+    }
+    piece.push(c);
+  }
+  attributes
+}
+
+// The value of a required attribute, its braces taken off
+fn required<'a>(
+  tsymbol: &str,
+  toperator: &str,
+  attributes: &'a [(String, String)],
+  name: &str,
+) -> Result<&'a str, String> {
+  attributes
+    .iter()
+    .find(|(given, _)| given == name)
+    .map(|(_, value)| value.trim_start_matches('{').trim_end_matches('}').trim())
+    .ok_or_else(|| format!("{} gives {} no {} attribute", tsymbol, toperator, name))
+}
+
 // One argument per field of the kernel's line
 #[allow(clippy::too_many_arguments)]
 pub fn parse_hlo_expr(
@@ -125,6 +169,8 @@ pub fn parse_hlo_expr(
   trest: &str,
   regions: &std::collections::HashMap<String, HLORegion>,
 ) -> Result<Option<HLOExpr>, String> {
+  let attributes = read_attributes(trest);
+
   let expr = match toperator {
     "parameter" => {
       // Parameter(0) -- parse the index from operands
@@ -164,23 +210,14 @@ pub fn parse_hlo_expr(
     }
 
     "slice" => {
-      // slice(source), slice={[0:1:1], [0:8:1]}: the slices in the rest
+      // slice(source), slice={[0:1:1], [0:8:1]}
       let source = toperands.trim().to_string();
 
-      // The text inside the braces, split at commas
-      let slices = if let Some(start) = trest.find('{') {
-        if let Some(end) = trest.find('}') {
-          let slice_str = &trest[start + 1..end];
-          slice_str
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect::<Vec<_>>()
-        } else {
-          vec![]
-        }
-      } else {
-        vec![]
-      };
+      // One [start:limit:stride] per dimension
+      let slices = required(tsymbol, toperator, &attributes, "slice")?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect::<Vec<_>>();
 
       HLOExpr::Slice {
         tsymbol: tsymbol.to_string(),
@@ -225,7 +262,7 @@ pub fn parse_hlo_expr(
     }
 
     "concatenate" => {
-      // concatenate({a, b, c}), dimension=0 or similar, parse inputs and dims
+      // concatenate(a, b), dimensions={0}
 
       // Inputs are comma-separated in operands, remove braces if any
       let inputs = toperands
@@ -236,11 +273,17 @@ pub fn parse_hlo_expr(
         .map(|s| s.trim().to_string())
         .collect::<Vec<_>>();
 
-      // Parse dimension from rest e.g. dimension=0 or dims=[0,1]
-      let dimensions = trest
-        .chars()
-        .filter_map(|c| c.to_digit(10))
-        .collect::<Vec<_>>();
+      // The one dimension it joins along, dimensions={0}
+      let text = required(tsymbol, toperator, &attributes, "dimensions")?;
+      let dimensions = match text.parse::<u32>() {
+        Ok(dimension) => vec![dimension],
+        Err(_) => {
+          return Err(format!(
+            "{} concatenates along {{{}}}, where a concatenate takes one dimension",
+            tsymbol, text
+          ))
+        }
+      };
 
       HLOExpr::Concatenate {
         tsymbol: tsymbol.to_string(),
@@ -253,7 +296,7 @@ pub fn parse_hlo_expr(
     }
 
     "reshape" => {
-      // reshape(Arg_0.6), new_shape=[1, 2, 3]
+      // reshape(Arg_0.6)
       let source = toperands.trim().to_string();
 
       HLOExpr::Reshape {
@@ -266,11 +309,7 @@ pub fn parse_hlo_expr(
     }
 
     "transpose" => {
-      let dim_str = trest
-        .split_once('{')
-        .and_then(|(_, rest)| rest.split_once('}'))
-        .map(|(inner, _)| inner.trim())
-        .unwrap_or("");
+      let dim_str = required(tsymbol, toperator, &attributes, "dimensions")?;
 
       let source = toperands.trim().to_string();
 
@@ -296,55 +335,9 @@ pub fn parse_hlo_expr(
     }
 
     "reduce" => {
-      // Parse dimensions from something like: dimensions={1}
-      let dimensions = trest
-        .split("dimensions=")
-        .nth(1)
-        .and_then(|s| s.split(',').next()) // Up to next comma or end
-        .map(|s| s.trim_matches(|c: char| c == '{' || c == '}' || c.is_whitespace()))
-        .unwrap_or("")
-        .to_string();
-
-      // Parse reduction operation from something like: to_apply=%region_0.10, metadata=...
-      let to_apply = trest
-        .split("to_apply=")
-        .nth(1)
-        .map(|s| {
-          // Find the next comma that's not inside brackets/parentheses
-          let mut depth = 0;
-          let mut in_brackets = false;
-          let mut in_parens = false;
-
-          for (i, ch) in s.char_indices() {
-            match ch {
-              '[' => in_brackets = true,
-              ']' => in_brackets = false,
-              '(' => {
-                if !in_brackets {
-                  in_parens = true;
-                  depth += 1;
-                }
-              }
-              ')' => {
-                if !in_brackets {
-                  depth -= 1;
-                  if depth == 0 {
-                    in_parens = false;
-                  }
-                }
-              }
-              ',' if !in_brackets && !in_parens => {
-                // Found a top-level comma, take everything before it
-                return s[..i].trim().to_string();
-              }
-              _ => {}
-            }
-          }
-          // No comma found, take the whole string
-          s.trim().to_string()
-        })
-        .unwrap_or("".to_string())
-        .to_string();
+      // The dimensions it sums over, dimensions={0,1}, and its region
+      let dimensions = required(tsymbol, toperator, &attributes, "dimensions")?.to_string();
+      let to_apply = required(tsymbol, toperator, &attributes, "to_apply")?.to_string();
 
       validate_region_exists(&to_apply, regions)?;
 
@@ -386,5 +379,20 @@ pub fn parse_hlo_expr(
       ));
     }
   };
+
+  // A dot's batch dimensions, which the backend does not read
+  let unread: &[&str] = match toperator {
+    "dot" => &["lhs_batch_dims", "rhs_batch_dims"],
+    _ => &[],
+  };
+  if let Some((name, _)) = attributes
+    .iter()
+    .find(|(name, _)| unread.contains(&name.as_str()))
+  {
+    return Err(format!(
+      "{} gives {} the attribute {}, which the backend does not support",
+      tsymbol, toperator, name
+    ));
+  }
   Ok(Some(expr))
 }

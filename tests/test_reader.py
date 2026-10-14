@@ -1,5 +1,8 @@
 """Tests of the kernel reader: what it reads of a kernel and why it refuses one."""
 
+import os
+import subprocess
+
 import pytest
 from conftest import compiled
 
@@ -147,3 +150,80 @@ def test_unreadable_kernel_ends_in_no_assembly(backend, tmp_path, text, reason):
     assert run.returncode == 1
     assert run.stderr == f'Error: no assembly found: {reason}\n'
     assert not output.exists()
+
+
+# A library caller printing every node of a kernel's e-graph
+NODES = """use backend::isel;
+
+fn main() {
+  let kernel = std::env::args().nth(1).unwrap();
+  let (egraph, ..) = isel::initializer::parse_hlo_module_to_egraph(&kernel).unwrap();
+  for class in egraph.classes() {
+    for node in &class.nodes {
+      println!("{}", node);
+    }
+  }
+}
+"""
+
+# A concatenate and a reduce, each with attributes and metadata
+ATTRIBUTES = kernel(
+    '%a = bf16[32,64] parameter(0)',
+    '%b = bf16[32,64] parameter(1)',
+    '%c = bf16[64,64] concatenate(%a, %b), dimensions={0}, metadata={op_name="cat, of two" source_line=31}',
+    '%z = bf16[] constant(0)',
+    'ROOT %r = bf16[] reduce(%c, %z), dimensions={0,1}, to_apply=%sum',
+    header='HloModule attributes, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[]}',
+    regions=region('sum', 'add'),
+)
+
+
+def read_nodes(work_dir, tmp_path, text):
+    """Read a kernel's text through the crate's library; return each node of its e-graph"""
+    crate = os.path.join(work_dir, 'targets', 'ENDINGS', 'backend')
+    os.makedirs(os.path.join(crate, 'examples'), exist_ok=True)
+    with open(os.path.join(crate, 'examples', 'nodes.rs'), 'w') as f:
+        f.write(NODES)
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(text)
+    command = ['cargo', 'run', '--release', '--locked', '--example', 'nodes', str(path)]
+    run = subprocess.run(command, cwd=crate, capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    return run.stdout.splitlines()
+
+
+def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
+    nodes = read_nodes(endings_dir, tmp_path, ATTRIBUTES)
+    assert "concat[axis='0']" in nodes
+    assert "reduce[dims='0,1']" in nodes
+
+
+@pytest.mark.parametrize(
+    'line, reason',
+    [
+        (
+            (
+                'ROOT %c = bf16[64,64] dot(%a, %a), lhs_batch_dims={0}, rhs_batch_dims={0}, '
+                'lhs_contracting_dims={1}, rhs_contracting_dims={1}'
+            ),
+            '%c gives dot the attribute lhs_batch_dims, which the backend does not support',
+        ),
+        (
+            'ROOT %c = bf16[64,64] transpose(%a)',
+            '%c gives transpose no dimensions attribute',
+        ),
+        (
+            'ROOT %c = bf16[32,64] slice(%a)',
+            '%c gives slice no slice attribute',
+        ),
+        (
+            'ROOT %c = bf16[64,64] reverse(%a), dimensions={0}',
+            '%c applies reverse, an operation the backend does not support',
+        ),
+    ],
+    ids=['batch_dims', 'no_dimensions', 'no_slice', 'unread_operation'],
+)
+def test_attribute_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_path, line, reason):
+    run, _ = compiled(backend, tmp_path, kernel(A, line))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
