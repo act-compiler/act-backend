@@ -9,36 +9,11 @@ from collections import Counter
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import import_oracle
+from conftest import add_moves, add_on_d1, import_oracle
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
 from act_backend import generate_backend
-
-
-def add_moves(acc):
-    """A load of bf16 rows into d1 and a store of them from it"""
-    instr = acc.add_instruction('load_rm', ['n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
-    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
-    instr.add_semantics("""
-ENTRY {
-    %In0 = u8[`@c.n * 128`] parameter(0);
-    %a = u8[`@c.n`,64,2] reshape(%In0);
-    ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
-}
-""")
-
-    instr = acc.add_instruction('store_rm', ['n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
-    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 128']]])
-    instr.add_semantics("""
-ENTRY {
-    %In0 = bf16[`@c.n`,64] parameter(0);
-    %a = u8[`@c.n`,64,2] bitcast_convert(%In0);
-    ROOT %Out0 = u8[`@c.n * 128`] reshape(%a);
-}
-""")
 
 
 def add_typed_moves(acc, element_type, size):
@@ -65,15 +40,6 @@ ENTRY {{
     ROOT %Out0 = u8[`@c.n * {64 * size}`] reshape(%a);
 }}
 """)
-
-
-def add_on_d1(acc, name, sizes, lines, attributes=()):
-    """An instruction from regions of d1 to a region of d1, the output's size last"""
-    addresses = [f'addr_{number}' for number in range(1, len(sizes))]
-    instr = acc.add_instruction(name, list(attributes), [*addresses, 'addr_out'])
-    instr.set_inputs([['d1', [f'@a.{address}'], [size]] for address, size in zip(addresses, sizes)])
-    instr.set_outputs([['d1', ['@a.addr_out'], [sizes[-1]]]])
-    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
 
 
 def matching():
