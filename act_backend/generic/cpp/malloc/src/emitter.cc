@@ -1,5 +1,7 @@
 #include "emitter.h"
 
+#include <cstdlib>
+
 namespace emitter {
 
 MetaDataInfo::MetaDataInfo(nlohmann::json &j) {
@@ -33,8 +35,9 @@ MetaData::MetaData(std::ifstream &metadata_path,
   try {
     metadata_path >> j;
   } catch (const nlohmann::json::parse_error &e) {
+    // Every candidate reads this one file, so the compile ends
     std::cerr << "Error: failed to parse metadata.json: " << e.what() << std::endl;
-    assert(false && "nlohmann json parse error");
+    std::exit(1);
   }
 
   this->module_name = j["module_name"].get<std::string>();
