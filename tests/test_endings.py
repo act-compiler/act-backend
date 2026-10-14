@@ -153,3 +153,12 @@ def test_usage_error_makes_no_directory(backend, tmp_path):
     run = subprocess.run([backend, *command], capture_output=True, text=True, check=False)
     assert run.returncode == 1
     assert not (tmp_path / 'new').exists()
+
+
+def test_output_the_backend_cannot_write_ends_the_compile_at_once(backend, tmp_path):
+    # No user, root included, makes a file in /proc
+    run, _ = compiled(backend, tmp_path, ADD_32, '/proc/kernel.py')
+    assert run.returncode == 1
+    assert run.stderr.startswith("Error: cannot write the output '/proc/kernel.py': ")
+    assert run.stderr.count('\n') == 1
+    assert 'Starting Phase 1' not in run.stdout

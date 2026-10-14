@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::collections::HashSet;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
 use std::time::Duration;
@@ -48,6 +48,11 @@ fn no_assembly(reason: &str) -> ! {
   println!("No output file created.");
   eprintln!("Error: no assembly found: {}", reason);
   process::exit(1);
+}
+
+// The output's name until it is whole
+fn partial_output(output_path: &Path) -> PathBuf {
+  output_path.with_extension(format!("py.{}", process::id()))
 }
 
 // Report the search's elapsed time and when it stops
@@ -152,9 +157,7 @@ impl Search {
         );
 
         // The output takes its name once it is whole
-        let partial = self
-          .output_path
-          .with_extension(format!("py.{}", process::id()));
+        let partial = partial_output(&self.output_path);
         std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
         std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
         println!(
@@ -317,6 +320,17 @@ fn main() {
       );
       process::exit(1);
     }
+  }
+
+  // The output's directory takes a file before the search starts
+  let partial = partial_output(&output_path);
+  if let Err(error) = std::fs::File::create(&partial).and_then(|_| std::fs::remove_file(&partial)) {
+    eprintln!(
+      "Error: cannot write the output '{}': {}",
+      output_path.display(),
+      error
+    );
+    process::exit(1);
   }
 
   let log_dir = std::path::PathBuf::from(log_dir_arg);
