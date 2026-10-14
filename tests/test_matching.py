@@ -1,12 +1,17 @@
 """Tests of where an instruction is selected: a spec made for them, generated once."""
 
+import importlib.util
 import os
 import re
 import subprocess
 from collections import Counter
 
+import jax.numpy as jnp
+import numpy as np
 import pytest
+from conftest import import_oracle
 from taidl import Accelerator
+from taidl_to import generate_oracle
 
 from act_backend import generate_backend
 
@@ -214,6 +219,25 @@ ENTRY {
     return acc
 
 
+def spreading():
+    """The moves and a load of a vector in the HBM spread over 64 rows, for the oracle too"""
+    acc = Accelerator('SPREADING')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    add_moves(acc)
+    instr = acc.add_instruction('load_spread', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['128']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[128] parameter(0);
+    %a = u8[64,2] reshape(%In0);
+    %b = bf16[64] bitcast_convert(%a);
+    ROOT %Out0 = bf16[64,64] broadcast(%b), dimensions={1};
+}
+""")
+    return acc
+
+
 def add_on_hbm(acc, name, sizes, lines, attributes=()):
     """An instruction from regions of the HBM to a region of it, the output's size last"""
     addresses = [f'addr_{number}' for number in range(1, len(sizes))]
@@ -276,6 +300,16 @@ def backend(work_dir):
 
 
 @pytest.fixture(scope='module')
+def spreading_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec that spreads a vector"""
+    work_dir = str(tmp_path_factory.mktemp('spreading'))
+    acc = spreading()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+@pytest.fixture(scope='module')
 def hbm_backend(tmp_path_factory):
     """Generate the backend of the spec with the HBM alone and return the binary's path"""
     work_dir = str(tmp_path_factory.mktemp('hbm_only'))
@@ -296,6 +330,19 @@ def selected(backend, tmp_path, kernel):
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
         for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', output.read_text())
     ]
+
+
+def simulated(work_dir, name, assembly, *inputs):
+    """Run a compiled kernel on the oracle of the accelerator named and return its output"""
+    decorator, api = import_oracle(work_dir, os.path.join(work_dir, name))
+    spec = importlib.util.spec_from_file_location('kernel', assembly)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    (function,) = re.findall(r'^def (\w+)\(kernel, api\):', assembly.read_text(), re.MULTILINE)
+    kernel = getattr(module, function)(decorator.kernel, api)
+    kernel('fsim-compile')()
+    outputs, _ = kernel('fsim')(*inputs)
+    return outputs[0]
 
 
 # The sum of a reduce region
@@ -584,3 +631,23 @@ def test_attributes_in_a_product_are_read_where_each_stands_alone(backend, tmp_p
     calls = selected(backend, tmp_path, TILE)
     assert [name for name, _ in calls] == ['load_tile', 'exp_tile', 'store_tile']
     assert all((call['m'], call['n']) == ('32', '16') for _, call in calls)
+
+
+# A vector, the one input, spread over 64 rows
+SPREAD_ROWS = """HloModule spread_rows, entry_computation_layout={(bf16[64]{0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %v = bf16[64] parameter(0)
+  ROOT %b = bf16[64,64] broadcast(%v), dimensions={1}
+}
+"""
+
+
+def test_rank_1_input_is_simulated(spreading_dir, tmp_path):
+    backend = os.path.join(spreading_dir, 'backends', 'SPREADING')
+    calls = selected(backend, tmp_path, SPREAD_ROWS)
+    assert [name for name, _ in calls] == ['load_spread', 'store_rm']
+    # The vector's shape, a tuple of one, reaches the oracle
+    vector = jnp.arange(64, dtype=jnp.bfloat16) / 8
+    output = simulated(spreading_dir, 'SPREADING', tmp_path / 'kernel.py', vector)
+    assert np.array_equal(np.asarray(output), np.tile(np.asarray(vector), (64, 1)))
