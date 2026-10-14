@@ -3,8 +3,8 @@ import os
 from .instruction_info import (
     InstructionInfo,
     extract_instruction_info,
-    get_kebab_name,
-    get_rust_variant_name,
+    get_graph_name,
+    get_rewrite_word,
 )
 from .template_loader import fill_placeholders, get_backend_template_loader
 
@@ -20,8 +20,8 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
     display_arms = []
 
     for info in instructions_info:
-        variant_name = get_rust_variant_name(info.name)
-        kebab_name = get_kebab_name(info.name)
+        variant_name = info.type_name
+        rewrite_word = get_rewrite_word(info.name)
 
         # Enum variant
         if info.has_metadata:
@@ -48,7 +48,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
         # Set metadata arm (only for instructions with metadata)
         if info.has_metadata:
             set_metadata_arms.append(
-                templates.render(
+                templates.render_fitting(
                     'egraph.rs.ISA_SET_METADATA_MATCH_ARMS.arm.txt', variant_name=variant_name
                 )
             )
@@ -75,7 +75,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
             from_op_arms.append(
                 templates.render(
                     'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_with_metadata.txt',
-                    kebab_name=kebab_name,
+                    rewrite_word=rewrite_word,
                     arity=str(info.arity),
                     variant_name=variant_name,
                 )
@@ -84,7 +84,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
             from_op_arms.append(
                 templates.render_fitting(
                     'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_no_metadata.txt',
-                    kebab_name=kebab_name,
+                    rewrite_word=rewrite_word,
                     arity=str(info.arity),
                     variant_name=variant_name,
                 )
@@ -96,7 +96,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
                 templates.render(
                     'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_with_metadata.txt',
                     variant_name=variant_name,
-                    instruction_name=info.name,
+                    graph_name=get_graph_name(info.name),
                     attributes=','.join(info.attributes),
                 )
             )
@@ -105,7 +105,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
                 templates.render(
                     'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_no_metadata.txt',
                     variant_name=variant_name,
-                    instruction_name=info.name,
+                    graph_name=get_graph_name(info.name),
                 )
             )
 

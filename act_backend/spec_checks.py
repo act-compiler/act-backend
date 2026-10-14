@@ -4,7 +4,7 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
-from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
+from .instruction_info import get_buffer_name
 from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     RustGeneratorVisitor,
@@ -13,112 +13,8 @@ from .isel_ir2isa_rewrites_rs_generator import (
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS, RewriteRuleVisitor, repeated_leaf
 from .semantics_visitor import OperandVisitor
 
-# The e-graph's operators, by their rewrite words
-EGRAPH_WORDS = {
-    'add',
-    'bitcvt',
-    'broadcast',
-    'concat',
-    'constant',
-    'convert',
-    'copy',
-    'divide',
-    'dot',
-    'exponential',
-    'eye',
-    'or',
-    'reduce',
-    'reshape',
-    'shift-left',
-    'shift-right-logical',
-    'slice',
-    'xor',
-    'transpose',
-}
-
-# The e-graph's own variants, and Rust's name for the type
-EGRAPH_VARIANTS = {
-    'OpAdd',
-    'OpBitcvt',
-    'OpBroadcast',
-    'OpConcat',
-    'OpConstant',
-    'OpConvert',
-    'OpCopy',
-    'OpDivide',
-    'OpDot',
-    'OpExp',
-    'OpEye',
-    'OpOr',
-    'OpReduceSum',
-    'OpReshape',
-    'OpShiftLeft',
-    'OpShiftRightLogical',
-    'OpSlice',
-    'OpXor',
-    'OpTranspose',
-    'DetectedConst',
-    'Var',
-    'Self',
-}
-
-# Types the allocator declares beside the instructions' classes
-ALLOCATOR_TYPES = {
-    'Instruction',
-    'Slice',
-    'Concat',
-    'Tensor',
-    'Storage',
-    'MetaData',
-    'MetaDataInfo',
-    'ParsedLine',
-    'IntExpr',
-    'IntVar',
-    'Constraints',
-    'LiveRange',
-    'InterferenceGraph',
-    'EsunCache',
-}
-
-# Words the allocator reads as a declaration, not an instruction
-DECLARATION_WORDS = ('Var', 'DCC')
-
 # Buffers the selector holds beside the data models'
 BUFFERS = {'HBM', 'ANY'}
-
-
-def check_instruction_names(instructions):
-    """Refuse an instruction name the selector or the allocator cannot carry"""
-    carried = {}
-    for instruction in instructions:
-        name = instruction.instruction
-        if get_kebab_name(name) in EGRAPH_WORDS:
-            raise ValueError(
-                f"Instruction name '{name}' is also the e-graph's operator {get_kebab_name(name)}"
-            )
-        if name.startswith(DECLARATION_WORDS):
-            raise ValueError(
-                f"Instruction name '{name}' starts with Var or DCC, "
-                'which the allocator reads as a declaration'
-            )
-        # The e-graph's variant and the allocator's class
-        generated = to_camel_case(name)
-        if not generated[:1].isalpha():
-            raise ValueError(
-                f"Instruction name '{name}' gives the generated name '{generated}', "
-                'which is not an identifier'
-            )
-        if generated in EGRAPH_VARIANTS | ALLOCATOR_TYPES:
-            raise ValueError(
-                f"Instruction name '{name}' gives the generated name {generated}, "
-                'which the backend already holds'
-            )
-        if generated in carried:
-            raise ValueError(
-                f"Instruction names '{carried[generated]}' and '{name}' "
-                f'both give the generated name {generated}'
-            )
-        carried[generated] = name
 
 
 def check_data_model_names(data_models):
@@ -143,7 +39,6 @@ def check_data_model_names(data_models):
 
 def check_names(instructions, data_models):
     """Refuse a spec whose names the generated backend cannot carry"""
-    check_instruction_names(instructions)
     check_data_model_names(data_models)
 
 

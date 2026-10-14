@@ -27,16 +27,18 @@ ENTRY {{
 
 
 def names():
-    """Two loads, a product and a store, each attribute named as the sources' own names are"""
+    """Two loads, a product, a copy and a store, each named as the sources' own names are"""
     acc = Accelerator('NAMES')
     acc.add_data_model('d1', [128], [64], 'bf16')
     acc.add_data_model('d2', [128], [64], 'bf16')
-    add_load(acc, 'load_a', 'd1', 'type', ('y', 'X'))
-    add_load(acc, 'load_b', 'd2', 'lhs_metadata', ('start', 'num'))
+    # Two long names, one camel case, wrapping a match arm
+    add_load(acc, 'load_rows_2', 'd1', 'type', ('y', 'X'))
+    add_load(acc, 'load_rows2', 'd2', 'lhs_metadata', ('start', 'num'))
 
-    instr = acc.add_instruction('mul', [], ['register', 'solver', 'get_h0'])
+    # An operator's word
+    instr = acc.add_instruction('dot', [], ['register', 'solver', 'get_h0'])
     instr.set_inputs([['d1', ['@a.register'], ['64']], ['d2', ['@a.solver'], ['64']]])
-    instr.set_outputs([['d1', ['@a.get_h0'], ['64']]])
+    instr.set_outputs([['d2', ['@a.get_h0'], ['64']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = bf16[64,64] parameter(0);
@@ -45,7 +47,19 @@ ENTRY {
 }
 """)
 
-    instr = acc.add_instruction('store', ['value'], ['str', 'Tensor'])
+    # A name with a leading underscore
+    instr = acc.add_instruction('_2', [], ['source', 'target'])
+    instr.set_inputs([['d2', ['@a.source'], ['64']]])
+    instr.set_outputs([['d1', ['@a.target'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[64,64] copy(%In0);
+}
+""")
+
+    # A word the allocator reads as a declaration
+    instr = acc.add_instruction('Variant', ['value'], ['str', 'Tensor'])
     instr.set_inputs([['d1', ['@a.str'], ['@c.value']]])
     instr.set_outputs([['d0', ['@a.Tensor'], ['@c.value * 128']]])
     instr.add_semantics("""
@@ -90,10 +104,11 @@ def test_names_the_generated_sources_spell_compile(backend, tmp_path):
         for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', output.read_text())
     ]
     assert sorted(calls) == [
-        ('load_a', ['type', 'y', 'X']),
-        ('load_b', ['lhs_metadata', 'start', 'num']),
-        ('mul', ['register', 'solver', 'get_h0']),
-        ('store', ['value', 'str', 'Tensor']),
+        ('Variant', ['value', 'str', 'Tensor']),
+        ('_2', ['source', 'target']),
+        ('dot', ['register', 'solver', 'get_h0']),
+        ('load_rows2', ['lhs_metadata', 'start', 'num']),
+        ('load_rows_2', ['type', 'y', 'X']),
     ]
 
 
@@ -110,5 +125,5 @@ def test_prefixes_are_the_generated_names_own():
                         # A placeholder is filled, so it spells no name
                         text = re.sub(r'\{\{\w+\}\}', '', f.read())
                     spelled |= set(re.findall(r'\b[A-Za-z_]\w*', text))
-    # No skeleton name in an attribute's namespace
-    assert [name for name in spelled if name.startswith('attr_')] == []
+    # No skeleton name in an attribute's or instruction's namespace
+    assert [name for name in spelled if re.match(r'attr_|instr_|Instr[A-Z0-9]', name)] == []

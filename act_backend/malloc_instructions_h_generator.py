@@ -3,7 +3,7 @@
 import os
 
 from .expression_writer import source
-from .instruction_info import get_attribute_name, to_camel_case
+from .instruction_info import get_attribute_name, get_type_names
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -14,9 +14,8 @@ def generate_get_h_method(index, addr_var, size_expr, templates):
     )
 
 
-def generate_instruction_class(instruction, templates):
+def generate_instruction_class(instruction, class_name, templates):
     """Generate C++ instruction class from instruction definition"""
-    class_name = to_camel_case(instruction.instruction)
     op_name = instruction.instruction
     comp_attrs = instruction.comp_attr
     params = instruction.parameters
@@ -105,8 +104,10 @@ def generate_instructions_file(backend_gen_dir, instructions):
         content = f.read()
 
     # Generate all instruction classes, a blank line between two
+    class_names = get_type_names([instruction.instruction for instruction in instructions])
     classes = '\n'.join(
-        generate_instruction_class(instruction, templates) for instruction in instructions
+        generate_instruction_class(instruction, class_names[instruction.instruction], templates)
+        for instruction in instructions
     ).rstrip('\n')
 
     # Replace placeholder

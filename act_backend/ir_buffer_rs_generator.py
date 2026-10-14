@@ -4,7 +4,6 @@ from .instruction_info import (
     InstructionInfo,
     extract_instruction_info,
     get_buffer_name,
-    get_rust_variant_name,
 )
 from .template_loader import fill_placeholders, get_backend_template_loader
 
@@ -34,7 +33,7 @@ def generate_buffer_assignment_arms(instructions_info: list[InstructionInfo], te
     buffer_assignment_arms = []
 
     for info in instructions_info:
-        variant_name = get_rust_variant_name(info.name)
+        variant_name = info.type_name
         pattern = '(_, _)' if info.has_metadata else '(_)'
         buffer_assignment_arms.append(
             templates.render(

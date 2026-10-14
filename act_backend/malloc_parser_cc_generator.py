@@ -1,12 +1,11 @@
 import os
 
-from .instruction_info import get_attribute_name, to_camel_case
+from .instruction_info import get_attribute_name, get_graph_name, get_type_names
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
-def generate_parser_instruction(instruction, templates):
-    op_name = instruction.instruction
-    class_name = to_camel_case(op_name)
+def generate_parser_instruction(instruction, class_name, templates):
+    op_name = get_graph_name(instruction.instruction)
     comp_attrs = instruction.comp_attr
 
     if comp_attrs:
@@ -33,8 +32,10 @@ def generate_parser_instruction(instruction, templates):
 
 def generate_parser_instructions(instructions, templates):
     cases = []
+    class_names = get_type_names([instruction.instruction for instruction in instructions])
     for instruction in instructions:
-        cases.append(generate_parser_instruction(instruction, templates))
+        class_name = class_names[instruction.instruction]
+        cases.append(generate_parser_instruction(instruction, class_name, templates))
 
     # Each case closes the one above it
     return '\n'.join(cases)
