@@ -437,12 +437,16 @@ fn main() {
       println!("Info: Reached time limit. No further extraction.");
       println!();
     }
-    StopReason::NodeLimit(_) | StopReason::Saturated => {
+    StopReason::NodeLimit(_) | StopReason::IterationLimit(_) | StopReason::Saturated => {
       // What ended the rewrites, which the no-assembly line names
       let rewrites = match runner.stop_reason {
         Some(StopReason::NodeLimit(_)) => {
           format!("the rewrites reached the node limit of {}", NODE_LIMIT)
         }
+        Some(StopReason::IterationLimit(_)) => format!(
+          "the rewrites reached the iteration limit of {}",
+          ITERATION_LIMIT
+        ),
         _ => "the rewrites saturated".to_string(),
       };
       println!(
@@ -458,10 +462,6 @@ fn main() {
         limit += 1; // Increment limit to allow for more extraction next time
       }
       println!("Info: Reached time limit. No further extraction.");
-    }
-    StopReason::IterationLimit(_) => {
-      eprintln!("Error: Reached iteration limit. This should not happen.");
-      process::exit(1);
     }
     StopReason::Other(_) => {
       eprintln!("Error: Stopped for an unexpected reason. Requires investigation.");
