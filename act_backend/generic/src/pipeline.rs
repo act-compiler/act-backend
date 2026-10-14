@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::collections::HashSet;
 use std::env;
+use std::ffi::{CString, OsString};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
@@ -54,6 +56,17 @@ fn no_assembly(reason: &str) -> ! {
 // The output's name until it is whole
 fn partial_output(output_path: &Path) -> PathBuf {
   output_path.with_extension(format!("py.{}", process::id()))
+}
+
+// Make a unique directory from a template ending in XXXXXX
+fn make_unique_dir(template: &Path) -> std::io::Result<PathBuf> {
+  let mut name = CString::new(template.as_os_str().as_bytes())?.into_bytes_with_nul();
+  // mkdtemp fills the X's in place, mode 0700
+  if unsafe { libc::mkdtemp(name.as_mut_ptr().cast()) }.is_null() {
+    return Err(std::io::Error::last_os_error());
+  }
+  name.pop();
+  Ok(PathBuf::from(OsString::from_vec(name)))
 }
 
 // Report the search's elapsed time and when it stops
@@ -307,9 +320,9 @@ fn main() {
 
   // Process log directory
   let own_log = !args.contains(&"--log".to_string());
-  let log_dir = if own_log {
-    // A directory per process, named by its id
-    env::temp_dir().join(format!("act-backend-{}", process::id()))
+  let mut log_dir = if own_log {
+    // A unique name, filled in when the directory is made
+    env::temp_dir().join("act-backend-XXXXXX")
   } else {
     let log_index = args.iter().position(|x| x == "--log").unwrap() + 1;
     if log_index >= args.len() {
@@ -335,7 +348,6 @@ fn main() {
     }
     log_dir
   };
-  println!("Log directory: {}", log_dir.display());
 
   // The output's directory is made once every flag is checked
   let output_dir = output_path.parent().unwrap();
@@ -371,21 +383,21 @@ fn main() {
     process::exit(1);
   }
 
-  // Remove a leftover, then make the compile's own log directory
+  // The compile's own log directory, made under a unique name
   if own_log {
-    if log_dir.exists() {
-      std::fs::remove_dir_all(&log_dir).expect("Failed to remove existing log directory");
-    }
-    if let Err(error) = std::fs::create_dir_all(&log_dir) {
-      eprintln!(
-        "Error: cannot create the log directory '{}': {}",
-        log_dir.display(),
-        error
-      );
-      process::exit(1);
+    match make_unique_dir(&log_dir) {
+      Ok(made) => log_dir = made,
+      Err(error) => {
+        eprintln!(
+          "Error: cannot create the log directory '{}': {}",
+          log_dir.display(),
+          error
+        );
+        process::exit(1);
+      }
     }
   }
-
+  println!("Log directory: {}", log_dir.display());
   println!("PII graphs dumped to: {}", log_dir.display());
   println!();
 

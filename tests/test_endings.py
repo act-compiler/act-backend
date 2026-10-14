@@ -1,8 +1,11 @@
 """Tests of how a compile ends: what it says and the output it leaves."""
 
 import os
+import shutil
 import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 import pytest
 from conftest import add_moves, add_on_d1, compiled, instruction_calls, kernel
@@ -249,6 +252,9 @@ def test_two_compiles_at_once_keep_their_log_directories(backend, tmp_path):
     env = dict(os.environ, TMPDIR=str(temporary))
     runs = []
     for name, text in [('chain', CHAIN), ('sum', ADD_32)]:
+        if runs:
+            # The second starts while the longer first still reads candidates
+            time.sleep(0.3)
         (tmp_path / f'{name}.hlo').write_text(text)
         command = [
             backend,
@@ -262,13 +268,87 @@ def test_two_compiles_at_once_keep_their_log_directories(backend, tmp_path):
                 command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
             )
         )
-        # The second starts while the longer first still reads candidates
-        time.sleep(0.3)
+    # The most directories held at once, until both compiles end
+    held = set()
+    while any(run.poll() is None for run in runs):
+        names = {path.name for path in temporary.iterdir()}
+        held = names if len(names) > len(held) else held
+        time.sleep(0.005)
     for run in runs:
         assert run.wait() == 0, run.stderr.read()
     assert (tmp_path / 'chain.py').exists() and (tmp_path / 'sum.py').exists()
-    # Each compile leaves the directory it made for itself
+    # Each compile made its own directory and left it
+    assert len(held) == 2 and all(name.startswith('act-backend-') for name in held)
+    assert {path.name for path in temporary.iterdir()} == held
+
+
+def test_progress_names_its_own_log_directory_as_made(backend, tmp_path):
+    temporary = tmp_path / 'tmp'
+    temporary.mkdir()
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    env = dict(os.environ, TMPDIR=str(temporary))
+    run = subprocess.run([backend, *command], env=env, capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    # The directory as made, its template's X's filled in
+    (line,) = [line for line in run.stdout.splitlines() if line.startswith('Log directory: ')]
+    made = Path(line.removeprefix('Log directory: '))
+    assert made.parent == temporary and made.name.startswith('act-backend-')
+    assert made.name != 'act-backend-XXXXXX'
+
+
+@pytest.fixture
+def shared(backend):
+    """A directory every user reaches, the backend copied into it"""
+    shared = Path(tempfile.mkdtemp())
+    shared.chmod(0o777)
+    shutil.copy(backend, shared)
+    yield shared
+    # Every entry opened again before the tree is removed
+    for path in shared.iterdir():
+        path.chmod(0o777)
+    shutil.rmtree(shared)
+
+
+def test_leftover_directory_of_another_user_is_left_alone(shared):
+    (shared / 'kernel.hlo').write_text(ADD_32)
+    temporary = shared / 'tmp'
+    temporary.mkdir()
+    # Sticky like /tmp: any user writes, removes only its own
+    temporary.chmod(0o1777)
+    # Another user's directory, which the compile leaves alone
+    held = temporary / 'act-backend-held' / 'held'
+    held.mkdir(parents=True)
+    (held / 'file').touch()
+    held.chmod(0o555)
+    # As uid 65534, since root passes every mode
+    user = ['setpriv', '--reuid=65534', '--regid=65534', '--clear-groups']
+    command = [*(user if os.geteuid() == 0 else []), str(shared / 'ENDINGS')]
+    arguments = ['--input', str(shared / 'kernel.hlo'), '--output', str(shared / 'kernel.py')]
+    env = dict(os.environ, TMPDIR=str(temporary))
+    run = subprocess.run(
+        [*command, *arguments], env=env, capture_output=True, text=True, check=False
+    )
+    # Opened again before the fixture removes the tree
+    held.chmod(0o755)
+    assert run.returncode == 0, run.stderr
+    assert (shared / 'kernel.py').exists()
+    # The leftover keeps its file, beside the compile's own directory
+    assert (held / 'file').exists()
+    assert held.parent in list(temporary.iterdir())
     assert len(list(temporary.iterdir())) == 2
+
+
+def test_own_log_directory_the_backend_cannot_make_is_a_usage_error(backend, tmp_path):
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    # A missing temporary directory, where no directory can be made
+    env = dict(os.environ, TMPDIR=str(tmp_path / 'missing'))
+    run = subprocess.run([backend, *command], env=env, capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    template = tmp_path / 'missing' / 'act-backend-XXXXXX'
+    assert run.stderr.startswith(f"Error: cannot create the log directory '{template}': ")
+    assert run.stderr.count('\n') == 1
 
 
 def test_log_directory_that_holds_files_is_kept(backend, tmp_path):
