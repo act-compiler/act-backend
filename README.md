@@ -28,7 +28,7 @@ For detailed evaluations, refer to our [OOPSLA 2026 Artifact](https://github.com
 ACT-Backend needs Python 3.14 or later.
 
 ```bash
-pip install git+https://github.com/act-compiler/act-backend.git@v1.8
+pip install git+https://github.com/act-compiler/act-backend.git@v1.9
 ```
 
 Generating a backend builds it, which needs `cargo` with access to crates.io, CMake, `make`, a C++17 compiler, [OR-Tools](https://developers.google.com/optimization) and the [nlohmann/json](https://github.com/nlohmann/json) headers on the machine.
