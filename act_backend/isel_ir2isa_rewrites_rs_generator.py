@@ -43,10 +43,19 @@ class RustGeneratorVisitor(OperandVisitor):
         self.assignments = self.pattern_order(self.root_assignment['lhs'])
         self.root_assignment = self.assignments[-1]
 
+        # Each later occurrence of a value, beside its first
+        firsts = {}
+        copies = []
+        for position, assignment in enumerate(self.assignments):
+            first = firsts.setdefault(assignment['lhs'], position)
+            if first != position:
+                copies.append((position, first))
+
         return {
             'assignments': self.assignments,
             'root_assignment': self.root_assignment,
             'comp_attributes': list(self.comp_attributes),
+            'copies': copies,
         }
 
     def visitInstruction(self, ctx):
@@ -173,8 +182,17 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     # Generate comp attribute extraction
     comp_attr_code = generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
 
+    # Each copy of a value is its first occurrence's e-class
+    shape_checks = [
+        templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.copy_check.txt',
+            copy=str(copy),
+            first=str(first),
+        )
+        for copy, first in semantics_data['copies']
+    ]
+
     # Generate shape/dtype checks for all assignments
-    shape_checks = []
     for i, assignment in enumerate(assignments):
         dtype_rust = ELEMENT_TYPES[assignment['dtype']]
         shape_vec = f'vec![{", ".join(assignment["dims"])}]'

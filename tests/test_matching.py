@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+from collections import Counter
 
 import pytest
 from taidl import Accelerator
@@ -108,6 +109,41 @@ def matching():
             '%a = bf16[64,64] add(%In0, %In0)',
             'ROOT %Out0 = bf16[64,64] add(%a, %a)',
         ],
+    )
+    # Softmax, and the operations that spell it out
+    add_on_d1(
+        acc,
+        'softmax',
+        ['@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            '%a = bf16[`@c.n`,64] exponential(%In0)',
+            '%reduced = bf16[`@c.n`] reduce_add(%a), dimensions={1}',
+            '%b = bf16[`@c.n`,64] broadcast(%reduced), dimensions={0}',
+            'ROOT %Out0 = bf16[`@c.n`,64] divide(%a, %b)',
+        ],
+        ['n'],
+    )
+    add_on_d1(
+        acc,
+        'vexp',
+        ['@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            'ROOT %Out0 = bf16[`@c.n`,64] exponential(%In0)',
+        ],
+        ['n'],
+    )
+    add_on_d1(
+        acc,
+        'vdiv',
+        ['@c.n', '@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            '%In1 = bf16[`@c.n`,64] parameter(1)',
+            'ROOT %Out0 = bf16[`@c.n`,64] divide(%In0, %In1)',
+        ],
+        ['n'],
     )
     return acc
 
@@ -384,3 +420,48 @@ ENTRY main {
 def test_copy_of_a_copy_is_selected(backend, tmp_path):
     calls = selected(backend, tmp_path, FOUR)
     assert [name for name, _ in calls] == ['load_rm', 'four', 'store_rm']
+
+
+# One input's exponentials over the rows' sums of the other's
+SKEWED = f"""HloModule skewed, entry_computation_layout={{(bf16[64,64]{{1,0}}, bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %y = bf16[64,64] parameter(1)
+  %ex = bf16[64,64] exponential(%x)
+  %ey = bf16[64,64] exponential(%y)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%ey, %zero), dimensions={{1}}, to_apply=%reduce_add
+  %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+  ROOT %out = bf16[64,64] divide(%ex, %b)
+}}
+"""
+
+# The rows' softmax: the exponentials, one value, read twice
+SOFTMAX = f"""HloModule softmax, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %ex = bf16[64,64] exponential(%x)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%ex, %zero), dimensions={{1}}, to_apply=%reduce_add
+  %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+  ROOT %out = bf16[64,64] divide(%ex, %b)
+}}
+"""
+
+
+def test_value_used_twice_matches_one_value(backend, tmp_path):
+    calls = selected(backend, tmp_path, SKEWED)
+    # Two exponentials, not softmax, which reads one value twice
+    names = Counter(name for name, _ in calls)
+    assert names == {'load_rm': 2, 'vexp': 2, 'rowsum': 1, 'vdiv': 1, 'store_rm': 1}
+
+
+def test_softmax_is_selected_over_one_value(backend, tmp_path):
+    calls = selected(backend, tmp_path, SOFTMAX)
+    assert [name for name, _ in calls] == ['load_rm', 'softmax', 'store_rm']
