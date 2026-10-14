@@ -58,6 +58,24 @@ def test_pattern_variables_are_numbered(templates):
     assert all(re.fullmatch(r'\?\w+', variable) for variable in variables)
 
 
+def test_copy_of_a_copy_has_variables_of_its_own(templates):
+    # A sum of the input with itself, read twice
+    acc = Accelerator('FOUR')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    instr = acc.add_instruction('four', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %a = bf16[64,64] add(%In0, %In0);
+    ROOT %Out0 = bf16[64,64] add(%a, %a);
+}
+""")
+    rewrite = generate_rewrite_rule(get_instruction_metadata(acc.instructions)[0], templates)
+    assert squeeze(rewrite) == 'four: (add (add ?v0 ?v1) (add ?v2 ?v3)) => (four ?v0)'
+
+
 def test_buffer_assignments(accelerator):
     info = extract_instruction_info(accelerator.instructions)
     # The output's buffer first, then each input's, d0 as HBM

@@ -56,7 +56,7 @@ class RewriteRuleVisitor(OperandVisitor):
         self.variable_counter += 1
         return var_name
 
-    def substitute_params(self, pattern, substitutions):
+    def substitute_variables(self, pattern, substitutions):
         # Whole variables, so ?v1 leaves ?v10 alone
         return VARIABLE.sub(lambda var: substitutions.get(var[0], var[0]), pattern)
 
@@ -93,13 +93,12 @@ class RewriteRuleVisitor(OperandVisitor):
                     pattern = self.variable_definitions[operand_value]
 
                     if operand_value in self.used_values:
-                        substitutions = {}
-                        for param_var in self.parameter_variables.values():
-                            if param_var in VARIABLE.findall(pattern):
-                                fresh_var = self.get_next_variable()
-                                substitutions[param_var] = fresh_var
-                        if substitutions:
-                            pattern = self.substitute_params(pattern, substitutions)
+                        # A copy shares no variable with what it copies
+                        substitutions = {
+                            var: self.get_next_variable()
+                            for var in dict.fromkeys(VARIABLE.findall(pattern))
+                        }
+                        pattern = self.substitute_variables(pattern, substitutions)
                     else:
                         self.used_values.add(operand_value)
 

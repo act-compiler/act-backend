@@ -98,6 +98,17 @@ def matching():
             'ROOT %Out0 = bf16[64,64] add(%a24, %In0)',
         ],
     )
+    # The input added to itself, twice
+    add_on_d1(
+        acc,
+        'four',
+        ['64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%a = bf16[64,64] add(%In0, %In0)',
+            'ROOT %Out0 = bf16[64,64] add(%a, %a)',
+        ],
+    )
     return acc
 
 
@@ -357,3 +368,19 @@ ENTRY main {
 def test_semantics_with_27_variables_is_selected(backend, tmp_path):
     calls = selected(backend, tmp_path, SUMS)
     assert [name for name, _ in calls] == ['load_rm', 'sums', 'store_rm']
+
+
+# Four times the input, by two sums
+FOUR = """HloModule four, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %a = bf16[64,64] add(%x, %x)
+  ROOT %b = bf16[64,64] add(%a, %a)
+}
+"""
+
+
+def test_copy_of_a_copy_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, FOUR)
+    assert [name for name, _ in calls] == ['load_rm', 'four', 'store_rm']
