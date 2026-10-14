@@ -33,6 +33,8 @@ public:
 class MetaData {
 public:
   std::string module_name;
+  // The kernel's path, as the compile was given it
+  std::string input_file;
 
   int64 max_hbm_size;
   std::vector<MetaDataInfo> input_info;

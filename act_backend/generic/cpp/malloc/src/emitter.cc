@@ -44,6 +44,7 @@ MetaData::MetaData(std::ifstream &metadata_path,
   }
 
   this->module_name = j["module_name"].get<std::string>();
+  this->input_file = j["input_file"].get<std::string>();
   for (const auto &entry : j["input"]) {
     input_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
   }
@@ -84,7 +85,7 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   std::string indent3 = indent2 + indent1;
   std::string indent4 = indent3 + indent1;
 
-  // hlo_name and pii_number from outpath's directory and stem
+  // pii_number from outpath's stem
   std::string path_str(outpath);
   size_t lslash = path_str.find_last_of('/');
   size_t fname_start = (lslash == std::string::npos) ? 0 : lslash + 1;
@@ -95,14 +96,6 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   }
 
   std::string pii_number = path_str.substr(fname_start, stem_end - fname_start);
-  std::string hlo_name = metadata.module_name;
-  if (lslash != std::string::npos && lslash > 0) {
-    size_t l2slash = path_str.find_last_of('/', lslash - 1);
-    size_t parent_start = (l2slash == std::string::npos) ? 0 : l2slash + 1;
-    if (lslash > parent_start) {
-      hlo_name = path_str.substr(parent_start, lslash - parent_start);
-    }
-  }
 
   std::ofstream outfile(outpath);
   if (!outfile) {
@@ -114,7 +107,7 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   std::string kernel_name = metadata.module_name;
 
   // HEADER
-  outfile << "# Input file: " << hlo_name << ".hlo" << std::endl;
+  outfile << "# Input file: " << metadata.input_file << std::endl;
   outfile << "# Kernel name: " << kernel_name << std::endl;
   outfile << "# PII number: " << pii_number << std::endl;
   outfile << "# Do not edit!" << std::endl << std::endl;

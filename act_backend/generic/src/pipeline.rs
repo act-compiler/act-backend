@@ -371,7 +371,7 @@ fn main() {
   println!("Starting Phase 1 Module 1: E-Graph Initializer...");
   println!();
 
-  let (init_egraph, hbm_offsets, root, inputs, metadata) =
+  let (init_egraph, hbm_offsets, root, inputs, mut metadata) =
     match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
       Ok(parsed) => parsed,
       Err(reason) => no_assembly(&reason),
@@ -383,6 +383,17 @@ fn main() {
   println!();
 
   let metadata_path = log_dir.join("metadata.json");
+  // The kernel's path as given, control characters escaped
+  metadata.input_file = hlo_path_arg
+    .chars()
+    .map(|c| {
+      if c.is_control() {
+        c.escape_default().to_string()
+      } else {
+        c.to_string()
+      }
+    })
+    .collect();
   metadata.save(&metadata_path);
 
   let search = Rc::new(Search {

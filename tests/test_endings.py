@@ -221,3 +221,22 @@ def test_compile_at_the_iteration_limit_keeps_its_best_candidate(backend, tmp_pa
     # The slice moves down 39 passes, past the limit's 30
     assert 'the rewrites reached the iteration limit of 30' in run.stdout
     assert instruction_calls(output) == {'load_rm': 1, 'converts': 1, 'store_rm': 1}
+
+
+def test_assembly_header_names_the_kernel_path(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, ADD_32)
+    assert run.returncode == 0, run.stderr
+    assert f'# Input file: {tmp_path / "kernel.hlo"}\n' in output.read_text()
+
+
+def test_assembly_header_escapes_a_line_break_of_the_kernel_path(backend, tmp_path):
+    # A path holding a Python line between two line breaks
+    path = tmp_path / "k\nprint('run')\n#.hlo"
+    path.write_text(ADD_32)
+    output = tmp_path / 'kernel.py'
+    command = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([backend, *command], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    header = output.read_text().splitlines()
+    assert header[0] == f"# Input file: {tmp_path}/k\\nprint('run')\\n#.hlo"
+    assert header[1] == '# Kernel name: add_32'
