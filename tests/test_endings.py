@@ -15,6 +15,17 @@ def endings():
     acc = Accelerator('ENDINGS')
     acc.add_data_model('d1', [100], [64], 'bf16')
     add_moves(acc)
+    # The add of 32-row regions, which the buffer holds
+    add_on_d1(
+        acc,
+        'vadd_32',
+        ['32', '32', '32'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%In1 = bf16[32,64] parameter(1)',
+            'ROOT %Out0 = bf16[32,64] add(%In0, %In1)',
+        ],
+    )
     # Its two inputs alone hold more rows than the buffer
     add_on_d1(
         acc,
@@ -37,16 +48,26 @@ def backend(tmp_path_factory):
     return os.path.join(work_dir, 'backends', 'ENDINGS')
 
 
-def compiled(backend, tmp_path, kernel):
+def compiled(backend, tmp_path, kernel, output=None):
     """Compile a kernel's text; return the run and the output's path"""
     path = tmp_path / 'kernel.hlo'
     path.write_text(kernel)
-    output = tmp_path / 'kernel.py'
+    output = output or tmp_path / 'kernel.py'
     arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
     return subprocess.run(
         [backend, *arguments], capture_output=True, text=True, check=False
     ), output
 
+
+# The sum of two matrices of 32 rows
+ADD_32 = """HloModule add_32, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  ROOT %c = bf16[32,64] add(%a, %b)
+}
+"""
 
 # A sum only the small buffer's add computes
 ADD = """HloModule add, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
@@ -117,3 +138,18 @@ def test_usage_error_leaves_the_earlier_output(backend, tmp_path):
     run = subprocess.run([backend, *command, '--log'], capture_output=True, text=True, check=False)
     assert run.returncode == 1
     assert (tmp_path / 'kernel.py').read_text() == '# an earlier compile\n'
+
+
+def test_output_in_a_missing_directory_is_written(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, ADD_32, tmp_path / 'new' / 'kernel.py')
+    assert run.returncode == 0, run.stderr
+    assert output.exists()
+
+
+def test_usage_error_makes_no_directory(backend, tmp_path):
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    output = tmp_path / 'new' / 'kernel.py'
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(output), '--log']
+    run = subprocess.run([backend, *command], capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    assert not (tmp_path / 'new').exists()

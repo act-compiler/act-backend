@@ -296,7 +296,18 @@ fn main() {
   };
   println!("Log directory: {}", log_dir_arg);
 
-  // An earlier compile's output goes once every flag is checked
+  // The output's directory is made once every flag is checked
+  let output_dir = output_path.parent().unwrap();
+  if let Err(error) = std::fs::create_dir_all(output_dir) {
+    eprintln!(
+      "Error: cannot create the output's directory '{}': {}",
+      output_dir.display(),
+      error
+    );
+    process::exit(1);
+  }
+
+  // An earlier compile's output goes before this one starts
   if output_path.exists() {
     if let Err(error) = std::fs::remove_file(&output_path) {
       eprintln!(
