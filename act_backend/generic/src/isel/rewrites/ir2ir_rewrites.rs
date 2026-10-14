@@ -478,7 +478,11 @@ pub fn precond_6(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> 
   if lhs_metadata[2].dtype != Dtype::I32 {
     return false;
   }
-  true
+  // The pair returns the value only if widened from s8
+  egraph[lhs_eclasses[0]].nodes.iter().any(|node| match node {
+    TensorOp::OpConvert(_, [source]) => egraph[*source].data.dtype == Dtype::I8,
+    _ => false,
+  })
 }
 
 pub fn metadata_6(
