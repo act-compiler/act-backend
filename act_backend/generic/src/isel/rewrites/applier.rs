@@ -59,7 +59,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
   })
 }
 
-// The three functions a rule is applied through
+// The three functions a rewrite is applied through
 type PrecondFn = fn(&EGraph<TensorOp, TensorInfo>, &[Id]) -> bool;
 type MetadataFn =
   fn(&EGraph<TensorOp, TensorInfo>, &[Id], &[Option<TensorOp>]) -> Vec<Option<String>>;

@@ -54,7 +54,7 @@ An instruction with no semantics is left out of the backend.
 ```
 
 The backend compiles the kernel in an XLA-HLO file into assembly: a Python file of calls to the accelerator's instructions, which an oracle that [TAIDL-TO](https://github.com/act-compiler/act-oracle) generates for the same accelerator simulates.
-The backend is one file that holds its rewrite rules, and its run path names the OR-Tools directory it was built with.
+The backend is one file that holds its rewrites, and its run path names the OR-Tools directory it was built with.
 
 ## Cost function
 

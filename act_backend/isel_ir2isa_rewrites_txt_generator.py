@@ -107,7 +107,7 @@ class RewriteRuleVisitor(OperandVisitor):
 
 
 def generate_rewrite_rule(metadata, templates):
-    """Generate a single rewrite rule using template"""
+    """Generate one rewrite from its template"""
     visitor = RewriteRuleVisitor()
     lhs_pattern = visitor.visit(metadata.semantics_ast)
     parameter_vars = visitor.get_parameter_variables()
@@ -141,7 +141,7 @@ def generate_ir2isa_rewrites_txt_file(backend_gen_dir: str, instruction_metadata
     with open(rewrites_file, 'r') as f:
         content = f.read()
 
-    # Generate all rewrite rules
+    # Generate every rewrite
     rules = []
     for metadata in instruction_metadata_list:
         rule = generate_rewrite_rule(metadata, templates)

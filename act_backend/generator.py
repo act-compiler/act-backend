@@ -39,7 +39,7 @@ class InstructionMetadata:
 
 
 def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
-    """Extract instruction metadata needed for rewrite rule generation"""
+    """Extract instruction metadata needed to generate the rewrites"""
     metadata_list = []
     for instruction in instructions:
         metadata = InstructionMetadata(
@@ -121,7 +121,7 @@ def generate_backend(
 
     instruction_metadata = get_instruction_metadata(instructions)
 
-    # Generate rewrite rules
+    # Generate the rewrites
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)
     print('Generated ir2isa_rewrites.txt')
 
