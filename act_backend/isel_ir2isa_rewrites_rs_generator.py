@@ -147,7 +147,7 @@ def extract_comp_attr_from_shape(shape_text, comp_attrs):
 
 
 def root_comp_attr(semantics_data):
-    # The attribute the root's shape names, if the semantics has one
+    # The attribute the root's shape names, if any
     root_assignment = semantics_data['root_assignment']
     comp_attrs = semantics_data['comp_attributes']
     if comp_attrs:
@@ -234,7 +234,7 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
     comp_attr = root_comp_attr(semantics_data)
 
     if comp_attr:
-        # Use unified comp_attr extraction logic - same as precond function
+        # The attribute's value, as the precondition reads it
         comp_attr_extraction = generate_comp_attr_extraction(
             root_assignment, comp_attr, num_assignments
         )
@@ -263,7 +263,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
     num_assignments = len(assignments)
     comp_attr = root_comp_attr(semantics_data)
 
-    # Generate metadata extraction - use unified logic same as other functions
+    # The attribute's value, as the precondition reads it
     metadata_code = ''
     if comp_attr:
         metadata_code = (
@@ -324,7 +324,7 @@ def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_
         func_code = generate_ir2isa_rust_functions(metadata, templates)
         functions.append(func_code)
 
-    # Join functions with one blank line between, none at the end
+    # Functions one blank line apart, none at the end
     all_functions = '\n'.join(functions).rstrip('\n')
 
     # Replace placeholder

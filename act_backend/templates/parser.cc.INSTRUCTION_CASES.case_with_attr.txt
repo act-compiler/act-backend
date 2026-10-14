@@ -1,5 +1,5 @@
   } else if (op_name == "{{op_name}}") {
-    // currently only implemented for one attribute: {{attr_name}}
+    // The one attribute: {{attr_name}}
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
     int64 {{attr_name}} = to_int(attr_str.substr(start + 1, end - start - 1));

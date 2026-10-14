@@ -78,7 +78,7 @@ class TemplateLoader:
         return self.render(template_file.removesuffix('.txt') + '_wrapped.txt', **kwargs)
 
 
-# A skeleton's placeholder: a comment line of its own, a block comment inside a line, or bare
+# A placeholder: a comment line, inline block comment, or bare
 PLACEHOLDER = re.compile(
     r'(?P<above>^\n)?^[ \t]*// \{\{(?P<line>[A-Z0-9_]+)\}\}\n'
     r'|/\* \{\{(?P<block>[A-Z0-9_]+)\}\} \*/|\{\{(?P<bare>[A-Z0-9_]+)\}\}',

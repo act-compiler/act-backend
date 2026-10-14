@@ -6,7 +6,7 @@ from .instruction_info import get_kebab_name
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
-# Each operation the e-graph has: the word a rule spells it with, and the values it takes
+# Each e-graph operation: its rewrite word and value count
 OPERATIONS = {
     'add': ('add', 2),
     'bitcast_convert': ('bitcvt', 1),

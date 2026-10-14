@@ -31,7 +31,7 @@ def generate_instruction_class(instruction, templates):
     for param in params:
         addr_var_members += f'  IntVar *{param} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
 
-    # Generate get_h methods: output first (get_h0), then inputs (get_h1, get_h2, ...)
+    # get_h methods: the output's first (get_h0), then the inputs'
     get_h_methods = ''
     get_h_cases = ''
 

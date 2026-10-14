@@ -1,7 +1,7 @@
   let cost_model = "{{library}}";
   println!("cargo:rerun-if-changed={}", cost_model);
   println!("cargo:rustc-link-arg={}", cost_model);
-  // The libraries a C++ link ends with follow the last object
+  // A C++ link's closing libraries follow the last object
   for library in [
     "-lstdc++", "-lm", "-lgcc_s", "-lgcc", "-lc", "-lgcc_s", "-lgcc",
   ] {
