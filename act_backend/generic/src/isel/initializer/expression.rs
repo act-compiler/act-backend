@@ -89,25 +89,28 @@ pub enum HLOExpr {
 pub fn validate_region_exists(
   region_name: &str,
   regions: &std::collections::HashMap<String, HLORegion>,
-) -> bool {
-  if !regions.contains_key(region_name) {
-    panic!("Region {} does not exist", region_name);
-  }
+) -> Result<(), String> {
+  let Some(region) = regions.get(region_name) else {
+    return Err(format!(
+      "a reduce applies the region {}, which the kernel does not define",
+      region_name
+    ));
+  };
 
   // region only contains parameter and add instructions
-  for instruction in regions.get(region_name).unwrap().instructions.iter() {
+  for instruction in region.instructions.iter() {
     match instruction {
       HLOExpr::Parameter { .. } => {}
       HLOExpr::BinaryOp { op_name, .. } if op_name == "add" => {}
       _ => {
-        panic!(
-          "Region {} contains non-parameter and non-add instructions",
+        return Err(format!(
+          "the region {} computes something other than a sum, the only reduce the backend supports",
           region_name
-        );
+        ));
       }
     }
   }
-  true
+  Ok(())
 }
 
 // One argument per field of the kernel's line
@@ -121,41 +124,43 @@ pub fn parse_hlo_expr(
   toperands: &str,
   trest: &str,
   regions: &std::collections::HashMap<String, HLORegion>,
-) -> Option<HLOExpr> {
-  match toperator {
+) -> Result<Option<HLOExpr>, String> {
+  let expr = match toperator {
     "parameter" => {
       // Parameter(0) -- parse the index from operands
-      let tidx = toperands.trim().parse::<u32>().ok()?;
-      Some(HLOExpr::Parameter {
+      let Ok(tidx) = toperands.trim().parse::<u32>() else {
+        return Ok(None);
+      };
+      HLOExpr::Parameter {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         tidx,
-      })
+      }
     }
 
     "constant" => {
       // constant(1002)
       let value = toperands.trim().to_string();
-      Some(HLOExpr::Constant {
+      HLOExpr::Constant {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         value,
-      })
+      }
     }
 
     "broadcast" => {
       // broadcast(Arg_0.6)
       let source = toperands.trim().to_string();
-      Some(HLOExpr::Broadcast {
+      HLOExpr::Broadcast {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-      })
+      }
     }
 
     "slice" => {
@@ -177,40 +182,38 @@ pub fn parse_hlo_expr(
         vec![]
       };
 
-      Some(HLOExpr::Slice {
+      HLOExpr::Slice {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
         slices,
-      })
+      }
     }
 
-    "add"
-    | "xor"
-    | "shift-right-logical"
-    | "mul"
-    | "div"
-    | "and"
-    | "or"
-    | "shift-left"
-    | "dot"
-    | "divide" => {
+    "add" | "xor" | "shift-right-logical" | "or" | "shift-left" | "dot" | "divide" => {
       // binary operators with two operands separated by comma
       let operands: Vec<&str> = toperands.split(',').map(|s| s.trim()).collect();
       if operands.len() != 2 {
-        panic!(
-          "{} expects exactly 2 operands, got {}: {}",
+        let values = if operands.len() == 1 {
+          "value"
+        } else {
+          "values"
+        };
+        return Err(format!(
+          "{} applies {} to {} {}, where {} takes 2",
+          tsymbol,
           toperator,
           operands.len(),
-          toperands
-        );
+          values,
+          toperator
+        ));
       }
       let lhs = operands[0].to_string();
       let rhs = operands[1].to_string();
 
-      Some(HLOExpr::BinaryOp {
+      HLOExpr::BinaryOp {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
@@ -218,7 +221,7 @@ pub fn parse_hlo_expr(
         op_name: toperator.to_string(),
         lhs,
         rhs,
-      })
+      }
     }
 
     "concatenate" => {
@@ -239,27 +242,27 @@ pub fn parse_hlo_expr(
         .filter_map(|c| c.to_digit(10))
         .collect::<Vec<_>>();
 
-      Some(HLOExpr::Concatenate {
+      HLOExpr::Concatenate {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         tinputs: inputs,
         dimensions,
-      })
+      }
     }
 
     "reshape" => {
       // reshape(Arg_0.6), new_shape=[1, 2, 3]
       let source = toperands.trim().to_string();
 
-      Some(HLOExpr::Reshape {
+      HLOExpr::Reshape {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-      })
+      }
     }
 
     "transpose" => {
@@ -271,25 +274,25 @@ pub fn parse_hlo_expr(
 
       let source = toperands.trim().to_string();
 
-      Some(HLOExpr::Transpose {
+      HLOExpr::Transpose {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
         dimensions: dim_str.to_string(),
-      })
+      }
     }
 
     "convert" => {
       let source = toperands.trim().to_string();
-      Some(HLOExpr::Convert {
+      HLOExpr::Convert {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-      })
+      }
     }
 
     "reduce" => {
@@ -343,41 +346,45 @@ pub fn parse_hlo_expr(
         .unwrap_or("".to_string())
         .to_string();
 
-      validate_region_exists(&to_apply, regions);
+      validate_region_exists(&to_apply, regions)?;
 
       // Parse the operands to separate source and constant
       let operands: Vec<&str> = toperands.split(',').map(|s| s.trim()).collect();
       if operands.len() != 2 {
-        panic!(
-          "Reduce operation expects exactly 2 operands, got {}: {}",
-          operands.len(),
-          toperands
-        );
+        return Err(format!(
+          "{} reduces {} operands, where a reduce takes 2, a value and its initial value",
+          tsymbol,
+          operands.len()
+        ));
       }
 
       let source = operands[0].to_string();
 
-      Some(HLOExpr::ReduceSum {
+      HLOExpr::ReduceSum {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
         dimensions,
-      })
+      }
     }
     "exponential" => {
       let source = toperands.trim().to_string();
-      Some(HLOExpr::Exponential {
+      HLOExpr::Exponential {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-      })
+      }
     }
     _ => {
-      panic!("Unknown operator: {}", toperator);
+      return Err(format!(
+        "{} applies {}, an operation the backend does not support",
+        tsymbol, toperator
+      ));
     }
-  }
+  };
+  Ok(Some(expr))
 }

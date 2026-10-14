@@ -361,9 +361,11 @@ def test_binary_operation_of_other_than_two_operands_refused(work_dir, tmp_path,
     output, log = str(tmp_path / 'kernel.py'), str(tmp_path / 'log')
     arguments = ['--input', str(kernel), '--output', output, '--log', log]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
-    assert run.returncode != 0
+    assert run.returncode == 1
     count = len(operands.split(','))
-    assert f'dot expects exactly 2 operands, got {count}: {operands}' in run.stderr
+    values = 'value' if count == 1 else 'values'
+    reason = f'%c applies dot to {count} {values}, where dot takes 2'
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
 
 
 # A library caller handing the allocator one candidate's files

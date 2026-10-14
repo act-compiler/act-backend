@@ -1,4 +1,15 @@
-pub fn parse_type_shape(type_shape: &str) -> (String, String, String) {
+// A kernel line's name, type, shape, tile, operator, operands, rest
+pub type Line = (String, String, String, String, String, String, String);
+
+pub fn parse_type_shape(type_shape: &str) -> Result<(String, String, String), String> {
+  // Why the reader cannot split a type
+  let malformed = || {
+    format!(
+      "the type '{}' is not an element type with a shape",
+      type_shape
+    )
+  };
+
   let ttype_end = type_shape.find('[').unwrap_or(type_shape.len());
   let ttype = type_shape[..ttype_end].to_string();
 
@@ -18,36 +29,36 @@ pub fn parse_type_shape(type_shape: &str) -> (String, String, String) {
             ttile = tile_str[start_paren + 1..end_paren].to_string();
           } else {
             // No closing ')'
-            panic!("Invalid ttype string: {}", type_shape);
+            return Err(malformed());
           }
         }
       }
     } else {
       // No closing ']'
-      panic!("Invalid ttype string: {}", type_shape);
+      return Err(malformed());
     }
   } else {
     // No shape
-    panic!("Invalid ttype string: {}", type_shape);
+    return Err(malformed());
   }
   if tshape.is_empty() {
     // Handle scalar types like bf16[] - they have empty shape
     tshape = "[]".to_string();
   }
-  (ttype, tshape, ttile)
+  Ok((ttype, tshape, ttile))
 }
 
-pub fn parse_line(line: &str) -> Option<(String, String, String, String, String, String, String)> {
+pub fn parse_line(line: &str) -> Result<Option<Line>, String> {
   let line = line.trim();
 
   // 0. Ignore empty lines or comments
   if line.is_empty() || line.starts_with("//") {
-    return None;
+    return Ok(None);
   }
 
   // 1. Split at '=' (exactly one)
   let mut parts = line.splitn(2, '=');
-  let mut tsymbol = parts.next()?.trim().to_string();
+  let mut tsymbol = parts.next().unwrap_or_default().trim().to_string();
 
   // A ROOT line, its prefix trimmed
   let is_root = tsymbol.starts_with("ROOT ");
@@ -55,20 +66,26 @@ pub fn parse_line(line: &str) -> Option<(String, String, String, String, String,
     tsymbol = tsymbol.replacen("ROOT ", "", 1).trim().to_string();
   }
 
-  let rest = parts.next()?.trim();
+  let Some(rest) = parts.next().map(str::trim) else {
+    return Ok(None);
+  };
 
   // 2. rest: type, shape, operator(operands), then the rest
 
   // Find the first space to get type+shape
-  let first_space = rest.find(' ')?;
+  let Some(first_space) = rest.find(' ') else {
+    return Ok(None);
+  };
   let (type_shape, after_type_shape) = rest.split_at(first_space);
   let after_type_shape = after_type_shape.trim_start();
 
   // 3. Type, shape and tile, as in u64[3,8]{;T(16,4)}
-  let (ttype, tshape, ttile) = parse_type_shape(type_shape);
+  let (ttype, tshape, ttile) = parse_type_shape(type_shape)?;
 
   // 4. Extract operator name before '('
-  let op_start = after_type_shape.find('(')?;
+  let Some(op_start) = after_type_shape.find('(') else {
+    return Ok(None);
+  };
   let toperator = after_type_shape[..op_start].trim().to_string();
 
   // 5. Extract operands inside matching parentheses (find ')' after op_start)
@@ -97,5 +114,7 @@ pub fn parse_line(line: &str) -> Option<(String, String, String, String, String,
   // 6. Everything after the closing ')' is the rest
   let trest = after_type_shape[operands_end + 1..].trim().to_string();
 
-  Some((tsymbol, ttype, tshape, ttile, toperator, toperands, trest))
+  Ok(Some((
+    tsymbol, ttype, tshape, ttile, toperator, toperands, trest,
+  )))
 }

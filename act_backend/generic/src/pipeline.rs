@@ -372,7 +372,10 @@ fn main() {
   println!();
 
   let (init_egraph, hbm_offsets, root, inputs, metadata) =
-    isel::initializer::parse_hlo_module_to_egraph(&hlo_path).unwrap();
+    match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
+      Ok(parsed) => parsed,
+      Err(reason) => no_assembly(&reason),
+    };
 
   println!("HBM Offsets: {:?}", hbm_offsets);
   println!("Root ID: {:?}", root);
