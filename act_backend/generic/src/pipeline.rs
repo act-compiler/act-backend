@@ -10,7 +10,7 @@ use std::time::Instant;
 use egg::{Runner, StopReason};
 
 use backend::isel;
-use backend::{N, PROCESSED, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
+use backend::{PROCESSED, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
@@ -315,9 +315,8 @@ fn main() {
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
         PROCESSED.lock().unwrap().clear();
-        // N is a constant of the search, 1 today
-        #[allow(clippy::modulo_one)]
-        let extract_now = runner.iterations.len() % N == 0 && !runner.iterations.is_empty();
+        // Extract after every iteration
+        let extract_now = !runner.iterations.is_empty();
         if extract_now {
           check_termination(best.borrow().clone(), &start, &output_path_for_hook);
           println!(
