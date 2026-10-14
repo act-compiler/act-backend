@@ -59,6 +59,35 @@ ENTRY main {
 """
 
 
+# One exponential, which no instruction computes
+EXPONENTIAL = """HloModule exponential, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  ROOT %e = bf16[64,64] exponential(%a)
+}
+"""
+
+
 def test_dropped_candidate_names_its_reason(backend, tmp_path):
     run, _ = compiled(backend, tmp_path, ADD)
     assert 'PII #0 dropped: the solver found no placement of its tensors' in run.stdout
+
+
+def test_no_assembly_ends_in_one_line_and_status_1(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, ADD)
+    assert run.returncode == 1
+    assert run.stderr == (
+        'Error: no assembly found: the time limit of 10s ran out, and every candidate was '
+        'dropped, the first because the solver found no placement of its tensors\n'
+    )
+    assert not output.exists()
+
+
+def test_no_assembly_says_no_candidate_was_extracted(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, EXPONENTIAL)
+    assert run.returncode == 1
+    assert run.stderr == (
+        'Error: no assembly found: the time limit of 10s ran out, and no candidate was extracted\n'
+    )
+    assert not output.exists()

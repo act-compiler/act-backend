@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::collections::HashSet;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
 use std::time::Duration;
@@ -43,6 +43,16 @@ struct AsmCandidate {
   timestamp: Duration,
 }
 
+// No assembly: no output, one stderr line, status 1
+fn no_assembly(output_path: &Path, reason: &str) -> ! {
+  if output_path.exists() {
+    std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+  }
+  println!("No output file created.");
+  eprintln!("Error: no assembly found: {}", reason);
+  process::exit(1);
+}
+
 // Report the search's elapsed time and when it stops
 fn report_elapsed(elapsed: Duration, stop: Duration) {
   println!(
@@ -55,7 +65,7 @@ fn update_best(
   best: &mut Option<AsmCandidate>,
   asm_path: &PathBuf,
   start: &Instant,
-  output_path: &PathBuf,
+  output_path: &Path,
 ) -> bool {
   report_elapsed(start.elapsed(), TIME_LIMIT);
   println!("Starting Performance Cost Evaluation for {:?}", asm_path);
@@ -63,15 +73,7 @@ fn update_best(
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
-    Err(reason) => {
-      eprintln!("Error: the cost model {} for {:?}", reason, asm_path);
-
-      // A failed compile leaves no output
-      if output_path.exists() {
-        std::fs::remove_file(output_path).expect("Failed to remove existing output file");
-      }
-      process::exit(1);
-    }
+    Err(reason) => no_assembly(output_path, &format!("the cost model {}", reason)),
   };
   let time = start.elapsed();
 
@@ -117,6 +119,7 @@ struct Search {
   hbm_offsets: Vec<(Option<Id>, i32)>,
   best: RefCell<Option<AsmCandidate>>,
   candidates: Cell<usize>,
+  first_drop: RefCell<Option<String>>,
 }
 
 impl Search {
@@ -164,11 +167,18 @@ impl Search {
       }
       None => {
         println!("Could not find an ASM representation.");
-
-        if self.output_path.exists() {
-          std::fs::remove_file(&self.output_path).expect("Failed to remove existing output file");
-        }
-        println!("No output file created.");
+        // What became of the candidates
+        let candidates = match &*self.first_drop.borrow() {
+          Some(reason) => format!("every candidate was dropped, the first because {}", reason),
+          None => "no candidate was extracted".to_string(),
+        };
+        no_assembly(
+          &self.output_path,
+          &format!(
+            "the time limit of {:?} ran out, and {}",
+            TIME_LIMIT, candidates
+          ),
+        );
       }
     }
     process::exit(0);
@@ -212,7 +222,10 @@ impl Search {
             &self.output_path,
           );
         }
-        Err(reason) => println!("PII #{} dropped: {}", number, reason),
+        Err(reason) => {
+          println!("PII #{} dropped: {}", number, reason);
+          self.first_drop.borrow_mut().get_or_insert(reason);
+        }
       }
       println!();
 
@@ -342,6 +355,7 @@ fn main() {
     hbm_offsets,
     best: RefCell::new(None),
     candidates: Cell::new(0),
+    first_drop: RefCell::new(None),
   });
 
   let rules = isel::rewrites::get_rewrites();
