@@ -258,3 +258,18 @@ def test_layout_that_gives_no_order_is_read(endings_dir, tmp_path):
     # A tile alone after the shape, which gives no order
     text = kernel('%a = bf16[64,64]{:T(32,64)} parameter(0)', 'ROOT %c = bf16[64,64] add(%a, %a)')
     assert "Var['%a']" in read_nodes(endings_dir, tmp_path, text)
+
+
+# A kernel of one bf16 scalar input and output
+SCALAR = kernel(
+    '%s = bf16[] parameter(0)',
+    'ROOT %t = bf16[] add(%s, %s)',
+    header='HloModule scalar, entry_computation_layout={(bf16[])->bf16[]}',
+)
+
+
+def test_rank_0_input_is_read_as_one_element(endings_dir, tmp_path):
+    nodes = read_nodes(endings_dir, tmp_path, SCALAR)
+    # The input viewed from its two bytes as one element
+    assert "reshape[shape='1,2']" in nodes
+    assert not [node for node in nodes if '[]' in node]

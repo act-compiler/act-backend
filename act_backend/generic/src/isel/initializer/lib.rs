@@ -18,7 +18,7 @@ use crate::isel::initializer::nodes::{
   add_binary_op, add_broadcast, add_concatenate, add_constant, add_convert, add_exponential,
   add_parameter, add_reduce, add_reshape, add_root_operations, add_slice, add_transpose,
 };
-use crate::isel::initializer::shapes::shape_to_vec;
+use crate::isel::initializer::shapes::declared_shape;
 
 pub type EggSymbolTable = HashMap<String, Id>;
 
@@ -102,7 +102,7 @@ fn fill_offsets_from_header(
   for shape in header.input_types.iter() {
     let (ttype, tshape, _) = parse_type_shape(shape)?;
     let dtype = Dtype::try_from(ttype.as_str())?;
-    let shape_vec = shape_to_vec(&tshape)?;
+    let shape_vec = declared_shape(&tshape)?;
 
     let mut bytes: i32 = dtype.size_in_bytes();
     shape_vec.iter().for_each(|dim| bytes *= dim);
@@ -120,7 +120,7 @@ fn fill_offsets_from_header(
   let output_shape = &header.output_type;
   let (ttype, tshape, _) = parse_type_shape(output_shape)?;
   let dtype = Dtype::try_from(ttype.as_str())?;
-  let shape_vec = shape_to_vec(&tshape)?;
+  let shape_vec = declared_shape(&tshape)?;
 
   offsets.push((None, curr_bytes));
   metadata.output.push(MetaDataInfo {
