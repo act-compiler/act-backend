@@ -43,84 +43,12 @@ struct AsmCandidate {
   timestamp: Duration,
 }
 
-fn check_termination(best: Option<AsmCandidate>, start: &Instant, output_path: &PathBuf) {
-  let current_time = start.elapsed();
-  match best {
-    Some(AsmCandidate {
-      path,
-      cost,
-      timestamp,
-    }) => {
-      if current_time > timestamp * SATURATION_FACTOR {
-        println!(
-          "No improvement for last {:?}, stopping",
-          current_time - timestamp
-        );
-        println!();
-        println!("Total time: {:?}", current_time);
-        println!(
-          "Best ASM {:?} with cost {} found at {:?}",
-          path, cost, timestamp
-        );
-
-        std::fs::copy(&path, output_path).expect("Failed to copy best ASM to output path");
-        println!("Best ASM copied to output path: {}", output_path.display());
-
-        process::exit(0);
-      } else {
-        println!(
-          "Current elapsed: {:?} | Will stop at {:?} if no progress",
-          current_time,
-          min(timestamp * SATURATION_FACTOR, TIME_LIMIT)
-        );
-      }
-    }
-    None => {
-      println!(
-        "Current elapsed: {:?} | Will stop at {:?} if no progress",
-        current_time, TIME_LIMIT
-      );
-    }
-  }
-}
-
-fn timeout(best: Option<AsmCandidate>, start: &Instant, output_path: &PathBuf) {
-  let current_time = start.elapsed();
-  if current_time > TIME_LIMIT {
-    println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
-    println!();
-    println!("Total time: {:?}", current_time);
-    match best {
-      Some(AsmCandidate {
-        path,
-        cost,
-        timestamp,
-      }) => {
-        println!(
-          "Best ASM {:?} with cost {} found at {:?}",
-          path, cost, timestamp
-        );
-
-        std::fs::copy(&path, output_path).expect("Failed to copy best ASM to output path");
-        println!("Best ASM copied to output path: {}", output_path.display());
-      }
-      None => {
-        println!("Could not find an ASM representation.");
-
-        if output_path.exists() {
-          std::fs::remove_file(output_path).expect("Failed to remove existing output file");
-        }
-        println!("No output file created.");
-      }
-    }
-    process::exit(0);
-  } else {
-    eprintln!(
-      "Error: timeout() called at {:?} but overall time limit of {:?} not reached",
-      current_time, TIME_LIMIT
-    );
-    process::exit(1);
-  }
+// Report the search's elapsed time and when it stops
+fn report_elapsed(elapsed: Duration, stop: Duration) {
+  println!(
+    "Current elapsed: {:?} | Will stop at {:?} if no progress",
+    elapsed, stop
+  );
 }
 
 fn update_best(
@@ -129,11 +57,7 @@ fn update_best(
   start: &Instant,
   output_path: &PathBuf,
 ) -> bool {
-  println!(
-    "Current elapsed: {:?} | Will stop at {:?} if no progress",
-    start.elapsed(),
-    TIME_LIMIT
-  );
+  report_elapsed(start.elapsed(), TIME_LIMIT);
   println!("Starting Performance Cost Evaluation for {:?}", asm_path);
   println!();
 
@@ -196,9 +120,63 @@ struct Search {
 }
 
 impl Search {
+  // Stop once no candidate has improved for long enough
+  fn check_termination(&self) {
+    let current_time = self.start.elapsed();
+    match self.best.borrow().clone() {
+      Some(AsmCandidate { timestamp, .. }) => {
+        if current_time > timestamp * SATURATION_FACTOR {
+          println!(
+            "No improvement for last {:?}, stopping",
+            current_time - timestamp
+          );
+          println!();
+          self.finish();
+        } else {
+          report_elapsed(current_time, min(timestamp * SATURATION_FACTOR, TIME_LIMIT));
+        }
+      }
+      None => {
+        report_elapsed(current_time, TIME_LIMIT);
+      }
+    }
+  }
+
+  // End the compile, the best candidate to the output
+  fn finish(&self) -> ! {
+    println!("Total time: {:?}", self.start.elapsed());
+    match self.best.borrow().clone() {
+      Some(AsmCandidate {
+        path,
+        cost,
+        timestamp,
+      }) => {
+        println!(
+          "Best ASM {:?} with cost {} found at {:?}",
+          path, cost, timestamp
+        );
+
+        std::fs::copy(&path, &self.output_path).expect("Failed to copy best ASM to output path");
+        println!(
+          "Best ASM copied to output path: {}",
+          self.output_path.display()
+        );
+      }
+      None => {
+        println!("Could not find an ASM representation.");
+
+        if self.output_path.exists() {
+          std::fs::remove_file(&self.output_path).expect("Failed to remove existing output file");
+        }
+        println!("No output file created.");
+      }
+    }
+    process::exit(0);
+  }
+
   // Extract the e-graph at one limit and evaluate each candidate
   fn pass(&self, egraph: &EGraph<TensorOp, TensorInfo>, limit: usize) {
-    check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+    self.check_termination();
     println!(
       "Starting Phase 1 Module 3: Graph Extractor (limit {})",
       limit
@@ -215,7 +193,7 @@ impl Search {
 
     for pii in piis {
       let number = self.candidates.get();
-      check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+      self.check_termination();
       println!("Starting Phase 2 for PII #{}", number);
       println!();
 
@@ -241,7 +219,7 @@ impl Search {
       self.candidates.set(number + 1);
     }
 
-    check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+    self.check_termination();
     println!("Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection");
     println!();
   }
@@ -335,11 +313,11 @@ fn main() {
   // Start processing the input file
   let start = Instant::now();
 
-  check_termination(None, &start, &output_path);
+  report_elapsed(start.elapsed(), TIME_LIMIT);
   println!("Starting Phase 1: Instruction Selection...");
   println!();
 
-  check_termination(None, &start, &output_path);
+  report_elapsed(start.elapsed(), TIME_LIMIT);
   println!("Starting Phase 1 Module 1: E-Graph Initializer...");
   println!();
 
@@ -384,7 +362,7 @@ fn main() {
           limit += 1; // Increment limit to allow for more extraction next time
         }
 
-        check_termination(search.best.borrow().clone(), &start, &search.output_path);
+        search.check_termination();
         println!(
           "Starting Phase 1 Module 2: Rewrite Applier (iteration {})",
           runner.iterations.len() + 1
@@ -426,5 +404,7 @@ fn main() {
     }
   }
 
-  timeout(search.best.borrow().clone(), &start, &search.output_path);
+  println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
+  println!();
+  search.finish();
 }
