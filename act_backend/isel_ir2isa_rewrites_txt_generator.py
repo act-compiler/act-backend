@@ -1,4 +1,5 @@
 import os
+import re
 
 from taidl.antlr4 import IDLV2Parser
 
@@ -27,6 +28,17 @@ OPERATIONS = {
     'transpose': ('transpose_?', 1),
     'xor': ('xor', 2),
 }
+
+# A pattern variable, after a start, space or bracket
+VARIABLE = re.compile(r'(?<![^\s(])\?[^\s()]+')
+# A variable, or an operation that takes no value
+LEAF = re.compile(rf'{VARIABLE.pattern}|\([^\s()]+\)')
+
+
+def repeated_leaf(pattern):
+    """Return a leaf a rewrite's left side holds twice, or None"""
+    leaves = LEAF.findall(pattern)
+    return next((leaf for leaf in leaves if leaves.count(leaf) > 1), None)
 
 
 class RewriteRuleVisitor(OperandVisitor):
