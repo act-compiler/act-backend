@@ -1,5 +1,6 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::min;
+use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::process;
@@ -7,8 +8,9 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::time::Instant;
 
-use egg::{Runner, StopReason};
+use egg::{EGraph, Id, Runner, StopReason};
 
+use backend::ir::egraph::{TensorInfo, TensorOp};
 use backend::isel;
 use backend::{SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
@@ -184,6 +186,68 @@ fn update_best(
   }
 }
 
+// What every pass of the search shares
+struct Search {
+  start: Instant,
+  output_path: PathBuf,
+  log_dir: PathBuf,
+  metadata_path: PathBuf,
+  root: Id,
+  inputs: HashSet<Id>,
+  hbm_offsets: Vec<(Option<Id>, i32)>,
+  best: RefCell<Option<AsmCandidate>>,
+  candidates: Cell<usize>,
+}
+
+impl Search {
+  // Extract the e-graph at one limit and evaluate each candidate
+  fn pass(&self, egraph: &EGraph<TensorOp, TensorInfo>, limit: usize) {
+    check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+    println!(
+      "Starting Phase 1 Module 3: Graph Extractor (limit {})",
+      limit
+    );
+    println!();
+
+    let piis = isel::extractor::extract(
+      &mut egraph.clone(),
+      self.root,
+      &self.inputs,
+      &self.hbm_offsets,
+      limit,
+    );
+
+    for pii in piis {
+      let number = self.candidates.get();
+      check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+      println!("Starting Phase 2 for PII #{}", number);
+      println!();
+
+      // Phase 2
+      let pii_path = self.log_dir.join(format!("{}.pii", number));
+      pii.save(&pii_path);
+
+      let asm_path = self.log_dir.join(format!("{}.py", number));
+      backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path);
+
+      // Check cost and update best if necessary
+      update_best(
+        &mut self.best.borrow_mut(),
+        &asm_path,
+        &self.start,
+        &self.output_path,
+      );
+      println!();
+
+      self.candidates.set(number + 1);
+    }
+
+    check_termination(self.best.borrow().clone(), &self.start, &self.output_path);
+    println!("Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection");
+    println!();
+  }
+}
+
 fn main() {
   let args: Vec<String> = env::args().collect();
 
@@ -269,17 +333,14 @@ fn main() {
   println!("PII graphs dumped to: {}", log_dir.display());
   println!();
 
-  let pii_counter: Rc<RefCell<usize>> = Rc::new(RefCell::new(0));
-  let best: Rc<RefCell<Option<AsmCandidate>>> = Rc::new(RefCell::new(None));
-
   // Start processing the input file
   let start = Instant::now();
 
-  check_termination(best.borrow().clone(), &start, &output_path);
+  check_termination(None, &start, &output_path);
   println!("Starting Phase 1: Instruction Selection...");
   println!();
 
-  check_termination(best.borrow().clone(), &start, &output_path);
+  check_termination(None, &start, &output_path);
   println!("Starting Phase 1 Module 1: E-Graph Initializer...");
   println!();
 
@@ -294,20 +355,23 @@ fn main() {
   let metadata_path = log_dir.join("metadata.json");
   metadata.save(&metadata_path);
 
-  let mut limit: usize = SLOW_LIMIT_START;
+  let search = Rc::new(Search {
+    start,
+    output_path,
+    log_dir,
+    metadata_path,
+    root,
+    inputs,
+    hbm_offsets,
+    best: RefCell::new(None),
+    candidates: Cell::new(0),
+  });
 
   let rules = isel::rewrites::get_rewrites();
-  let inputs_for_hook = inputs.clone();
-  let hbm_offsets_for_hook = hbm_offsets.clone();
-
-  let output_path_for_hook = output_path.clone();
-  let log_dir_for_hook = log_dir.clone();
-  let metadata_path_for_hook = metadata_path.clone();
 
   let runner = {
-    // clone the Rcs
-    let pii_counter = pii_counter.clone();
-    let best = best.clone();
+    let search = search.clone();
+    let mut limit: usize = SLOW_LIMIT_START;
 
     Runner::default()
       .with_egraph(init_egraph)
@@ -317,55 +381,11 @@ fn main() {
         // Extract after every iteration
         let extract_now = !runner.iterations.is_empty();
         if extract_now {
-          check_termination(best.borrow().clone(), &start, &output_path_for_hook);
-          println!(
-            "Starting Phase 1 Module 3: Graph Extractor (limit {})",
-            limit
-          );
-          println!();
-
-          let piis = isel::extractor::extract(
-            &mut runner.egraph.clone(),
-            root,
-            &inputs_for_hook,
-            &hbm_offsets_for_hook,
-            limit,
-          );
+          search.pass(&runner.egraph, limit);
           limit += 1; // Increment limit to allow for more extraction next time
-
-          for pii in piis {
-            check_termination(best.borrow().clone(), &start, &output_path_for_hook);
-            println!("Starting Phase 2 for PII #{}", *pii_counter.borrow());
-            println!();
-
-            // Phase 2
-            let pii_path = log_dir_for_hook.join(format!("{}.pii", *pii_counter.borrow()));
-            pii.save(&pii_path);
-
-            let asm_path = log_dir_for_hook.join(format!("{}.py", *pii_counter.borrow()));
-
-            backend::malloc::cpp_bridge(&pii_path, &metadata_path_for_hook, &asm_path);
-
-            // Check cost and update best if necessary
-            update_best(
-              &mut best.borrow_mut(),
-              &asm_path,
-              &start,
-              &output_path_for_hook,
-            );
-            println!();
-
-            *pii_counter.borrow_mut() += 1;
-          }
-
-          check_termination(best.borrow().clone(), &start, &output_path_for_hook);
-          println!(
-            "Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection"
-          );
-          println!();
         }
 
-        check_termination(best.borrow().clone(), &start, &output_path_for_hook);
+        check_termination(search.best.borrow().clone(), &start, &search.output_path);
         println!(
           "Starting Phase 1 Module 2: Rewrite Applier (iteration {})",
           runner.iterations.len() + 1
@@ -390,47 +410,10 @@ fn main() {
       );
       println!();
 
+      let mut limit: usize = SLOW_LIMIT_START;
       while start.elapsed() < TIME_LIMIT {
-        check_termination(best.borrow().clone(), &start, &output_path);
-        println!(
-          "Starting Phase 1 Module 3: Graph Extractor (limit {})",
-          limit
-        );
-        println!();
-
-        let piis = isel::extractor::extract(
-          &mut runner.egraph.clone(),
-          root,
-          &inputs,
-          &hbm_offsets,
-          limit,
-        );
+        search.pass(&runner.egraph, limit);
         limit += 1; // Increment limit to allow for more extraction next time
-
-        for pii in piis {
-          check_termination(best.borrow().clone(), &start, &output_path);
-          println!("Starting Phase 2 for PII #{}", *pii_counter.borrow());
-          println!();
-
-          // Phase 2
-          let pii_path = log_dir.join(format!("{}.pii", *pii_counter.borrow()));
-          pii.save(&pii_path);
-
-          let asm_path = log_dir.join(format!("{}.py", *pii_counter.borrow()));
-          backend::malloc::cpp_bridge(&pii_path, &metadata_path, &asm_path);
-
-          // Check cost and update best if necessary
-          update_best(&mut best.borrow_mut(), &asm_path, &start, &output_path);
-          println!();
-
-          *pii_counter.borrow_mut() += 1;
-        }
-
-        check_termination(best.borrow().clone(), &start, &output_path);
-        println!(
-          "Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection"
-        );
-        println!();
       }
       println!("Info: Reached time limit. No further extraction.");
     }
@@ -444,5 +427,5 @@ fn main() {
     }
   }
 
-  timeout(best.borrow().clone(), &start, &output_path);
+  timeout(search.best.borrow().clone(), &start, &search.output_path);
 }
