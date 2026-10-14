@@ -61,7 +61,7 @@ fn get_extraction_trees(
   }
 
   for en in &egraph[eclass].nodes {
-    // base case: input enode -- TODO: this assumes only 1 enode in the eclass
+    // base case: input enode
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
       trees.push(vec![en.clone()]);
       break;
