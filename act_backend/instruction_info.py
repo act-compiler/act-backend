@@ -7,8 +7,13 @@ from dataclasses import dataclass
 class InstructionInfo:
     name: str
     arity: int
-    has_metadata: bool
+    attributes: list[str]
     buffer_assignment: str
+
+    @property
+    def has_metadata(self):
+        # The computational attributes travel as the instruction's metadata
+        return bool(self.attributes)
 
 
 def to_camel_case(snake_str):
@@ -34,7 +39,6 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
     for instruction in instructions:
         name = instruction.instruction
         arity = len(instruction.instr_inputs)
-        has_metadata = len(instruction.comp_attr) > 0
 
         buffers = []
         for output in instruction.instr_outputs:
@@ -47,6 +51,8 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
 
         buffer_assignment = f'Some(vec![{", ".join(buffers)}])'
 
-        info_list.append(InstructionInfo(name, arity, has_metadata, buffer_assignment))
+        info_list.append(
+            InstructionInfo(name, arity, list(instruction.comp_attr), buffer_assignment)
+        )
 
     return info_list
