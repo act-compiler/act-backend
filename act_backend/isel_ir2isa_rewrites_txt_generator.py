@@ -126,7 +126,7 @@ def generate_rewrite_rule(metadata, templates):
     # Generate RHS with or without _? suffix
     rhs = (
         f'({kebab_name}_? {" ".join(parameter_vars)})'
-        if metadata.has_comp_attrs
+        if metadata.attributes
         else f'({kebab_name} {" ".join(parameter_vars)})'
     )
 

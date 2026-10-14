@@ -145,6 +145,30 @@ def matching():
         ],
         ['n'],
     )
+    # A load spelling its attribute in its result's second dimension
+    instr = acc.add_instruction('load_cm', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[`@c.n * 128`] parameter(0);
+    %a = u8[`@c.n`,64,2] reshape(%In0);
+    %b = bf16[`@c.n`,64] bitcast_convert(%a);
+    ROOT %Out0 = bf16[64,`@c.n`] transpose(%b), dimensions={1,0};
+}
+""")
+    # A store of the exponentials of that shape
+    instr = acc.add_instruction('store_exp', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 128']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,`@c.n`] parameter(0);
+    %e = bf16[64,`@c.n`] exponential(%In0);
+    %a = u8[64,`@c.n`,2] bitcast_convert(%e);
+    ROOT %Out0 = u8[`@c.n * 128`] reshape(%a);
+}
+""")
     return acc
 
 
@@ -465,3 +489,23 @@ def test_value_used_twice_matches_one_value(backend, tmp_path):
 def test_softmax_is_selected_over_one_value(backend, tmp_path):
     calls = selected(backend, tmp_path, SOFTMAX)
     assert [name for name, _ in calls] == ['load_rm', 'softmax', 'store_rm']
+
+
+# The exponentials of the transpose of 32 rows
+TURNED_EXP = """HloModule turned_exp, entry_computation_layout={(bf16[32,64]{1,0})->bf16[64,32]{1,0}}
+
+ENTRY main {
+  %k = bf16[32,64] parameter(0)
+  %t = bf16[64,32] transpose(%k), dimensions={1,0}
+  ROOT %e = bf16[64,32] exponential(%t)
+}
+"""
+
+
+def test_attribute_is_read_from_the_dimension_that_holds_it(backend, tmp_path):
+    calls = selected(backend, tmp_path, TURNED_EXP)
+    # Each attribute in its result's second dimension, 32 there
+    assert calls == [
+        ('load_cm', {'n': '32', 'addr_in': '0', 'addr_out': '0'}),
+        ('store_exp', {'n': '32', 'addr_in': '0', 'addr_out': '4096'}),
+    ]

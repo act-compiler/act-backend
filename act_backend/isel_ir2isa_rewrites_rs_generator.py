@@ -60,7 +60,7 @@ class RustGeneratorVisitor(OperandVisitor):
 
     def visitInstruction(self, ctx):
         lhs_name = ctx.IDENTIFIER().getText()
-        lhs_type, lhs_shape, lhs_dims, lhs_first = self.visit(ctx.result_type())
+        lhs_type, lhs_shape, lhs_dims, lhs_trees = self.visit(ctx.result_type())
 
         is_root = ctx.ROOT() is not None
 
@@ -78,7 +78,7 @@ class RustGeneratorVisitor(OperandVisitor):
             'dtype': lhs_type,
             'shape': lhs_shape,
             'dims': lhs_dims,
-            'first': lhs_first,
+            'trees': lhs_trees,
             'operands': operand_names,
         }
 
@@ -106,34 +106,17 @@ class RustGeneratorVisitor(OperandVisitor):
     def visitResult_type(self, ctx):
         # A rank-0 result is one element, like a kernel's
         if ctx.shape() is None:
-            return (ctx.TYPE().getText(), '', ['1'], None)
+            return (ctx.TYPE().getText(), '', ['1'], [None])
         # The type, the written shape, and each dimension in Rust
         dims = [self.visit(dim) for dim in ctx.shape().dim()]
-        # The first dimension's tree, where it is an expression
-        first = self.expressions.get(ctx.shape().dim(0).EXPRESSION())
-        return (ctx.TYPE().getText(), ctx.shape().getText(), dims, first)
+        # Each dimension's tree, where it is an expression
+        trees = [self.expressions.get(dim.EXPRESSION()) for dim in ctx.shape().dim()]
+        return (ctx.TYPE().getText(), ctx.shape().getText(), dims, trees)
 
     def visitDim(self, ctx):
         if ctx.INT():
             return ctx.INT().getText()
         return source(self.expressions[ctx.EXPRESSION()])
-
-
-def extract_comp_attr_from_shape(shape_text, comp_attrs):
-    # Find the computational attribute that appears in the shape
-    for attr in comp_attrs:
-        if f'@c.{attr}' in shape_text:
-            return attr
-    return comp_attrs[0] if comp_attrs else None
-
-
-def root_comp_attr(semantics_data):
-    # The attribute the root's shape names, if any
-    root_assignment = semantics_data['root_assignment']
-    comp_attrs = semantics_data['comp_attributes']
-    if comp_attrs:
-        return extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
-    return None
 
 
 def attribute_factor(dimension, attribute):
@@ -151,36 +134,50 @@ def attribute_factor(dimension, attribute):
     reference = f'@c.{attribute}'
     if tokens == [reference]:
         return 1
-    if len(tokens) == 3 and tokens[:2] == [reference, '*'] and tokens[2].isdigit():
-        # No factor of zero: the rewrite divides by it
-        return int(tokens[2]) or None
+    if len(tokens) != 3 or tokens[1] != '*' or reference not in (tokens[0], tokens[2]):
+        return None
+    # The integer on either side, never zero, the rewrite's divisor
+    factor = tokens[2] if tokens[0] == reference else tokens[0]
+    if not factor.isdigit():
+        return None
+    return int(factor) or None
+
+
+def attribute_reading(assignments, attribute):
+    """Return where a rewrite reads an attribute: a value's position, its dimension and the factor
+
+    The first dimension in pattern order that holds the attribute alone or times a positive integer,
+    or None where none does.
+    """
+    for position, assignment in enumerate(assignments):
+        for dimension, tree in enumerate(assignment['trees']):
+            factor = attribute_factor(tree, attribute)
+            if factor:
+                return position, dimension, factor
     return None
 
 
-def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
-    # Generate computational attribute extraction code from ROOT assignment
-    if not comp_attr:
-        return ''
+def generate_comp_attr_extraction(assignments, attributes, checked):
+    """The Rust that reads each attribute, the precondition first checking its dimension exists"""
+    code = ''
+    for attribute in attributes:
+        position, dimension, factor = attribute_reading(assignments, attribute)
+        shape = f'lhs_metadata[{position}].shape'
+        if checked and dimension:
+            # A matched value may have fewer dimensions
+            code += f'  if {shape}.len() <= {dimension} {{\n    return false;\n  }}\n'
+        division = f' / {factor}' if factor != 1 else ''
+        code += f'  let {attribute} = {shape}[{dimension}]{division};\n'
+    return code
 
-    # Divide the first dimension by the attribute's integer factor
-    factor = attribute_factor(root_assignment['first'], comp_attr)
-    root_index = num_assignments - 1  # ROOT is always the last assignment
 
-    if factor not in (None, 1):
-        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {factor};\n'
-    else:
-        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
-
-
-def generate_precond_function(instruction_name, semantics_data, templates):
+def generate_precond_function(instruction_name, semantics_data, attributes, templates):
     assignments = semantics_data['assignments']
-    root_assignment = semantics_data['root_assignment']
 
     num_assignments = len(assignments)
-    comp_attr = root_comp_attr(semantics_data)
 
     # Generate comp attribute extraction
-    comp_attr_code = generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
+    comp_attr_code = generate_comp_attr_extraction(assignments, attributes, True)
 
     # Each copy of a value is its first occurrence's e-class
     shape_checks = [
@@ -216,24 +213,27 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     )
 
 
-def generate_metadata_function(instruction_name, semantics_data, rhs_size, templates):
+def generate_metadata_function(instruction_name, semantics_data, attributes, rhs_size, templates):
     assignments = semantics_data['assignments']
-    root_assignment = semantics_data['root_assignment']
 
     num_assignments = len(assignments)
-    comp_attr = root_comp_attr(semantics_data)
 
-    if comp_attr:
-        # The attribute's value, as the precondition reads it
-        comp_attr_extraction = generate_comp_attr_extraction(
-            root_assignment, comp_attr, num_assignments
-        )
+    if attributes:
+        # The attributes' values, as the precondition reads them
+        comp_attr_extraction = generate_comp_attr_extraction(assignments, attributes, False)
+
+        # The attributes as one string, in declared order
+        if len(attributes) == 1:
+            value = f'{attributes[0]}.to_string()'
+        else:
+            pieces = ','.join(['{}'] * len(attributes))
+            value = f'format!("{pieces}", {", ".join(attributes)})'
 
         return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',
             instruction_name=instruction_name,
             num_assignments=str(num_assignments),
-            comp_attr=comp_attr,
+            attributes=value,
             comp_attr_extraction=comp_attr_extraction.strip(),
             rhs_size=str(rhs_size),
         )
@@ -246,22 +246,20 @@ def generate_metadata_function(instruction_name, semantics_data, rhs_size, templ
         )
 
 
-def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, templates):
+def generate_set_shapes_function(instruction_name, semantics_data, attributes, rhs_size, templates):
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
 
     num_assignments = len(assignments)
-    comp_attr = root_comp_attr(semantics_data)
 
-    # The attribute's value, as the precondition reads it
+    # The attributes' values, as the precondition reads them
     metadata_code = ''
-    if comp_attr:
+    if attributes:
         metadata_code = (
             '  let lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
             '    .iter()\n'
             '    .map(|id| egraph[*id].data.clone())\n'
-            '    .collect();\n'
-            + generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
+            '    .collect();\n' + generate_comp_attr_extraction(assignments, attributes, False)
         )
 
     # Generate shape setting
@@ -288,12 +286,13 @@ def generate_ir2isa_rust_functions(metadata, templates):
     visitor = RustGeneratorVisitor(metadata.expressions)
     semantics_data = visitor.visit(metadata.semantics_ast)
 
-    precond = generate_precond_function(metadata.name, semantics_data, templates)
+    attributes = metadata.attributes
+    precond = generate_precond_function(metadata.name, semantics_data, attributes, templates)
     metadata_func = generate_metadata_function(
-        metadata.name, semantics_data, metadata.rhs_size, templates
+        metadata.name, semantics_data, attributes, metadata.rhs_size, templates
     )
     set_shapes = generate_set_shapes_function(
-        metadata.name, semantics_data, metadata.rhs_size, templates
+        metadata.name, semantics_data, attributes, metadata.rhs_size, templates
     )
 
     return f'{precond}\n{metadata_func}\n{set_shapes}'

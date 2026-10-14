@@ -404,18 +404,16 @@ def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
     assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
 
 
-@pytest.mark.parametrize(
-    'dimension', ['@c.k*(64+64)', '@c.k * @c.k', '2 * @c.k', '@c.k + 1', '@c.k * 0']
-)
-def test_first_dimension_that_hides_its_attribute_refused(dimension, tmp_path):
+@pytest.mark.parametrize('dimension', ['@c.k*(64+64)', '@c.k * @c.k', '@c.k + 1', '@c.k * 0'])
+def test_attribute_held_by_no_dimension_refused(dimension, tmp_path):
     lines = [
-        '%In0 = bf16[`@c.k`,64] parameter(0)',
+        f'%In0 = bf16[`{dimension}`,64] parameter(0)',
         f'ROOT %Out0 = bf16[`{dimension}`,64] copy(%In0)',
     ]
     message = refusal(with_semantics(lines, 1, attributes=['k']), tmp_path)
     assert message == (
-        f"gemm: its result's first dimension '{dimension}' is not the computational "
-        "attribute 'k' alone or times a positive integer"
+        "gemm: no dimension of its semantics holds the computational attribute 'k' "
+        'alone or times a positive integer'
     )
 
 
