@@ -401,7 +401,7 @@ def test_metadata_that_does_not_parse_ends_the_compile(work_dir, tmp_path):
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
     allocator = os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'cpp', 'malloc')
     with open(os.path.join(allocator, 'src', 'globals.cc')) as f:
-        assert 'new Storage("D3", {}, 1)' in f.read()
+        assert 'new Storage("Modeld3", {}, 1)' in f.read()
 
 
 def test_instruction_with_no_semantics_is_left_out(work_dir):

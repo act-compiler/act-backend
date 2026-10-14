@@ -4,7 +4,6 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
-from .instruction_info import get_buffer_name
 from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     RustGeneratorVisitor,
@@ -12,34 +11,6 @@ from .isel_ir2isa_rewrites_rs_generator import (
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS, RewriteRuleVisitor, repeated_leaf
 from .semantics_visitor import OperandVisitor
-
-# Buffers the selector holds beside the data models'
-BUFFERS = {'HBM', 'ANY'}
-
-
-def check_data_model_names(data_models):
-    """Refuse a data model name that gives no buffer of its own"""
-    carried = {}
-    for data_model in data_models:
-        name = data_model.var_name
-        # d0 is the HBM, which the backend holds itself
-        if name == 'd0':
-            continue
-        buffer = get_buffer_name(name)
-        if buffer in BUFFERS:
-            raise ValueError(
-                f"Data model name '{name}' gives the buffer {buffer}, which the backend already holds"
-            )
-        if buffer in carried:
-            raise ValueError(
-                f"Data model names '{carried[buffer]}' and '{name}' both give the buffer {buffer}"
-            )
-        carried[buffer] = name
-
-
-def check_names(instructions, data_models):
-    """Refuse a spec whose names the generated backend cannot carry"""
-    check_data_model_names(data_models)
 
 
 def check_outputs(instructions):

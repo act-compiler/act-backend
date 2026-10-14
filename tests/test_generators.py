@@ -91,8 +91,8 @@ def test_buffer_assignments(accelerator):
     info = extract_instruction_info(accelerator.instructions)
     # The output's buffer first, then each input's, d0 as HBM
     assert [i.buffer_assignment for i in info] == [
-        'Some(vec![Buffer::D1, Buffer::HBM])',
-        'Some(vec![Buffer::D2, Buffer::D1, Buffer::D1])',
+        'Some(vec![Buffer::Modeld1, Buffer::HBM])',
+        'Some(vec![Buffer::Modeld2, Buffer::Modeld1, Buffer::Modeld1])',
     ]
 
 
@@ -202,8 +202,8 @@ def test_storages(accelerator):
     models = generate_globals_models(accelerator.data_model)
     # Per data model but d0: access dimensions, then unit count
     assert [squeeze(model) for model in models] == [
-        '{"D1", new Storage("D1", {128}, 1)},',
-        '{"D2", new Storage("D2", {64}, 1)},',
+        '{"Modeld1", new Storage("Modeld1", {128}, 1)},',
+        '{"Modeld2", new Storage("Modeld2", {64}, 1)},',
     ]
 
 
@@ -211,7 +211,7 @@ def test_storage_with_no_access_dimension():
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [], [64], 'bf16')
     (model,) = generate_globals_models(acc.data_model)
-    assert squeeze(model) == '{"D1", new Storage("D1", {}, 1)},'
+    assert squeeze(model) == '{"Modeld1", new Storage("Modeld1", {}, 1)},'
 
 
 def test_rule_functions(accelerator):
@@ -233,7 +233,7 @@ def test_rule_functions(accelerator):
 
 def test_buffer_names(accelerator, templates):
     # Every buffer but HBM, in the spec's order
-    assert generate_buffer_names(accelerator.data_model, templates) == '"D1", "D2"'
+    assert generate_buffer_names(accelerator.data_model, templates) == '"Modeld1", "Modeld2"'
 
 
 def test_parser_cases(accelerator, templates):

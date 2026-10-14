@@ -29,16 +29,17 @@ ENTRY {{
 def names():
     """Two loads, a product, a copy and a store, each named as the sources' own names are"""
     acc = Accelerator('NAMES')
-    acc.add_data_model('d1', [128], [64], 'bf16')
-    acc.add_data_model('d2', [128], [64], 'bf16')
+    # The HBM's name, and two names differing only in case
+    acc.add_data_model('hbm', [128], [64], 'bf16')
+    acc.add_data_model('HBM', [128], [64], 'bf16')
     # Two long names, one camel case, wrapping a match arm
-    add_load(acc, 'load_rows_2', 'd1', 'type', ('y', 'X'))
-    add_load(acc, 'load_rows2', 'd2', 'lhs_metadata', ('start', 'num'))
+    add_load(acc, 'load_rows_2', 'hbm', 'type', ('y', 'X'))
+    add_load(acc, 'load_rows2', 'HBM', 'lhs_metadata', ('start', 'num'))
 
     # An operator's word
     instr = acc.add_instruction('dot', [], ['register', 'solver', 'get_h0'])
-    instr.set_inputs([['d1', ['@a.register'], ['64']], ['d2', ['@a.solver'], ['64']]])
-    instr.set_outputs([['d2', ['@a.get_h0'], ['64']]])
+    instr.set_inputs([['hbm', ['@a.register'], ['64']], ['HBM', ['@a.solver'], ['64']]])
+    instr.set_outputs([['HBM', ['@a.get_h0'], ['64']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = bf16[64,64] parameter(0);
@@ -49,8 +50,8 @@ ENTRY {
 
     # A name with a leading underscore
     instr = acc.add_instruction('_2', [], ['source', 'target'])
-    instr.set_inputs([['d2', ['@a.source'], ['64']]])
-    instr.set_outputs([['d1', ['@a.target'], ['64']]])
+    instr.set_inputs([['HBM', ['@a.source'], ['64']]])
+    instr.set_outputs([['hbm', ['@a.target'], ['64']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = bf16[64,64] parameter(0);
@@ -60,7 +61,7 @@ ENTRY {
 
     # A word the allocator reads as a declaration
     instr = acc.add_instruction('Variant', ['value'], ['str', 'Tensor'])
-    instr.set_inputs([['d1', ['@a.str'], ['@c.value']]])
+    instr.set_inputs([['hbm', ['@a.str'], ['@c.value']]])
     instr.set_outputs([['d0', ['@a.Tensor'], ['@c.value * 128']]])
     instr.add_semantics("""
 ENTRY {
@@ -125,5 +126,6 @@ def test_prefixes_are_the_generated_names_own():
                         # A placeholder is filled, so it spells no name
                         text = re.sub(r'\{\{\w+\}\}', '', f.read())
                     spelled |= set(re.findall(r'\b[A-Za-z_]\w*', text))
-    # No skeleton name in an attribute's or instruction's namespace
-    assert [name for name in spelled if re.match(r'attr_|instr_|Instr[A-Z0-9]', name)] == []
+    # No skeleton name in an attribute's, instruction's or model's namespace
+    prefixed = re.compile(r'attr_|instr_|Instr[A-Z0-9]|Model')
+    assert [name for name in spelled if prefixed.match(name)] == []

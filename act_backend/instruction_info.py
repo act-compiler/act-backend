@@ -54,7 +54,8 @@ def get_graph_name(instr_name: str) -> str:
 
 
 def get_buffer_name(data_model_name: str) -> str:
-    return 'HBM' if data_model_name == 'd0' else data_model_name.upper()
+    # d0 is the backend's HBM, other data models prefixed
+    return 'HBM' if data_model_name == 'd0' else f'Model{data_model_name}'
 
 
 def extract_instruction_info(instructions) -> list[InstructionInfo]:

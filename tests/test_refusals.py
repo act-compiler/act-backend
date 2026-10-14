@@ -110,36 +110,6 @@ def refusal(accelerator, tmp_path):
     return str(error.value)
 
 
-@pytest.mark.parametrize(
-    'name, reason',
-    [
-        ('hbm', 'gives the buffer HBM, which the backend already holds'),
-        ('any', 'gives the buffer ANY, which the backend already holds'),
-    ],
-)
-def test_data_model_name_refused(name, reason, tmp_path):
-    assert refusal(loader(model=name), tmp_path) == f"Data model name '{name}' {reason}"
-
-
-def test_data_model_names_that_fold_to_one_refused(tmp_path):
-    acc = loader(model='d1')
-    acc.add_data_model('D1', [64], [64], 'bf16')
-    assert refusal(acc, tmp_path) == "Data model names 'd1' and 'D1' both give the buffer D1"
-
-
-def test_reserved_names_are_the_skeletons_own():
-    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
-
-    def read(*path):
-        with open(os.path.join(generic, *path)) as f:
-            return f.read()
-
-    # Each buffer beside the data models'
-    buffer = read('src', 'ir', 'buffer.rs')
-    buffers = buffer[buffer.index('pub enum Buffer') : buffer.index('impl ')]
-    assert set(re.findall(r'^  (\w+),', buffers, re.MULTILINE)) == spec_checks.BUFFERS
-
-
 def test_operation_the_selector_lacks_refused(tmp_path):
     message = refusal(with_semantics([IN0, IN1, result('maximum(%In0, %In1)')]), tmp_path)
     assert message == (

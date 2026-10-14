@@ -21,7 +21,6 @@ from .malloc_parser_cc_generator import generate_parser_file
 from .spec_checks import (
     check_constraints,
     check_inplace,
-    check_names,
     check_operands,
     check_outputs,
     check_semantics,
@@ -100,9 +99,7 @@ def generate_backend(
         instruction for instruction in accelerator.instructions if instruction.instr_semantics_ast
     ]
 
-    # A spec the checks refuse is refused by name
-    check_names(instructions, accelerator.data_model)
-    # Count the outputs first: each is a semantics line
+    # The refusals, outputs counted first: each output is a semantics line
     check_outputs(instructions)
     check_semantics(instructions)
     check_operands(instructions, accelerator.data_model)
