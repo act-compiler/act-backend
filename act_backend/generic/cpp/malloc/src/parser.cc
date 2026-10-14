@@ -24,8 +24,7 @@ ParsedLine parse_line(const std::string &line) {
     s.erase(s.find_last_not_of(" \t\r\n") + 1);
   };
 
-  // parse line: lhs: rest
-  // find first ':'
+  // lhs: rest, at the first ':'
   auto colon_pos = line.find(':');
 
   std::string lhs = line.substr(0, colon_pos);
@@ -35,8 +34,7 @@ ParsedLine parse_line(const std::string &line) {
 
   pl.lhs_variable_name = lhs;
 
-  // parse rest: left = right
-  // find first '='
+  // left = right, at the first '='
   auto eq_pos = rest.find('=');
 
   std::string left = rest.substr(0, eq_pos);
@@ -44,8 +42,7 @@ ParsedLine parse_line(const std::string &line) {
   trim(left);
   trim(right);
 
-  // parse left: storage[offset]
-  // find first '[' and ']'
+  // left: storage[offset]
   auto br_open = left.find('[');
   auto br_close = left.find(']');
 
@@ -58,8 +55,7 @@ ParsedLine parse_line(const std::string &line) {
 
   pl.lhs_offset = to_int(addr_str);
 
-  // parse right: datatype[shape] <operation>
-  // find first space
+  // right: datatype[shape] <operation>, at the first space
   auto first_space = right.find(' ');
 
   std::string type_shape = right.substr(0, first_space);
@@ -67,8 +63,7 @@ ParsedLine parse_line(const std::string &line) {
   trim(type_shape);
   trim(op_and_rest);
 
-  // parse type_shape: dtype[shape]
-  // find first '[' and ']'
+  // type_shape: dtype[shape]
   auto s_brkt = type_shape.find('[');
   auto e_brkt = type_shape.find(']');
 
@@ -88,8 +83,7 @@ ParsedLine parse_line(const std::string &line) {
 
   pl.lhs_shape = shape_vec;
 
-  // parse op_and_rest: op_name_attr(operands)
-  // find last '(' and ')'
+  // op_and_rest: op_name_attr(operands), at the last parentheses
   auto s_prn = op_and_rest.rfind('(');
   auto e_prn = op_and_rest.rfind(')');
 
@@ -111,8 +105,7 @@ ParsedLine parse_line(const std::string &line) {
 
   pl.operand_names = operands_vec;
 
-  // parse op_name_and_attr: op_name[attr]
-  // find first '[' and ']'
+  // op_name_and_attr: op_name[attr]
   auto s_attr = op_name_and_attr.find('[');
   auto e_attr = op_name_and_attr.rfind(']');
 
@@ -138,8 +131,7 @@ Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
                                 std::unordered_map<Tensor *, std::string> &known_constants) {
 
-  // Helper lambdas
-  // (i) panic with error message
+  // Panic with an error message
   auto panic = [&](const std::string &msg) -> Instruction * {
     std::cerr << "create_instruction error: " << msg << std::endl;
     assert(false && "unreachable");
@@ -192,7 +184,7 @@ Instruction *create_instruction(const ParsedLine &pl,
 
   // Create instruction object based on op_name
   if (op_name == "slice") {
-    // currently only implemented for one attribute: slices
+    // The one attribute: slices
     std::vector<std::pair<int64, int64>> slices;
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
@@ -210,7 +202,7 @@ Instruction *create_instruction(const ParsedLine &pl,
 
     return new Slice(lhs_tensor, rhs_tensors, slices);
   } else if (op_name == "concat") {
-    // currently only implemented for one attribute: dimension
+    // The one attribute: dimension
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
     int64 dimension = to_int(attr_str.substr(start + 1, end - start - 1));

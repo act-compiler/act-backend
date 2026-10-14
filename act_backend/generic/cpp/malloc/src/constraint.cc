@@ -92,8 +92,7 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
       auto end1 = MAKE_SUM(offsets1[i], sizes1[i]);
       auto end2 = MAKE_SUM(offsets2[i], sizes2[i]);
 
-      // b1 == (end1 <= offsets2) ; b2 == (end2 <= offsets1)
-      // Enforce (b1 OR b2) by requiring b1 + b2 >= 1
+      // One range ends first: b1 + b2 >= 1
       IntVar *b1 = solver.MakeIsLessOrEqualVar(end1, offsets2[i]);
       IntVar *b2 = solver.MakeIsLessOrEqualVar(end2, offsets1[i]);
       solver.AddConstraint(
@@ -106,13 +105,9 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
 
 } // namespace constraint
 
-// Note that instructions are ordered from 1 to N
-// where 1 is the first instruction to be executed
-// and N is the last instruction to be executed
-// 0 refers to the time before any instruction is executed, i.e., initial state
+// Times 1 to N are the instructions, 0 before them
 LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions) {
-  // Helper lambdas
-  // (i) panic with error message
+  // Panic with an error message
   auto panic = [&](const std::string &msg) -> LiveRange {
     std::cerr << "live_range error: " << msg << std::endl;
     assert(false && "unreachable");
@@ -124,8 +119,7 @@ LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instru
     return {0, instructions.size()};
   }
 
-  // If CONSTANT, then live range is [0, b]
-  // where b is the last instruction that uses it
+  // A constant lives over [0, b], b its last use
   if (a->type == Tensor::node_type::CONSTANT) {
     auto uses = a->get_used_by();
     if (uses.empty())
@@ -147,9 +141,7 @@ LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instru
     return {0, last_use + 1};
   }
 
-  // If INTERMEDIATE, then live range is [a, b]
-  // where a is the instruction that defines it
-  // and b is the last instruction that uses it
+  // An intermediate lives from its definition to its last use
   if (a->type == Tensor::node_type::INTERMEDIATE) {
     auto def = a->get_defined_by();
     if (def == nullptr)
@@ -208,8 +200,7 @@ build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ran
       LiveRange lr1 = it1->second;
       LiveRange lr2 = it2->second;
 
-      // Check if live ranges overlap. Treat touching intervals as
-      // non-overlapping (i.e. [a,b] and [b,c] do NOT interfere).
+      // Live ranges overlap; [a,b] and [b,c] only touch
       if (!(lr1.second <= lr2.first || lr2.second <= lr1.first)) {
         // Check if they are allowed to overlap
         Instruction *def1 = t1->get_defined_by();

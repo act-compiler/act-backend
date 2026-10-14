@@ -1,4 +1,4 @@
-// The default cost model: the number of instructions in a candidate
+// The default cost model: a candidate's instruction count
 
 #include <fstream>
 #include <string>
