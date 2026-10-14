@@ -97,6 +97,7 @@ impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
       self.lhs.ast.len() - 1,
       self.lhs.ast.len(),
       &self.lhs.ast,
+      subst,
     );
     PROCESSED
       .lock()
@@ -155,19 +156,21 @@ fn apply_pat(
   *rhs_eclasses.last().unwrap()
 }
 
-/// Each pattern match at eclass, its nodes in post-order
+/// Each match at eclass under subst, its nodes in post-order
 fn find_matches(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
   pat_idx: usize,
   limit: usize,
   pat: &[ENodeOrVar<TensorOp>],
+  subst: &Subst,
 ) -> Vec<Vec<(Id, Option<TensorOp>)>> {
   let mut matches = vec![];
   let pat_node = pat.get(pat_idx).unwrap();
   match pat_node {
-    ENodeOrVar::Var(_) => {
-      if limit > 0 {
+    ENodeOrVar::Var(var) => {
+      // The match the search found, and no other
+      if limit > 0 && egraph.find(subst[*var]) == egraph.find(eclass) {
         matches.push(vec![(eclass, None)]);
       }
     }
@@ -185,6 +188,7 @@ fn find_matches(
             e.children()[i].into(),
             limit - 1,
             pat,
+            subst,
           ));
         }
         if child_matches.iter().all(|x| !x.is_empty()) {
