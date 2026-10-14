@@ -3,7 +3,7 @@
 import os
 
 from .expression_writer import source
-from .instruction_info import to_camel_case
+from .instruction_info import get_attribute_name, to_camel_case
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -20,16 +20,18 @@ def generate_instruction_class(instruction, templates):
     op_name = instruction.instruction
     comp_attrs = instruction.comp_attr
     params = instruction.parameters
+    # Each attribute's generated name; the assembly prints the spec's
+    names = {attr: get_attribute_name(attr) for attr in [*comp_attrs, *params]}
 
     # Generate members
     comp_attr_members = ''
     for attr in comp_attrs:
-        comp_attr_members += f'  int64 {attr};\n'
+        comp_attr_members += f'  int64 {names[attr]};\n'
 
     # A blank line parts the two kinds of member
     addr_var_members = '\n' if comp_attrs else ''
     for param in params:
-        addr_var_members += f'  IntVar *{param} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
+        addr_var_members += f'  IntVar *{names[param]} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
 
     # get_h methods: the output's first (get_h0), then the inputs'
     get_h_methods = ''
@@ -49,12 +51,12 @@ def generate_instruction_class(instruction, templates):
     # Generate constructor parameters
     comp_attr_params = ''
     if comp_attrs:
-        comp_attr_params = ', ' + ', '.join(f'int64 {attr}' for attr in comp_attrs)
+        comp_attr_params = ', ' + ', '.join(f'int64 {names[attr]}' for attr in comp_attrs)
 
     # Generate constructor initialization
     comp_attr_init = ''
     if comp_attrs:
-        comp_attr_init = ', ' + ', '.join(f'{attr}({attr})' for attr in comp_attrs)
+        comp_attr_init = ', ' + ', '.join(f'{names[attr]}({names[attr]})' for attr in comp_attrs)
 
     # The constructor on one line, else broken before its initializers
     constructor = templates.render_fitting(
@@ -66,8 +68,8 @@ def generate_instruction_class(instruction, templates):
     )
 
     # The text names each attribute's value, a line each
-    values = [(attr, attr) for attr in comp_attrs]
-    values += [(param, f'{param}->Value()') for param in params]
+    values = [(attr, names[attr]) for attr in comp_attrs]
+    values += [(param, f'{names[param]}->Value()') for param in params]
     str_pieces = ''
     for index, (attr, value) in enumerate(values):
         str_pieces += templates.render_lines(
@@ -77,7 +79,7 @@ def generate_instruction_class(instruction, templates):
         )
 
     # Generate get_int_var list
-    get_int_var_list = ', '.join(params)
+    get_int_var_list = ', '.join(names[param] for param in params)
 
     # Generate complete class using template
     return templates.render_lines(

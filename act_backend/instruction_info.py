@@ -25,6 +25,11 @@ def get_rust_variant_name(instr_name: str) -> str:
     return to_camel_case(instr_name.replace('-', '_'))
 
 
+def get_attribute_name(attribute: str) -> str:
+    # A prefix no name of the generated sources starts with
+    return f'attr_{attribute}'
+
+
 def get_kebab_name(instr_name: str) -> str:
     return instr_name.replace('_', '-')
 

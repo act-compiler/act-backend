@@ -1,6 +1,6 @@
 import os
 
-from .instruction_info import to_camel_case
+from .instruction_info import get_attribute_name, to_camel_case
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
@@ -12,7 +12,10 @@ def generate_parser_instruction(instruction, templates):
     if comp_attrs:
         # Each attribute from the one string they travel in
         parses = '\n'.join(
-            templates.render('parser.cc.INSTRUCTION_CASES.attribute.txt', attr_name=attr_name)
+            templates.render(
+                'parser.cc.INSTRUCTION_CASES.attribute.txt',
+                variable=get_attribute_name(attr_name),
+            )
             for attr_name in comp_attrs
         )
         return templates.render(
@@ -20,7 +23,7 @@ def generate_parser_instruction(instruction, templates):
             op_name=op_name,
             ClassName=class_name,
             attribute_parses=parses,
-            attributes=', '.join(comp_attrs),
+            attributes=', '.join(get_attribute_name(attr_name) for attr_name in comp_attrs),
         )
     else:
         return templates.render(

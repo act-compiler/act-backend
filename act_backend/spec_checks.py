@@ -1,7 +1,5 @@
 """What a backend cannot be generated for: each refused by name, before anything is written"""
 
-import re
-
 from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
@@ -88,208 +86,6 @@ DECLARATION_WORDS = ('Var', 'DCC')
 # Buffers the selector holds beside the data models'
 BUFFERS = {'HBM', 'ANY'}
 
-RUST_KEYWORDS = {
-    'abstract',
-    'as',
-    'async',
-    'await',
-    'become',
-    'box',
-    'break',
-    'const',
-    'continue',
-    'crate',
-    'do',
-    'dyn',
-    'else',
-    'enum',
-    'extern',
-    'false',
-    'final',
-    'fn',
-    'for',
-    'if',
-    'impl',
-    'in',
-    'let',
-    'loop',
-    'macro',
-    'match',
-    'mod',
-    'move',
-    'mut',
-    'override',
-    'priv',
-    'pub',
-    'ref',
-    'return',
-    'self',
-    'Self',
-    'static',
-    'struct',
-    'super',
-    'trait',
-    'true',
-    'try',
-    'type',
-    'typeof',
-    'unsafe',
-    'unsized',
-    'use',
-    'virtual',
-    'where',
-    'while',
-    'yield',
-}
-
-CPP_KEYWORDS = {
-    'alignas',
-    'alignof',
-    'and',
-    'and_eq',
-    'asm',
-    'auto',
-    'bitand',
-    'bitor',
-    'bool',
-    'break',
-    'case',
-    'catch',
-    'char',
-    'char16_t',
-    'char32_t',
-    'class',
-    'compl',
-    'const',
-    'const_cast',
-    'constexpr',
-    'continue',
-    'decltype',
-    'default',
-    'delete',
-    'do',
-    'double',
-    'dynamic_cast',
-    'else',
-    'enum',
-    'explicit',
-    'export',
-    'extern',
-    'false',
-    'float',
-    'for',
-    'friend',
-    'goto',
-    'if',
-    'inline',
-    'int',
-    'long',
-    'mutable',
-    'namespace',
-    'new',
-    'noexcept',
-    'not',
-    'not_eq',
-    'nullptr',
-    'operator',
-    'or',
-    'or_eq',
-    'private',
-    'protected',
-    'public',
-    'register',
-    'reinterpret_cast',
-    'return',
-    'short',
-    'signed',
-    'sizeof',
-    'static',
-    'static_assert',
-    'static_cast',
-    'struct',
-    'switch',
-    'template',
-    'this',
-    'thread_local',
-    'throw',
-    'true',
-    'try',
-    'typedef',
-    'typeid',
-    'typename',
-    'union',
-    'unsigned',
-    'using',
-    'virtual',
-    'void',
-    'volatile',
-    'wchar_t',
-    'while',
-    'xor',
-    'xor_eq',
-}
-
-# Names the allocator's generated class spells beside an attribute
-ADDRESS_ATTRIBUTE_NAMES = {
-    'Constraints',
-    'INT64_MAX',
-    'INT64_MIN',
-    'Instruction',
-    'IntExpr',
-    'IntVar',
-    'MAKE_INT_VAR',
-    'MAKE_SUM',
-    'Tensor',
-    'X',
-    'assert',
-    'constraints',
-    'get_e',
-    'get_h',
-    'get_int_var',
-    'int64',
-    'num',
-    'op_name',
-    'override',
-    'solver',
-    'std',
-    'str',
-    'y',
-}
-
-# Plus the parser's and rewrites' names beside a computational one
-COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
-    'attr_str',
-    'end',
-    'lhs_tensor',
-    'rhs_tensors',
-    'start',
-    'to_int',
-    'value',
-    'values',
-    'Dtype',
-    'EGraph',
-    'Id',
-    'None',
-    'Option',
-    'Some',
-    'String',
-    'TensorInfo',
-    'TensorOp',
-    'Vec',
-    'assert_eq',
-    'bool',
-    'egraph',
-    'id',
-    'lhs_eclasses',
-    'lhs_metadata',
-    'rhs_eclasses',
-    'rhs_metadata',
-    'vec',
-}
-
-# The method the generated class gives each operand's range
-RANGE_METHOD = re.compile(r'get_h\d+')
-
 
 def check_instruction_names(instructions):
     """Refuse an instruction name the selector or the allocator cannot carry"""
@@ -325,34 +121,6 @@ def check_instruction_names(instructions):
         carried[generated] = name
 
 
-def check_attribute_names(instruction):
-    """Refuse an attribute name the generated sources cannot carry beside their own names"""
-    name = instruction.instruction
-    for kind, attributes, languages, keywords, held in [
-        (
-            'computational',
-            instruction.comp_attr,
-            'Rust or C++',
-            RUST_KEYWORDS | CPP_KEYWORDS,
-            COMPUTATIONAL_ATTRIBUTE_NAMES,
-        ),
-        ('address', instruction.parameters, 'C++', CPP_KEYWORDS, ADDRESS_ATTRIBUTE_NAMES),
-    ]:
-        for attribute in attributes:
-            what = f'{name}: {kind} attribute'
-            if attribute in keywords:
-                raise ValueError(
-                    f"{what} '{attribute}' is a {languages} keyword, "
-                    'which the generated code cannot spell'
-                )
-            if (
-                attribute in held
-                or RANGE_METHOD.fullmatch(attribute)
-                or attribute == to_camel_case(name)
-            ):
-                raise ValueError(f"{what} '{attribute}' is a name the backend already holds")
-
-
 def check_data_model_names(data_models):
     """Refuse a data model name that gives no buffer of its own"""
     carried = {}
@@ -376,8 +144,6 @@ def check_data_model_names(data_models):
 def check_names(instructions, data_models):
     """Refuse a spec whose names the generated backend cannot carry"""
     check_instruction_names(instructions)
-    for instruction in instructions:
-        check_attribute_names(instruction)
     check_data_model_names(data_models)
 
 

@@ -110,18 +110,18 @@ ParsedLine parse_line(const std::string &line) {
   auto e_attr = op_name_and_attr.rfind(']');
 
   std::string op_name;
-  std::string attr_str;
+  std::string op_attr;
   if (s_attr != std::string::npos && e_attr != std::string::npos && e_attr > s_attr) {
     op_name = op_name_and_attr.substr(0, s_attr);
-    attr_str = op_name_and_attr.substr(s_attr + 1, e_attr - s_attr - 1);
+    op_attr = op_name_and_attr.substr(s_attr + 1, e_attr - s_attr - 1);
   } else {
     op_name = op_name_and_attr;
   }
   trim(op_name);
-  trim(attr_str);
+  trim(op_attr);
 
   pl.op_name = op_name;
-  pl.op_attr = attr_str;
+  pl.op_attr = op_attr;
 
   return pl;
 }
@@ -143,7 +143,7 @@ Instruction *create_instruction(const ParsedLine &pl,
   int64 offset = pl.lhs_offset; // -1 if not specified
   const std::vector<int64> &shape_vec = pl.lhs_shape;
   const std::string &op_name = pl.op_name;
-  const std::string &attr_str = pl.op_attr;
+  const std::string &op_attr = pl.op_attr;
   const std::vector<std::string> &operands_names = pl.operand_names;
 
   // Find storage pointer
@@ -171,7 +171,7 @@ Instruction *create_instruction(const ParsedLine &pl,
   if (op_name.rfind("DCC", 0) == 0) {
     lhs_tensor->type = Tensor::node_type::CONSTANT;
     // store constant value
-    known_constants[lhs_tensor] = attr_str;
+    known_constants[lhs_tensor] = op_attr;
     // constant declaration -- no instruction created
     return nullptr;
   }
@@ -186,9 +186,9 @@ Instruction *create_instruction(const ParsedLine &pl,
   if (op_name == "slice") {
     // The one attribute: slices
     std::vector<std::pair<int64, int64>> slices;
-    auto start = attr_str.find("'");
-    auto end = attr_str.rfind("'");
-    std::stringstream ss(attr_str.substr(start + 1, end - start - 1));
+    auto start = op_attr.find("'");
+    auto end = op_attr.rfind("'");
+    std::stringstream ss(op_attr.substr(start + 1, end - start - 1));
     std::string tok;
     // The first range, the buffer's access dimension
     if (std::getline(ss, tok, ',')) {
@@ -203,9 +203,9 @@ Instruction *create_instruction(const ParsedLine &pl,
     return new Slice(lhs_tensor, rhs_tensors, slices);
   } else if (op_name == "concat") {
     // The one attribute: dimension
-    auto start = attr_str.find("'");
-    auto end = attr_str.rfind("'");
-    int64 dimension = to_int(attr_str.substr(start + 1, end - start - 1));
+    auto start = op_attr.find("'");
+    auto end = op_attr.rfind("'");
+    int64 dimension = to_int(op_attr.substr(start + 1, end - start - 1));
 
     return new Concat(lhs_tensor, rhs_tensors, dimension);
     // {{INSTRUCTION_CASES}}

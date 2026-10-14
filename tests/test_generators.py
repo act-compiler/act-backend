@@ -119,10 +119,10 @@ def test_preconditions(accelerator, templates):
     load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
     # Read from the input's dimension, over its factor
-    assert 'let n = lhs_metadata[0].shape[0] / 128;' in functions
+    assert 'let attr_n = lhs_metadata[0].shape[0] / 128;' in functions
     # Each semantics value is held to its shape and type
     assert functions.count('if lhs_metadata[') == 3
-    shapes = [(0, 'n * 128', 'U8'), (1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]
+    shapes = [(0, 'attr_n * 128', 'U8'), (1, 'attr_n, 64, 2', 'U8'), (2, 'attr_n, 64', 'BF16')]
     for index, shape, dtype in shapes:
         value = f'TensorInfo {{ shape: vec![{shape}], dtype: Dtype::{dtype}, is_const: false, }}'
         assert f'if lhs_metadata[{index}] != ({value})' in functions
@@ -148,7 +148,7 @@ def test_attribute_read_through_its_factor(dimension):
         [f'%In0 = u8[`{dimension}`] parameter(0)', f'ROOT %Out0 = u8[`{dimension}`] copy(%In0)']
     )
     # The dimension over its factor, either side, through brackets
-    assert functions.count('let n = lhs_metadata[0].shape[0] / 128;') == 3
+    assert functions.count('let attr_n = lhs_metadata[0].shape[0] / 128;') == 3
 
 
 def test_attribute_read_from_a_second_dimension():
@@ -160,15 +160,18 @@ def test_attribute_read_from_a_second_dimension():
     )
     # The precondition first checks that the value has two dimensions
     guard = 'if lhs_metadata[0].shape.len() <= 1 { return false; }'
-    assert f'{guard} let n = lhs_metadata[0].shape[1];' in functions
-    assert functions.count('let n = lhs_metadata[0].shape[1];') == 3
+    assert f'{guard} let attr_n = lhs_metadata[0].shape[1];' in functions
+    assert functions.count('let attr_n = lhs_metadata[0].shape[1];') == 3
 
 
 def test_address_ranges(accelerator, templates):
     load_rm = squeeze(generate_instruction_class(accelerator.instructions[0], templates))
     # Range 0 the output's, 1 the input's: address and size
-    assert 'get_h0() { return {{addr_out, MAKE_SUM(addr_out, n)}}; }' in load_rm
-    assert 'get_h1() { return {{addr_in, MAKE_SUM(addr_in, n * 128)}}; }' in load_rm
+    assert 'get_h0() { return {{attr_addr_out, MAKE_SUM(attr_addr_out, attr_n)}}; }' in load_rm
+    assert 'get_h1() { return {{attr_addr_in, MAKE_SUM(attr_addr_in, attr_n * 128)}}; }' in load_rm
+    # The assembly prints each attribute by the spec's name
+    assert 'n = " + std::to_string(attr_n)' in load_rm
+    assert 'addr_in = " + std::to_string(attr_addr_in->Value())' in load_rm
 
 
 def test_size_written_from_its_tree(templates):
@@ -178,9 +181,9 @@ def test_size_written_from_its_tree(templates):
     instr.set_inputs([['d0', ['@a.addr_in'], ['(@c.n+1)*2-@c.n/2']]])
     instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
     load = squeeze(generate_instruction_class(instr, templates))
-    # Operators spaced, the spec's brackets, attributes by name
-    assert 'MAKE_SUM(addr_in, (n + 1) * 2 - n / 2)' in load
-    assert 'MAKE_SUM(addr_out, 64)' in load
+    # Operators spaced, the spec's brackets, attributes by generated name
+    assert 'MAKE_SUM(attr_addr_in, (attr_n + 1) * 2 - attr_n / 2)' in load
+    assert 'MAKE_SUM(attr_addr_out, 64)' in load
 
 
 def test_storages(accelerator):
@@ -225,7 +228,7 @@ def test_parser_cases(accelerator, templates):
     cases = squeeze(generate_parser_instructions(accelerator.instructions, templates))
     # A case per instruction, in order, attributes to its class
     assert re.findall(r'op_name == "(\w+)"', cases) == ['load_rm', 'gemm']
-    assert 'return new LoadRm(lhs_tensor, rhs_tensors, n);' in cases
+    assert 'return new LoadRm(lhs_tensor, rhs_tensors, attr_n);' in cases
     assert 'return new Gemm(lhs_tensor, rhs_tensors);' in cases
 
 
