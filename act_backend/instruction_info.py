@@ -45,7 +45,7 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
             buffer_name = get_buffer_name(input_item[0])
             buffers.append(f'Buffer::{buffer_name}')
 
-        buffer_assignment = f'Some(vec![{", ".join(buffers)}])' if buffers else 'None'
+        buffer_assignment = f'Some(vec![{", ".join(buffers)}])'
 
         info_list.append(InstructionInfo(name, arity, has_metadata, buffer_assignment))
 
