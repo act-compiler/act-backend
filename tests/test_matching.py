@@ -64,10 +64,15 @@ def matching():
 
 
 @pytest.fixture(scope='module')
-def backend(tmp_path_factory):
-    """Generate the spec's backend once and return the binary's path"""
-    work_dir = tmp_path_factory.mktemp('matching')
-    generate_backend(matching(), str(work_dir))
+def work_dir(tmp_path_factory):
+    """Generate the spec's backend once, in a directory of its own"""
+    work_dir = str(tmp_path_factory.mktemp('matching'))
+    generate_backend(matching(), work_dir)
+    return work_dir
+
+
+@pytest.fixture(scope='module')
+def backend(work_dir):
     return os.path.join(work_dir, 'backends', 'MATCHING')
 
 
@@ -112,3 +117,36 @@ def test_identity_broadcast_is_dropped_onto_its_own_value(backend, tmp_path):
     calls = selected(backend, tmp_path, SPREAD_TWICE)
     # The identity broadcast is the spread rows, which rowsum computes
     assert [name for name, _ in calls] == ['load_rm', 'rowsum', 'store_rm']
+
+
+# A library caller running the rewrites twice on fresh kernels
+TWICE = """use backend::isel;
+use egg::Runner;
+
+fn main() {
+  let kernel = std::env::args().nth(1).unwrap();
+  for _ in 0..2 {
+    let (egraph, ..) = isel::initializer::parse_hlo_module_to_egraph(&kernel).unwrap();
+    let read = egraph.total_number_of_nodes();
+    let rewrites = isel::rewrites::get_rewrites();
+    let runner = Runner::default().with_egraph(egraph).with_iter_limit(3).run(&rewrites);
+    println!("{} {}", read, runner.egraph.total_number_of_nodes());
+  }
+}
+"""
+
+
+def test_library_matches_as_much_in_a_second_run(work_dir, tmp_path):
+    crate = os.path.join(work_dir, 'targets', 'MATCHING', 'backend')
+    os.makedirs(os.path.join(crate, 'examples'), exist_ok=True)
+    with open(os.path.join(crate, 'examples', 'twice.rs'), 'w') as f:
+        f.write(TWICE)
+    kernel = tmp_path / 'kernel.hlo'
+    kernel.write_text(SPREAD_TWICE)
+    command = ['cargo', 'run', '--release', '--locked', '--example', 'twice', str(kernel)]
+    run = subprocess.run(command, cwd=crate, capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    # Both runs grow the kernel to the same node count
+    read, first, _, second = (int(count) for count in run.stdout.split())
+    assert first > read
+    assert second == first
