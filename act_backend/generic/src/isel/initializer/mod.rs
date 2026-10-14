@@ -1,4 +1,6 @@
+mod expression;
 mod lib;
+mod line;
 mod nodes;
 mod parser;
 mod shapes;

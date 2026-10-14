@@ -10,11 +10,10 @@ use egg::{EGraph, Id};
 use crate::ir::dtype::Dtype;
 use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::ir::metadata::{MetaData, MetaDataInfo};
-use crate::isel::initializer::parser::HLOExpr;
+use crate::isel::initializer::expression::HLOExpr;
+use crate::isel::initializer::line::parse_type_shape;
 
-use crate::isel::initializer::parser::{
-  parse_hlo_module_with_regions, parse_type_shape, HloModuleHeader,
-};
+use crate::isel::initializer::parser::{parse_hlo_module_with_regions, HloModuleHeader};
 
 use crate::isel::initializer::nodes::{
   add_binary_op, add_broadcast, add_concatenate, add_constant, add_convert, add_exponential,
