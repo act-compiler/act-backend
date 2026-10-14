@@ -17,7 +17,7 @@ import act_backend
 
 # The warnings the allocator's build is held to
 CXX_FLAGS = '-Wall -Wextra -Werror'
-# The model a crate with a cost library is generated with
+# The cost library a crate is generated with
 COST_MODEL = os.path.join(os.path.dirname(__file__), 'cost', 'model.c')
 
 
@@ -38,7 +38,7 @@ if __name__ == '__main__':
             backend_dir = os.path.join(work_dir, 'targets', name, 'backend')
             lint_crate(backend_dir)
 
-            # The allocator, in a build tree apart from the crate's own
+            # The allocator, built apart from the crate's own tree
             allocator_dir = os.path.join(backend_dir, 'cpp', 'malloc')
             build_dir = os.path.join(work_dir, 'lint')
             subprocess.run(
@@ -48,7 +48,7 @@ if __name__ == '__main__':
             subprocess.run(['cmake', '--build', build_dir], check=True)
         print(f'{example}: no lint warning')
 
-    # A shared cost library: the build script takes every line that links one
+    # A shared cost library: each link line of build.rs
     example = sys.argv[1]
     with tempfile.TemporaryDirectory() as work_dir:
         library = os.path.join(work_dir, 'libmodel.so')

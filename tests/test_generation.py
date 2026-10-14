@@ -17,7 +17,7 @@ EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn')
 
 
 def test_failed_build_shows_its_error(accelerator, tmp_path, monkeypatch):
-    # The allocator's build stops on a C++ compiler that is not there
+    # The allocator's build stops on a missing C++ compiler
     monkeypatch.setenv('CXX', 'no-such-compiler')
     with pytest.raises(RuntimeError) as error:
         generate_backend(accelerator, str(tmp_path))
@@ -33,7 +33,7 @@ def test_failed_generation_leaves_no_earlier_binary(
     backend = tmp_path / 'backends' / 'PAIR'
     backend.parent.mkdir()
     backend.write_text('an earlier backend\n')
-    # A cost library that is refused, or a build that stops on a missing compiler
+    # A refused cost library, or a build missing its compiler
     monkeypatch.setenv('CXX', 'no-such-compiler')
     with pytest.raises(error):
         generate_backend(accelerator, str(tmp_path), cost=cost)
@@ -51,7 +51,7 @@ def built(command, cwd, **options):
 
 @pytest.mark.parametrize('name', ['PAIR', 'PAIR.partial'])
 def test_binary_is_not_written_through_a_link(name, accelerator, tmp_path, monkeypatch):
-    # A link an earlier run left under the binary's name, to a file outside
+    # An earlier run's link at the binary's name, to outside
     outside = tmp_path / 'outside'
     outside.write_text('kept')
     (tmp_path / 'backends').mkdir()
@@ -78,14 +78,14 @@ def test_interrupted_copy_leaves_no_binary(accelerator, tmp_path, monkeypatch):
 
 
 def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_path, monkeypatch):
-    # Build directories in the package, as a build by hand there leaves them
+    # Build directories a build by hand leaves in the package
     generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
     left = [os.path.join(generic, 'target'), os.path.join(generic, 'cpp', 'malloc', 'build')]
     for directory in left:
         os.makedirs(directory)
         open(os.path.join(directory, 'CMakeCache.txt'), 'w').close()
 
-    # The crate as its build finds it: a build that stops without running
+    # The crate as its build finds it, the build stopped
     def build(command, **options):
         return subprocess.CompletedProcess(command, 1, stdout='')
 
@@ -102,12 +102,12 @@ def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_
 
 
 def test_crate_holds_its_ignore_file(work_dir):
-    # The crate comes whole from the installed package, its dot file too
+    # The whole crate comes from the package, dot file too
     assert os.path.isfile(os.path.join(work_dir, 'targets', 'mini_trn', 'backend', '.gitignore'))
 
 
 def test_cargo_leaves_the_lock_file_alone(work_dir):
-    # A build by hand finds the lock file as cargo writes it and rewrites nothing
+    # A build by hand finds cargo's lock file, rewriting nothing
     crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     subprocess.run(['cargo', 'build', '--release'], cwd=crate, check=True, capture_output=True)
     package_dir = os.path.dirname(act_backend.__file__)
@@ -118,7 +118,7 @@ def test_cargo_leaves_the_lock_file_alone(work_dir):
 
 
 def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
-    # The crate's manifest moves on from its lock file just before the build
+    # The manifest outruns its lock file just before the build
     def generate_stale(backend_gen_dir, cost):
         generate_build_rs_file(backend_gen_dir, cost)
         manifest = os.path.join(backend_gen_dir, 'Cargo.toml')
@@ -137,7 +137,7 @@ def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
 
 
 def test_backend_runs_without_its_crate(work_dir, tmp_path):
-    # The binary alone, copied away, and the crate it was built in moved
+    # The binary copied away alone, its crate moved
     backend = shutil.copy(os.path.join(work_dir, 'backends', 'mini_trn'), tmp_path)
     crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     os.rename(crate, crate + '.moved')
@@ -150,7 +150,7 @@ def test_backend_runs_without_its_crate(work_dir, tmp_path):
 
 
 def test_backend_finds_the_solver_by_itself(work_dir, tmp_path):
-    # No library path in the environment: the binary's run path is all it has
+    # No library path: the binary has its run path alone
     env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
     run, _ = run_backend(
         os.path.join(work_dir, 'backends', 'mini_trn'), EXAMPLE_DIR, str(tmp_path), env
@@ -166,13 +166,13 @@ def starts(backend):
 
 
 def test_solver_found_where_the_environment_says(accelerator, tmp_path, monkeypatch):
-    # OR-Tools under another path: a link to the directory that holds it
+    # OR-Tools under another path: a link to its directory
     solver_dir = tmp_path / 'solver'
     solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
     monkeypatch.setenv('ORTOOLS_DIR', str(solver_dir))
     generate_backend(accelerator, str(tmp_path))
 
-    # The backend loads it from that path and from no other
+    # The backend loads it from that path alone
     backend = str(tmp_path / 'backends' / 'PAIR')
     assert starts(backend)
     solver_dir.unlink()
@@ -180,7 +180,7 @@ def test_solver_found_where_the_environment_says(accelerator, tmp_path, monkeypa
 
 
 def test_solver_libraries_found_under_lib64(accelerator, tmp_path, monkeypatch):
-    # An install as other systems lay it out: the libraries under lib64, lib left with the package files
+    # Another system's layout: libraries under lib64, lib the package files
     installed = os.environ.get('ORTOOLS_DIR', '/opt/ortools')
     solver_dir = tmp_path / 'solver'
     (solver_dir / 'lib64').mkdir(parents=True)
@@ -201,7 +201,7 @@ def test_solver_libraries_found_under_lib64(accelerator, tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('name', ['empty', 'co:lon'])
 def test_wrong_solver_directory_named(name, accelerator, tmp_path, monkeypatch):
-    # A directory with no OR-Tools in it, and one no run path can carry
+    # A directory without OR-Tools, and one no run path carries
     solver_dir = tmp_path / name
     solver_dir.mkdir()
     monkeypatch.setenv('ORTOOLS_DIR', str(solver_dir))
@@ -219,7 +219,7 @@ def test_json_headers_sought_where_the_environment_says(accelerator, tmp_path, m
 
 
 def test_backend_builds_where_the_environment_names_nothing(accelerator, tmp_path, monkeypatch):
-    # The defaults are where the environment image holds OR-Tools and the JSON headers
+    # The defaults: the image's OR-Tools and JSON headers
     monkeypatch.delenv('ORTOOLS_DIR', raising=False)
     monkeypatch.delenv('NLOHMANN_JSON_DIR', raising=False)
     generate_backend(accelerator, str(tmp_path))
@@ -258,7 +258,7 @@ ENTRY {
 
 
 def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
-    # OR-Tools under another path, and the crate built again by hand
+    # OR-Tools under another path, the crate rebuilt by hand
     solver_dir = tmp_path / 'solver'
     solver_dir.symlink_to(os.environ.get('ORTOOLS_DIR', '/opt/ortools'))
     crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
@@ -270,13 +270,13 @@ def test_rebuild_by_hand_follows_the_solver_directory(work_dir, tmp_path):
         check=True,
         capture_output=True,
     )
-    # The allocator's build looked for OR-Tools there, not where the last build found it
+    # The allocator's rebuild looked there, not at the old path
     with open(os.path.join(crate, 'cpp', 'malloc', 'build', 'CMakeCache.txt')) as f:
         assert f'ortools_DIR:PATH={solver_dir}/lib/cmake/ortools' in f.read()
 
 
 def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
-    # The default cost model's source taken away, and the crate built again by hand
+    # The default model's source removed, the crate rebuilt by hand
     crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     source = os.path.join(crate, 'cpp', 'cost', 'count.cc')
     os.rename(source, source + '.moved')

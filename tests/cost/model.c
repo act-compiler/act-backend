@@ -1,6 +1,6 @@
-/* A cost model for the tests: it prefers more instructions, the opposite of the default.
-   Its first call takes 200 ms, so the search goes on to evaluate the candidates after the first.
-   ACT_TEST_COST makes it misbehave: "fail" returns non-zero and "nan" writes no number. */
+/* A test cost model: more instructions cost less.
+   Its first call takes 200 ms, so the search continues.
+   ACT_TEST_COST "fail" returns non-zero, "nan" writes no number. */
 
 #include <math.h>
 #include <stdio.h>
@@ -10,7 +10,7 @@
 
 static char closed_path[4096];
 
-/* What a wrapper closes at exit, here a mark beside the first candidate */
+/* At exit, a mark beside the first candidate */
 static void close_model(void) {
   FILE *mark = fopen(closed_path, "w");
   if (mark) {
@@ -49,7 +49,7 @@ int act_cost(const char *asm_path, double *cost) {
   }
   fclose(asm_file);
 
-  /* The logarithm keeps the order and is a call into libm */
+  /* The logarithm keeps the order and calls into libm */
   *cost = -log2(1 + count);
   return 0;
 }

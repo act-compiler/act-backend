@@ -37,7 +37,7 @@ class TestMiniTrn:
         assert max_diff == 0, f'Max diff: {max_diff} (golden from {record})'
 
 
-# Outside the incremental class: counted even when an output test fails
+# Outside the incremental class: counted even if outputs fail
 def test_compiled_kernel_calls(assembly):
     # The cheapest selection the backend finds for the attention kernel
     assert instruction_calls(assembly) == {

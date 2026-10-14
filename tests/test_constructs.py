@@ -27,7 +27,7 @@ ENTRY {
 """)
 
 
-# A kernel that joins its two inputs and takes the softmax of the rows
+# A kernel joining its two inputs, then a row softmax
 JOINED = """HloModule joined, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
 
 %reduce_add (x: bf16[], y: bf16[]) -> bf16[] {
@@ -288,7 +288,7 @@ def compiled_calls(work_dir, tmp_path, kernel):
 
 def test_concatenate_is_selected(work_dir, tmp_path):
     calls = compiled_calls(work_dir, tmp_path, JOINED)
-    # Each half is loaded, the two are joined in the kernel's order, and the rows normalised
+    # Both halves loaded, joined in the kernel's order, rows normalised
     names = [name for name, _ in calls]
     assert names == ['load_rm', 'load_rm', 'join', 'softmax', 'mov', 'store_rm']
     loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
