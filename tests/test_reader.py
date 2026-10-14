@@ -217,11 +217,15 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
             '%c gives slice no slice attribute',
         ),
         (
+            'ROOT %c = bf16[192,64] concatenate(%a, %a, %a), dimensions={0}',
+            '%c concatenates 3 values, where a concatenate takes 2',
+        ),
+        (
             'ROOT %c = bf16[64,64] reverse(%a), dimensions={0}',
             '%c applies reverse, an operation the backend does not support',
         ),
     ],
-    ids=['batch_dims', 'no_dimensions', 'no_slice', 'unread_operation'],
+    ids=['batch_dims', 'no_dimensions', 'no_slice', 'three_values', 'unread_operation'],
 )
 def test_attribute_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_path, line, reason):
     run, _ = compiled(backend, tmp_path, kernel(A, line))

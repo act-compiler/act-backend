@@ -301,11 +301,13 @@ pub(super) fn add_concatenate(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  if inputs.len() < 2 {
+  if inputs.len() != 2 {
+    let values = if inputs.len() == 1 { "value" } else { "values" };
     return Err(format!(
-      "{} concatenates {} value, where a concatenate takes 2",
+      "{} concatenates {} {}, where a concatenate takes 2",
       tsymbol,
-      inputs.len()
+      inputs.len(),
+      values
     ));
   }
   let dim_str = dimensions
