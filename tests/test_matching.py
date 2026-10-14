@@ -89,6 +89,54 @@ def matching():
     return acc
 
 
+def add_on_hbm(acc, name, sizes, lines, attributes=()):
+    """An instruction from regions of the HBM to a region of it, the output's size last"""
+    addresses = [f'addr_{number}' for number in range(1, len(sizes))]
+    instr = acc.add_instruction(name, list(attributes), [*addresses, 'addr_out'])
+    instr.set_inputs([['d0', [f'@a.{address}'], [size]] for address, size in zip(addresses, sizes)])
+    instr.set_outputs([['d0', ['@a.addr_out'], [sizes[-1]]]])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+
+
+def hbm_only():
+    """No data model but the HBM: a product and a sum, each reading its inputs' bytes"""
+    acc = Accelerator('HBM_ONLY')
+    add_on_hbm(
+        acc,
+        'gemm',
+        ['8192', '8192', '8192'],
+        [
+            '%In0 = u8[8192] parameter(0)',
+            '%In1 = u8[8192] parameter(1)',
+            '%a = u8[64,64,2] reshape(%In0)',
+            '%b = u8[64,64,2] reshape(%In1)',
+            '%x = bf16[64,64] bitcast_convert(%a)',
+            '%y = bf16[64,64] bitcast_convert(%b)',
+            '%z = bf16[64,64] dot(%x, %y), lhs_contracting_dims={1}, rhs_contracting_dims={0}',
+            '%c = u8[64,64,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[8192] reshape(%c)',
+        ],
+    )
+    add_on_hbm(
+        acc,
+        'vadd',
+        ['@c.n * 128', '@c.n * 128', '@c.n * 128'],
+        [
+            '%In0 = u8[`@c.n * 128`] parameter(0)',
+            '%In1 = u8[`@c.n * 128`] parameter(1)',
+            '%a = u8[`@c.n`,64,2] reshape(%In0)',
+            '%b = u8[`@c.n`,64,2] reshape(%In1)',
+            '%x = bf16[`@c.n`,64] bitcast_convert(%a)',
+            '%y = bf16[`@c.n`,64] bitcast_convert(%b)',
+            '%z = bf16[`@c.n`,64] add(%x, %y)',
+            '%c = u8[`@c.n`,64,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[`@c.n * 128`] reshape(%c)',
+        ],
+        ['n'],
+    )
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
     """Generate the spec's backend once, in a directory of its own"""
@@ -100,6 +148,14 @@ def work_dir(tmp_path_factory):
 @pytest.fixture(scope='module')
 def backend(work_dir):
     return os.path.join(work_dir, 'backends', 'MATCHING')
+
+
+@pytest.fixture(scope='module')
+def hbm_backend(tmp_path_factory):
+    """Generate the backend of the spec with the HBM alone and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('hbm_only'))
+    generate_backend(hbm_only(), work_dir)
+    return os.path.join(work_dir, 'backends', 'HBM_ONLY')
 
 
 def selected(backend, tmp_path, kernel):
@@ -248,3 +304,24 @@ ENTRY main {{
 def test_value_named_as_a_copy_is_selected(backend, tmp_path):
     calls = selected(backend, tmp_path, SPREAD_32)
     assert [name for name, _ in calls] == ['load_rm', 'rowsum_32', 'store_rm']
+
+
+# A product and its sum, each value in the HBM
+PRODUCT_SUM = """HloModule product_sum, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  %c = bf16[64,64] parameter(2)
+  %p = bf16[64,64] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %s = bf16[64,64] add(%p, %c)
+}
+"""
+
+
+def test_accelerator_with_no_on_chip_data_model_compiles(hbm_backend, tmp_path):
+    calls = selected(hbm_backend, tmp_path, PRODUCT_SUM)
+    assert [name for name, _ in calls] == ['gemm', 'vadd']
+    # The sum reads the product's output and the third input
+    (_, product), (_, total) = calls
+    assert (total['addr_1'], total['addr_2']) == (product['addr_out'], '16384')
