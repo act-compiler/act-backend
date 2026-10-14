@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -7,12 +8,17 @@
 
 #include "act_malloc.h"
 
-extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
+// Hand the caller why a candidate gives no assembly
+static int no_assembly(char *reason, size_t reason_size, const std::string &why) {
+  snprintf(reason, reason_size, "%s", why.c_str());
+  return 1;
+}
+
+extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, char *reason,
+                          size_t reason_size) {
   std::ifstream pii_file(pii_path);
-  if (!pii_file) {
-    std::cerr << "Failed to open file: " << pii_path << std::endl;
-    return 1;
-  }
+  if (!pii_file)
+    return no_assembly(reason, reason_size, std::string("the allocator cannot read ") + pii_path);
 
   std::unordered_map<std::string, Tensor *> tensor_map;
   std::unordered_map<Tensor *, int64> known_offsets;
@@ -39,12 +45,10 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
   std::cout << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
 
   auto scheduled = scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
-  if (scheduled.size() != instructions.size()) {
-    std::cerr << "Error: scheduled instructions size (" << scheduled.size()
-              << ") does not match original instructions size (" << instructions.size() << ")."
-              << std::endl;
-    return 1;
-  }
+  if (scheduled.size() != instructions.size())
+    return no_assembly(reason, reason_size,
+                       "the allocator orders only " + std::to_string(scheduled.size()) +
+                           " of its " + std::to_string(instructions.size()) + " instructions");
 
   std::cout << "Starting Phase 2 Module 5: Constraint Satisfaction Problem "
                "Generator..."
@@ -101,12 +105,14 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
 
     std::ifstream metadata_file(metadata_path);
     if (!metadata_file) {
-      std::cerr << "Failed to open file: " << metadata_path << std::endl;
-      return 1;
+      solver.EndSearch();
+      return no_assembly(reason, reason_size,
+                         std::string("the allocator cannot read ") + metadata_path);
     }
     emitter::MetaData metadata(metadata_file, tensor_map, known_constants);
 
-    if (emitter::assembly_dump(asm_path, scheduled, metadata)) {
+    std::string why;
+    if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {
       std::cout << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
       solver.EndSearch();
       return 0;
@@ -114,7 +120,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
 
     std::cout << "No ASM candidate generated." << std::endl << std::endl;
     solver.EndSearch();
-    return 1;
+    return no_assembly(reason, reason_size, why);
 
   } else {
     std::cout << "No solution found." << std::endl;
@@ -122,6 +128,6 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
     std::cout << "No ASM candidate generated." << std::endl << std::endl;
 
     solver.EndSearch();
-    return 1;
+    return no_assembly(reason, reason_size, "the solver found no placement of its tensors");
   }
 }

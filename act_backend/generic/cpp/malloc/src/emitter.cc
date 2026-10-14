@@ -78,7 +78,7 @@ MetaData::MetaData(std::ifstream &metadata_path,
 }
 
 bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions,
-                   const MetaData &metadata) {
+                   const MetaData &metadata, std::string &why) {
   std::string indent1 = "    ";
   std::string indent2 = indent1 + indent1;
   std::string indent3 = indent2 + indent1;
@@ -106,8 +106,7 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
 
   std::ofstream outfile(outpath);
   if (!outfile) {
-    std::cerr << "Warning: failed to open output file: " << outpath
-              << "; defaulting to no solution." << std::endl;
+    why = std::string("the allocator cannot write ") + outpath;
     return false;
   }
 

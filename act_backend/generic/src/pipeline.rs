@@ -129,10 +129,6 @@ fn update_best(
   start: &Instant,
   output_path: &PathBuf,
 ) -> bool {
-  if !asm_path.exists() {
-    return false;
-  }
-
   println!(
     "Current elapsed: {:?} | Will stop at {:?} if no progress",
     start.elapsed(),
@@ -228,15 +224,18 @@ impl Search {
       pii.save(&pii_path);
 
       let asm_path = self.log_dir.join(format!("{}.py", number));
-      backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path);
-
-      // Check cost and update best if necessary
-      update_best(
-        &mut self.best.borrow_mut(),
-        &asm_path,
-        &self.start,
-        &self.output_path,
-      );
+      match backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path) {
+        // Check cost and update best if necessary
+        Ok(()) => {
+          update_best(
+            &mut self.best.borrow_mut(),
+            &asm_path,
+            &self.start,
+            &self.output_path,
+          );
+        }
+        Err(reason) => println!("PII #{} dropped: {}", number, reason),
+      }
       println!();
 
       self.candidates.set(number + 1);

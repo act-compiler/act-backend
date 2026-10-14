@@ -44,8 +44,9 @@ public:
            const std::unordered_map<Tensor *, std::string> &known_constants);
 };
 
+// Write a candidate's assembly, or set why it cannot
 bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions,
-                   const MetaData &metadata);
+                   const MetaData &metadata, std::string &why);
 
 } // namespace emitter
 
