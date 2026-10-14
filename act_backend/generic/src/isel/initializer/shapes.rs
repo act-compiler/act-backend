@@ -29,6 +29,15 @@ fn dimension(text: &str, shape: &str) -> Result<i32, String> {
   })
 }
 
+// A shape's dimensions as a kernel writes them
+pub(super) fn shape_text(shape: &[i32]) -> String {
+  shape
+    .iter()
+    .map(|size| size.to_string())
+    .collect::<Vec<_>>()
+    .join(",")
+}
+
 // The assembly's declared shape, a rank-0 value as ()
 pub(super) fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
   if tshape == "[]" {

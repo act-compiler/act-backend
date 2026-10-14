@@ -10,7 +10,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::isel::initializer::lib::EggSymbolTable;
 use crate::isel::initializer::shapes::{
   apply_transpose_order, byte_view, get_bytes, get_result_shape, get_tiled_shape,
-  get_transpose_order_param, get_transpose_order_result, shape_to_vec,
+  get_transpose_order_param, get_transpose_order_result, shape_text, shape_to_vec,
 };
 
 macro_rules! binary_op_match {
@@ -259,36 +259,71 @@ pub(super) fn add_slice(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  let source = lookup(table, source)?;
+  // The dimensions the bounds lie in, as the allocator checks
+  let dims = egraph[source].data.shape.clone();
+  if slices.len() != dims.len() {
+    return Err(format!(
+      "{} slices a value of rank {} with bounds for rank {}",
+      tsymbol,
+      dims.len(),
+      slices.len()
+    ));
+  }
+
+  // The reason for a dimension's entry that gives no bounds
+  let malformed = |slice: &str| {
+    format!(
+      "{} slices with '{}', which is not a [start:limit:stride] range",
+      tsymbol, slice
+    )
+  };
 
   // Each dimension's start:limit, its stride one
   let mut bounds = vec![];
-  for slice in slices {
+  for (slice, dim) in slices.iter().zip(dims) {
     let parts: Vec<&str> = slice
       .trim_matches(|c| c == '[' || c == ']')
       .split(':')
       .collect();
-    match parts[..] {
-      [start, limit] | [start, limit, "1"] => bounds.push(format!("{}:{}", start, limit)),
+    let (start, limit) = match parts[..] {
+      [start, limit] | [start, limit, "1"] => (start, limit),
       [_, _, stride] => {
         return Err(format!(
           "{} slices with the stride {}, where the backend supports only a stride of one",
           tsymbol, stride
         ))
       }
-      _ => {
-        return Err(format!(
-          "{} slices with '{}', which is not a [start:limit:stride] range",
-          tsymbol, slice
-        ))
-      }
+      _ => return Err(malformed(slice)),
+    };
+    let (Ok(start), Ok(limit)) = (start.parse::<i32>(), limit.parse::<i32>()) else {
+      return Err(malformed(slice));
+    };
+    if start < 0 || start >= limit || limit > dim {
+      return Err(format!(
+        "{} slices {} of a dimension of {}, where 0 <= start < limit <= {}",
+        tsymbol, slice, dim, dim
+      ));
     }
+    bounds.push((start, limit));
   }
-  let slice_str = bounds.join(",");
+  // The result's shape is each range's length
+  let sizes: Vec<i32> = bounds.iter().map(|(start, limit)| limit - start).collect();
+  if sizes != shape {
+    return Err(format!(
+      "{} gives the shape [{}] to a slice of the shape [{}]",
+      tsymbol,
+      shape_text(&shape),
+      shape_text(&sizes)
+    ));
+  }
+  let slice_str = bounds
+    .iter()
+    .map(|(start, limit)| format!("{}:{}", start, limit))
+    .collect::<Vec<_>>()
+    .join(",");
 
-  let node = egraph.add(TensorOp::OpSlice(
-    slice_str.to_string(),
-    [lookup(table, source)?],
-  ));
+  let node = egraph.add(TensorOp::OpSlice(slice_str, [source]));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
   Ok(())
 }
@@ -314,15 +349,38 @@ pub(super) fn add_concatenate(
       values
     ));
   }
+  let (lhs, rhs) = (lookup(table, &inputs[0])?, lookup(table, &inputs[1])?);
+  // The shapes join along the dimension, as the allocator checks
+  let (lhs_shape, rhs_shape) = (&egraph[lhs].data.shape, &egraph[rhs].data.shape);
+  let axis = dimensions[0] as usize;
+  if axis >= lhs_shape.len() {
+    return Err(format!(
+      "{} concatenates values of rank {} along dimension {}",
+      tsymbol,
+      lhs_shape.len(),
+      axis
+    ));
+  }
+  let mut joined = lhs_shape.clone();
+  joined[axis] += rhs_shape.get(axis).copied().unwrap_or(0);
+  let alike = lhs_shape.len() == rhs_shape.len()
+    && (0..lhs_shape.len()).all(|d| d == axis || lhs_shape[d] == rhs_shape[d]);
+  if !alike || joined != shape {
+    return Err(format!(
+      "{} concatenates [{}] and [{}] along dimension {}, which does not give its shape [{}]",
+      tsymbol,
+      shape_text(lhs_shape),
+      shape_text(rhs_shape),
+      axis,
+      shape_text(&shape)
+    ));
+  }
   let dim_str = dimensions
     .iter()
     .map(|d| d.to_string())
     .collect::<Vec<String>>()
     .join(",");
-  let node = egraph.add(TensorOp::OpConcat(
-    dim_str.clone(),
-    [lookup(table, &inputs[0])?, lookup(table, &inputs[1])?],
-  ));
+  let node = egraph.add(TensorOp::OpConcat(dim_str.clone(), [lhs, rhs]));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
   Ok(())
 }
