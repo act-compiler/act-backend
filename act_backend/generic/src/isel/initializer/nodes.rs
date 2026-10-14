@@ -260,20 +260,30 @@ pub(super) fn add_slice(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  let slice_str = slices
-    .iter()
-    .map(|s| {
-      let trimmed = s.trim_matches(|c| c == '[' || c == ']');
-      // remove stride component - only keep start:end
-      let parts: Vec<&str> = trimmed.split(':').collect();
-      if parts.len() >= 2 {
-        format!("{}:{}", parts[0], parts[1])
-      } else {
-        trimmed.to_string()
+  // Each dimension's start:limit, its stride one
+  let mut bounds = vec![];
+  for slice in slices {
+    let parts: Vec<&str> = slice
+      .trim_matches(|c| c == '[' || c == ']')
+      .split(':')
+      .collect();
+    match parts[..] {
+      [start, limit] | [start, limit, "1"] => bounds.push(format!("{}:{}", start, limit)),
+      [_, _, stride] => {
+        return Err(format!(
+          "{} slices with the stride {}, where the backend supports only a stride of one",
+          tsymbol, stride
+        ))
       }
-    })
-    .collect::<Vec<String>>()
-    .join(",");
+      _ => {
+        return Err(format!(
+          "{} slices with '{}', which is not a [start:limit:stride] range",
+          tsymbol, slice
+        ))
+      }
+    }
+  }
+  let slice_str = bounds.join(",");
 
   let node = egraph.add(TensorOp::OpSlice(
     slice_str.to_string(),

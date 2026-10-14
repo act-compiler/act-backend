@@ -273,3 +273,23 @@ def test_rank_0_input_is_read_as_one_element(endings_dir, tmp_path):
     # The input viewed from its two bytes as one element
     assert "reshape[shape='1,2']" in nodes
     assert not [node for node in nodes if '[]' in node]
+
+
+@pytest.mark.parametrize(
+    'line, reason',
+    [
+        (
+            'ROOT %s = bf16[32,64] slice(%a), slice={[0:64:2], [0:64:1]}',
+            '%s slices with the stride 2, where the backend supports only a stride of one',
+        ),
+        (
+            'ROOT %s = bf16[32,64] slice(%a), slice={[0:32:1], [7]}',
+            "%s slices with '[7]', which is not a [start:limit:stride] range",
+        ),
+    ],
+    ids=['stride', 'no_limit'],
+)
+def test_slice_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_path, line, reason):
+    run, _ = compiled(backend, tmp_path, kernel(A, line))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
