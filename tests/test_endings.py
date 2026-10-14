@@ -108,7 +108,7 @@ def test_no_assembly_ends_in_one_line_and_status_1(backend, tmp_path):
     run, output = compiled(backend, tmp_path, ADD)
     assert run.returncode == 1
     assert run.stderr == (
-        'Error: no assembly found: the time limit of 10s ran out, and every candidate was '
+        'Error: no assembly found: the time limit of 1s ran out, and every candidate was '
         'dropped, the first because the solver found no placement of its tensors\n'
     )
     assert not output.exists()
@@ -118,7 +118,7 @@ def test_no_assembly_says_no_candidate_was_extracted(backend, tmp_path):
     run, output = compiled(backend, tmp_path, EXPONENTIAL)
     assert run.returncode == 1
     assert run.stderr == (
-        'Error: no assembly found: the time limit of 10s ran out, and no candidate was extracted\n'
+        'Error: no assembly found: the time limit of 1s ran out, and no candidate was extracted\n'
     )
     assert not output.exists()
 

@@ -12,7 +12,7 @@ use egg::{EGraph, Id, Runner, StopReason};
 
 use backend::ir::egraph::{TensorInfo, TensorOp};
 use backend::isel;
-use backend::{SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
+use backend::{ITERATION_LIMIT, NODE_LIMIT, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
@@ -120,9 +120,15 @@ struct Search {
 }
 
 impl Search {
-  // Stop once no candidate has improved for long enough
+  // End the compile once its time limit runs out
   fn check_termination(&self) {
     let current_time = self.start.elapsed();
+    if current_time > TIME_LIMIT {
+      println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
+      println!();
+      self.finish();
+    }
+    // Stop once no candidate has improved for long enough
     match self.best.borrow().clone() {
       Some(AsmCandidate { timestamp, .. }) => {
         if current_time > timestamp * SATURATION_FACTOR {
@@ -385,7 +391,8 @@ fn main() {
 
     Runner::default()
       .with_egraph(init_egraph)
-      .with_node_limit(5000)
+      .with_node_limit(NODE_LIMIT)
+      .with_iter_limit(ITERATION_LIMIT)
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
         // Extract after every iteration
