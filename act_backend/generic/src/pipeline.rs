@@ -22,7 +22,7 @@ fn print_help(program_name: String) {
   println!();
   println!("Description:");
   println!("  This program compiles an .hlo file into an assembly code.");
-  println!("  Candidate assembly codes are logged in the specified log directory.");
+  println!("  The candidates are kept in the log directory (see --log).");
   println!("  The final assembly code is chosen based on performance cost.");
   println!();
   println!("Options:");
@@ -32,7 +32,8 @@ fn print_help(program_name: String) {
   println!("  --output     Specify the output assembly file path");
   println!("               (required, will be created/overwritten)");
   println!("  --log        Specify the log directory");
-  println!("               (optional, defaults to /tmp/log if not provided)");
+  println!("               (optional, defaults to a new directory under the system's");
+  println!("               temporary directory)");
   println!();
 }
 
@@ -305,17 +306,19 @@ fn main() {
   println!("Output file: {}", output_path.display());
 
   // Process log directory
-  let log_dir_arg: String = if args.contains(&"--log".to_string()) {
+  let own_log = !args.contains(&"--log".to_string());
+  let log_dir = if own_log {
+    // A directory per process, named by its id
+    env::temp_dir().join(format!("act-backend-{}", process::id()))
+  } else {
     let log_index = args.iter().position(|x| x == "--log").unwrap() + 1;
     if log_index >= args.len() {
       eprintln!("Error: missing directory after --log");
       process::exit(1);
     }
-    args[log_index].clone()
-  } else {
-    "/tmp/log".to_string()
+    PathBuf::from(&args[log_index])
   };
-  println!("Log directory: {}", log_dir_arg);
+  println!("Log directory: {}", log_dir.display());
 
   // The output's directory is made once every flag is checked
   let output_dir = output_path.parent().unwrap();
@@ -351,7 +354,6 @@ fn main() {
     process::exit(1);
   }
 
-  let log_dir = std::path::PathBuf::from(log_dir_arg);
   if log_dir.exists() {
     std::fs::remove_dir_all(&log_dir).expect("Failed to remove existing log directory");
   }

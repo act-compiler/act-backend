@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import time
 
 import pytest
 from conftest import add_moves, add_on_d1, compiled, instruction_calls, kernel
@@ -240,3 +241,31 @@ def test_assembly_header_escapes_a_line_break_of_the_kernel_path(backend, tmp_pa
     header = output.read_text().splitlines()
     assert header[0] == f"# Input file: {tmp_path}/k\\nprint('run')\\n#.hlo"
     assert header[1] == '# Kernel name: add_32'
+
+
+def test_two_compiles_at_once_keep_their_log_directories(backend, tmp_path):
+    temporary = tmp_path / 'tmp'
+    temporary.mkdir()
+    env = dict(os.environ, TMPDIR=str(temporary))
+    runs = []
+    for name, text in [('chain', CHAIN), ('sum', ADD_32)]:
+        (tmp_path / f'{name}.hlo').write_text(text)
+        command = [
+            backend,
+            '--input',
+            str(tmp_path / f'{name}.hlo'),
+            '--output',
+            str(tmp_path / f'{name}.py'),
+        ]
+        runs.append(
+            subprocess.Popen(
+                command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+            )
+        )
+        # The second starts while the longer first still reads candidates
+        time.sleep(0.3)
+    for run in runs:
+        assert run.wait() == 0, run.stderr.read()
+    assert (tmp_path / 'chain.py').exists() and (tmp_path / 'sum.py').exists()
+    # Each compile leaves the directory it made for itself
+    assert len(list(temporary.iterdir())) == 2
