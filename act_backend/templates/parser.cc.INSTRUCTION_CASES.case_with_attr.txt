@@ -4,12 +4,7 @@
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
     if (start != std::string::npos && end != std::string::npos && end > start) {
-      std::string {{attr_name}}_str = attr_str.substr(start + 1, end - start - 1);
-      try {
-        {{attr_name}} = std::stoll({{attr_name}}_str);
-      } catch (...) {
-        return panic("failed to parse {{attr_name}} attribute as integer");
-      }
+      {{attr_name}} = to_int(attr_str.substr(start + 1, end - start - 1));
     } else {
       return panic("missing {{attr_name}} attribute");
     }

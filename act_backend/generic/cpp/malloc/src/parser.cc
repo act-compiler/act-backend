@@ -1,6 +1,19 @@
 #include "parser.h"
 
+#include <charconv>
+
 namespace parser {
+
+// The integer a token spells, else an error naming it
+static int64 to_int(const std::string &token) {
+  int64 value = 0;
+  auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), value);
+  if (error != std::errc() || end != token.data() + token.size()) {
+    std::cerr << "parse error: not an integer: `" << token << "`" << std::endl;
+    assert(false && "unreachable");
+  }
+  return value;
+}
 
 ParsedLine parse_line(const std::string &line) {
   ParsedLine pl;
@@ -57,14 +70,7 @@ ParsedLine parse_line(const std::string &line) {
 
   pl.lhs_storage_name = storage_name;
 
-  int64 offset = -1;
-  try {
-    offset = std::stoll(addr_str);
-  } catch (...) {
-    return panic("failed to parse storage offset as integer");
-  }
-
-  pl.lhs_offset = offset;
+  pl.lhs_offset = to_int(addr_str);
 
   // parse right: datatype[shape] <operation>
   // find first space
@@ -93,13 +99,8 @@ ParsedLine parse_line(const std::string &line) {
     std::string tok;
     while (std::getline(ss, tok, ',')) {
       trim(tok);
-      if (!tok.empty()) {
-        try {
-          shape_vec.push_back(std::stoll(tok));
-        } catch (...) {
-          return panic("failed to parse shape as integer vector");
-        }
-      }
+      if (!tok.empty())
+        shape_vec.push_back(to_int(tok));
     }
   }
 
@@ -227,21 +228,15 @@ Instruction *create_instruction(const ParsedLine &pl,
       std::string slices_str = attr_str.substr(start + 1, end - start - 1);
       std::stringstream ss(slices_str);
       std::string tok;
-      while (std::getline(ss, tok, ';')) {
+      // The first range, the buffer's access dimension
+      if (std::getline(ss, tok, ',')) {
         if (!tok.empty()) {
           auto colon_pos = tok.find(':');
           if (colon_pos == std::string::npos)
             return panic("missing ':' in slice specification");
           std::string start_str = tok.substr(0, colon_pos);
           std::string end_str = tok.substr(colon_pos + 1);
-          int64 s = 0, e = 0;
-          try {
-            s = std::stoll(start_str);
-            e = std::stoll(end_str);
-          } catch (...) {
-            return panic("failed to parse slice indices as integers");
-          }
-          slices.push_back({s, e});
+          slices.push_back({to_int(start_str), to_int(end_str)});
         }
       }
     } else {
@@ -255,12 +250,7 @@ Instruction *create_instruction(const ParsedLine &pl,
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
     if (start != std::string::npos && end != std::string::npos && end > start) {
-      std::string dim_str = attr_str.substr(start + 1, end - start - 1);
-      try {
-        dimension = std::stoll(dim_str);
-      } catch (...) {
-        return panic("failed to parse dimension attribute as integer");
-      }
+      dimension = to_int(attr_str.substr(start + 1, end - start - 1));
     } else {
       return panic("missing dimension attribute");
     }

@@ -264,6 +264,7 @@ COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'panic',
     'rhs_tensors',
     'start',
+    'to_int',
     'Dtype',
     'EGraph',
     'Id',
