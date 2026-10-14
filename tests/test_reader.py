@@ -362,3 +362,34 @@ def test_kernel_without_one_root_ends_in_no_assembly(backend, tmp_path, roots, r
     run, _ = compiled(backend, tmp_path, kernel(*lines, header=HEADER_32))
     assert run.returncode == 1
     assert run.stderr == f'Error: no assembly found: {reason}\n'
+
+
+@pytest.mark.parametrize(
+    'line, reason',
+    [
+        (
+            '%e bf16[32,64] add(%c, %c)',
+            (
+                "the reader cannot split the kernel's line '%e bf16[32,64] add(%c, %c)' into a name, "
+                'a type and an operation'
+            ),
+        ),
+        (
+            '%e = bf16[32,64] add(%c, %c',
+            (
+                "the reader cannot split the kernel's line '%e = bf16[32,64] add(%c, %c' into a name, "
+                'a type and an operation'
+            ),
+        ),
+        (
+            '%e = bf16[32,64] parameter(x)',
+            '%e reads parameter x, which is not a parameter number',
+        ),
+    ],
+    ids=['no_equals', 'no_parenthesis', 'parameter_word'],
+)
+def test_kernel_line_the_reader_cannot_split_ends_in_no_assembly(backend, tmp_path, line, reason):
+    a, b, c, _ = SUM_32
+    run, _ = compiled(backend, tmp_path, kernel(a, b, f'ROOT {c}', line, header=HEADER_32))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
