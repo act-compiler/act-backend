@@ -269,3 +269,37 @@ def test_two_compiles_at_once_keep_their_log_directories(backend, tmp_path):
     assert (tmp_path / 'chain.py').exists() and (tmp_path / 'sum.py').exists()
     # Each compile leaves the directory it made for itself
     assert len(list(temporary.iterdir())) == 2
+
+
+def test_log_directory_that_holds_files_is_kept(backend, tmp_path):
+    log = tmp_path / 'log'
+    log.mkdir()
+    (log / 'notes.txt').write_text('a file of the user\n')
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    run = subprocess.run(
+        [backend, *command, '--log', str(log)], capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 0, run.stderr
+    assert (log / 'notes.txt').read_text() == 'a file of the user\n'
+
+
+def test_log_directory_that_is_a_file_is_a_usage_error(backend, tmp_path):
+    (tmp_path / 'log').write_text('a file of the user\n')
+    run, _ = compiled(backend, tmp_path, ADD_32)
+    assert run.returncode == 1
+    assert run.stderr == f"Error: the log directory '{tmp_path / 'log'}' is not a directory\n"
+
+
+def test_log_directory_the_backend_cannot_make_leaves_the_earlier_output(backend, tmp_path):
+    (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    # No user, root included, makes a directory in /proc
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    run = subprocess.run(
+        [backend, *command, '--log', '/proc/log'], capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 1
+    assert run.stderr.startswith("Error: cannot create the log directory '/proc/log': ")
+    assert run.stderr.count('\n') == 1
+    assert (tmp_path / 'kernel.py').read_text() == '# an earlier compile\n'

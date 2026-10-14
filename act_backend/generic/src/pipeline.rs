@@ -316,7 +316,24 @@ fn main() {
       eprintln!("Error: missing directory after --log");
       process::exit(1);
     }
-    PathBuf::from(&args[log_index])
+    let log_dir = PathBuf::from(&args[log_index]);
+    // A passed directory is written into, nothing in it removed
+    if log_dir.exists() && !log_dir.is_dir() {
+      eprintln!(
+        "Error: the log directory '{}' is not a directory",
+        log_dir.display()
+      );
+      process::exit(1);
+    }
+    if let Err(error) = std::fs::create_dir_all(&log_dir) {
+      eprintln!(
+        "Error: cannot create the log directory '{}': {}",
+        log_dir.display(),
+        error
+      );
+      process::exit(1);
+    }
+    log_dir
   };
   println!("Log directory: {}", log_dir.display());
 
@@ -354,10 +371,20 @@ fn main() {
     process::exit(1);
   }
 
-  if log_dir.exists() {
-    std::fs::remove_dir_all(&log_dir).expect("Failed to remove existing log directory");
+  // Remove a leftover, then make the compile's own log directory
+  if own_log {
+    if log_dir.exists() {
+      std::fs::remove_dir_all(&log_dir).expect("Failed to remove existing log directory");
+    }
+    if let Err(error) = std::fs::create_dir_all(&log_dir) {
+      eprintln!(
+        "Error: cannot create the log directory '{}': {}",
+        log_dir.display(),
+        error
+      );
+      process::exit(1);
+    }
   }
-  std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
 
   println!("PII graphs dumped to: {}", log_dir.display());
   println!();
