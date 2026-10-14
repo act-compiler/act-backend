@@ -160,10 +160,6 @@ def test_instruction_names_that_fold_to_one_refused(tmp_path):
             "computational attribute 'start' is a name the backend already holds",
         ),
         (
-            {'attribute': 'attr'},
-            "computational attribute 'attr' is a name the backend already holds",
-        ),
-        (
             {'attribute': 'Load'},
             "computational attribute 'Load' is a name the backend already holds",
         ),
@@ -231,7 +227,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     # Names load_rm's sources spell, macro bodies too, its own apart
     templates = get_backend_template_loader()
     load_rm = accelerator.instructions[0]
-    own = {'LoadRm', 'n', 'n_str', 'addr_in', 'addr_out'}
+    own = {'LoadRm', 'n', 'addr_in', 'addr_out'}
     in_class = spelled(generate_instruction_class(load_rm, templates))
     macros = re.findall(
         r'^#define (\w+)\(([^)]*)\) (.*)$', read(allocator, 'include', 'solver.h'), re.MULTILINE

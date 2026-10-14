@@ -264,6 +264,8 @@ COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'rhs_tensors',
     'start',
     'to_int',
+    'value',
+    'values',
     'Dtype',
     'EGraph',
     'Id',
@@ -343,10 +345,8 @@ def check_attribute_names(instruction):
                     f"{what} '{attribute}' is a {languages} keyword, "
                     'which the generated code cannot spell'
                 )
-            # The parser's case reads a computational attribute through <name>_str
-            spelled = {attribute, f'{attribute}_str'} if kind == 'computational' else {attribute}
             if (
-                spelled & held
+                attribute in held
                 or RANGE_METHOD.fullmatch(attribute)
                 or attribute == to_camel_case(name)
             ):

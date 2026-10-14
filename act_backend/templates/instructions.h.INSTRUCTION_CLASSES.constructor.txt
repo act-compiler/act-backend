@@ -1,0 +1,1 @@
+  {{class_name}}(Tensor *y, std::vector<Tensor *> X{{parameters}}) : Instruction("{{op_name}}", y, X){{initializers}} {

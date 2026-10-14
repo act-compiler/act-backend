@@ -10,13 +10,17 @@ def generate_parser_instruction(instruction, templates):
     comp_attrs = instruction.comp_attr
 
     if comp_attrs:
-        # Currently assuming single attribute
-        attr_name = comp_attrs[0]
+        # Each attribute from the one string they travel in
+        parses = '\n'.join(
+            templates.render('parser.cc.INSTRUCTION_CASES.attribute.txt', attr_name=attr_name)
+            for attr_name in comp_attrs
+        )
         return templates.render(
             'parser.cc.INSTRUCTION_CASES.case_with_attr.txt',
             op_name=op_name,
             ClassName=class_name,
-            attr_name=attr_name,
+            attribute_parses=parses,
+            attributes=', '.join(comp_attrs),
         )
     else:
         return templates.render(

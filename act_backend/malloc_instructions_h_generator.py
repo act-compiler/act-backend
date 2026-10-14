@@ -56,6 +56,15 @@ def generate_instruction_class(instruction, templates):
     if comp_attrs:
         comp_attr_init = ', ' + ', '.join(f'{attr}({attr})' for attr in comp_attrs)
 
+    # The constructor on one line, else broken before its initializers
+    constructor = templates.render_fitting(
+        'instructions.h.INSTRUCTION_CLASSES.constructor.txt',
+        class_name=class_name,
+        op_name=op_name,
+        parameters=comp_attr_params,
+        initializers=comp_attr_init,
+    )
+
     # The text names each attribute's value, a line each
     values = [(attr, attr) for attr in comp_attrs]
     values += [(param, f'{param}->Value()') for param in params]
@@ -74,12 +83,10 @@ def generate_instruction_class(instruction, templates):
     return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.class.txt',
         CLASS_NAME=class_name,
-        OP_NAME=op_name,
         COMP_ATTR_MEMBERS=comp_attr_members,
         ADDR_VAR_MEMBERS=addr_var_members,
         GET_H_METHODS=get_h_methods,
-        COMP_ATTR_PARAMS=comp_attr_params,
-        COMP_ATTR_INIT=comp_attr_init,
+        CONSTRUCTOR=constructor,
         STR_PIECES=str_pieces,
         GET_H_CASES=get_h_cases,
         GET_INT_VAR_LIST=get_int_var_list,

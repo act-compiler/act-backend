@@ -1,0 +1,2 @@
+    std::getline(values, value, ',');
+    int64 {{attr_name}} = to_int(value);

@@ -169,6 +169,48 @@ ENTRY {
     ROOT %Out0 = u8[`@c.n * 128`] reshape(%a);
 }
 """)
+    # The first n of m rows
+    add_on_d1(
+        acc,
+        'top',
+        ['@c.m', '@c.n'],
+        [
+            '%In0 = bf16[`@c.m`,64] parameter(0)',
+            'ROOT %Out0 = bf16[`@c.n`,64] slice(%In0), slice={[0:`@c.n`], [0:64]}',
+        ],
+        ['m', 'n'],
+    )
+    # A tile, m rows of n f32: loaded, exponentiated, stored
+    instr = acc.add_instruction('load_tile', ['m', 'n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.m * @c.n * 4']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.m']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[`@c.m * @c.n * 4`] parameter(0);
+    %a = u8[`@c.m`,`@c.n`,4] reshape(%In0);
+    ROOT %Out0 = f32[`@c.m`,`@c.n`] bitcast_convert(%a);
+}
+""")
+    add_on_d1(
+        acc,
+        'exp_tile',
+        ['@c.m', '@c.m'],
+        [
+            '%In0 = f32[`@c.m`,`@c.n`] parameter(0)',
+            'ROOT %Out0 = f32[`@c.m`,`@c.n`] exponential(%In0)',
+        ],
+        ['m', 'n'],
+    )
+    instr = acc.add_instruction('store_tile', ['m', 'n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.m']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.m * @c.n * 4']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = f32[`@c.m`,`@c.n`] parameter(0);
+    %a = u8[`@c.m`,`@c.n`,4] bitcast_convert(%In0);
+    ROOT %Out0 = u8[`@c.m * @c.n * 4`] reshape(%a);
+}
+""")
     return acc
 
 
@@ -509,3 +551,36 @@ def test_attribute_is_read_from_the_dimension_that_holds_it(backend, tmp_path):
         ('load_cm', {'n': '32', 'addr_in': '0', 'addr_out': '0'}),
         ('store_exp', {'n': '32', 'addr_in': '0', 'addr_out': '4096'}),
     ]
+
+
+# The first 32 of 64 rows
+TOP = """HloModule top, entry_computation_layout={(bf16[64,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  ROOT %y = bf16[32,64] slice(%x), slice={[0:32], [0:64]}
+}
+"""
+
+
+def test_two_attributes_are_carried_into_the_assembly(backend, tmp_path):
+    calls = selected(backend, tmp_path, TOP)
+    assert [name for name, _ in calls] == ['load_rm', 'top', 'store_rm']
+    # Each attribute by name, from the dimension holding it
+    assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
+
+
+# The exponentials of 32 rows of 16 f32 values
+TILE = """HloModule tile, entry_computation_layout={(f32[32,16]{1,0})->f32[32,16]{1,0}}
+
+ENTRY main {
+  %x = f32[32,16] parameter(0)
+  ROOT %y = f32[32,16] exponential(%x)
+}
+"""
+
+
+def test_attributes_in_a_product_are_read_where_each_stands_alone(backend, tmp_path):
+    calls = selected(backend, tmp_path, TILE)
+    assert [name for name, _ in calls] == ['load_tile', 'exp_tile', 'store_tile']
+    assert all((call['m'], call['n']) == ('32', '16') for _, call in calls)

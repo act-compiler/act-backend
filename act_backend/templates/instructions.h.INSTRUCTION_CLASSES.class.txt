@@ -3,7 +3,7 @@ private:
 {{COMP_ATTR_MEMBERS}}{{ADDR_VAR_MEMBERS}}
 {{GET_H_METHODS}}
 public:
-  {{CLASS_NAME}}(Tensor *y, std::vector<Tensor *> X{{COMP_ATTR_PARAMS}}) : Instruction("{{OP_NAME}}", y, X){{COMP_ATTR_INIT}} {
+{{CONSTRUCTOR}}
   }
 
   std::string str() override {
