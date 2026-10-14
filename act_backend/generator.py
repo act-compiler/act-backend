@@ -1,9 +1,4 @@
-"""Backend code generator for ACT compiler
-
-This module provides the main interface for generating backend code.
-It coordinates all the individual file generators to produce a complete
-ACT backend implementation.
-"""
+"""Generate an accelerator's ACT backend, each source by its own generator"""
 
 import os
 import shutil
@@ -61,13 +56,10 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
 def generate_backend(
     accelerator: Accelerator, base_dir: str | None = None, cost: str | None = None
 ) -> None:
-    """
-    Generate complete ACT backend code for an accelerator.
+    """Generate the ACT backend of a TAIDL accelerator and build its binary
 
-    Args:
-        accelerator: TAIDL Accelerator object
-        base_dir: Base directory of the project. Defaults to accelerator.base_dir.
-        cost: Library that defines the cost function act_cost. Defaults to the instruction count.
+    base_dir defaults to accelerator.base_dir; cost names a library that defines the cost
+    function act_cost, the instruction count by default.
     """
     if base_dir is None:
         base_dir = accelerator.base_dir

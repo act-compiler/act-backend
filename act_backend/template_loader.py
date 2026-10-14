@@ -1,8 +1,4 @@
-"""Template management for backend code generation
-
-Provides a clean interface for loading and using code templates without
-mutable global variables.
-"""
+"""The templates a backend's sources are generated from, loaded and filled"""
 
 import os
 import re
@@ -17,25 +13,12 @@ class TemplateLoader:
     """Manages loading and caching of templates for code generation"""
 
     def __init__(self, template_dir: str):
-        """
-        Initialize template loader
-
-        Args:
-            template_dir: Directory containing template files
-        """
+        """Read templates from template_dir, caching each file"""
         self.template_dir = template_dir
         self.cache: dict[str, str] = {}
 
     def load(self, template_file: str) -> str:
-        """
-        Load a template file
-
-        Args:
-            template_file: Name of the template file
-
-        Returns:
-            Template content as string
-        """
+        """Return a template file's content, its final newline dropped"""
         if template_file not in self.cache:
             file_path = os.path.join(self.template_dir, template_file)
             with open(file_path, 'r') as f:
@@ -44,15 +27,7 @@ class TemplateLoader:
         return self.cache[template_file]
 
     def render(self, template_file: str, **kwargs) -> str:
-        """
-        Load and render a template with the given variables
-
-        Args:
-            template_file: Name of the template file
-            **kwargs: Template variables
-
-        Returns:
-            Rendered template content
+        """Render a template with the given values of its keys
 
         Raises ValueError naming the template when a key has no value or a value no key.
         """
