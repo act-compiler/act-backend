@@ -294,14 +294,14 @@ def backend(endings_dir):
     return os.path.join(endings_dir, 'backends', 'ENDINGS')
 
 
-def compiled(backend, tmp_path, kernel, output=None):
-    """Compile a kernel's text; return the run and the output's path"""
+def compiled(backend, tmp_path, kernel, output=None, flags=()):
+    """Compile a kernel's text with the flags given; return the run and the output's path"""
     path = tmp_path / 'kernel.hlo'
     path.write_text(kernel)
     output = output or tmp_path / 'kernel.py'
     arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
     return subprocess.run(
-        [backend, *arguments], capture_output=True, text=True, check=False
+        [backend, *arguments, *flags], capture_output=True, text=True, check=False
     ), output
 
 

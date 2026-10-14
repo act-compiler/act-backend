@@ -106,7 +106,7 @@ ENTRY main {
 
 
 def test_dropped_candidate_names_its_reason(backend, tmp_path):
-    run, _ = compiled(backend, tmp_path, ADD)
+    run, _ = compiled(backend, tmp_path, ADD, flags=['--verbose'])
     assert 'PII #0 dropped: the solver found no placement of its tensors' in run.stdout
 
 
@@ -186,7 +186,7 @@ def test_usage_error_makes_no_directory(backend, tmp_path):
 
 def test_output_the_backend_cannot_write_ends_the_compile_at_once(backend, tmp_path):
     # No user, root included, makes a file in /proc
-    run, _ = compiled(backend, tmp_path, ADD_32, '/proc/kernel.py')
+    run, _ = compiled(backend, tmp_path, ADD_32, '/proc/kernel.py', flags=['--verbose'])
     assert run.returncode == 1
     assert run.stderr.startswith("Error: cannot write the output '/proc/kernel.py': ")
     assert run.stderr.count('\n') == 1
@@ -220,7 +220,7 @@ CHAIN = kernel(
 
 
 def test_compile_at_the_iteration_limit_keeps_its_best_candidate(backend, tmp_path):
-    run, output = compiled(backend, tmp_path, CHAIN)
+    run, output = compiled(backend, tmp_path, CHAIN, flags=['--verbose'])
     assert run.returncode == 0, run.stderr
     # The slice moves down 39 passes, past the limit's 30
     assert 'the rewrites reached the iteration limit of 30' in run.stdout
@@ -288,7 +288,9 @@ def test_progress_names_its_own_log_directory_as_made(backend, tmp_path):
     (tmp_path / 'kernel.hlo').write_text(ADD_32)
     command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
     env = dict(os.environ, TMPDIR=str(temporary))
-    run = subprocess.run([backend, *command], env=env, capture_output=True, text=True, check=False)
+    run = subprocess.run(
+        [backend, *command, '--verbose'], env=env, capture_output=True, text=True, check=False
+    )
     assert run.returncode == 0, run.stderr
     # The directory as made, its template's X's filled in
     (line,) = [line for line in run.stdout.splitlines() if line.startswith('Log directory: ')]
@@ -383,3 +385,17 @@ def test_log_directory_the_backend_cannot_make_leaves_the_earlier_output(backend
     assert run.stderr.startswith("Error: cannot create the log directory '/proc/log': ")
     assert run.stderr.count('\n') == 1
     assert (tmp_path / 'kernel.py').read_text() == '# an earlier compile\n'
+
+
+def test_compile_is_quiet_unless_asked_for_its_search(backend, tmp_path):
+    quiet, output = compiled(backend, tmp_path, ADD_32)
+    assert quiet.returncode == 0, quiet.stderr
+    assert (quiet.stdout, quiet.stderr) == ('', '')
+    assert output.exists()
+    (tmp_path / 'verbose').mkdir()
+    verbose, _ = compiled(backend, tmp_path / 'verbose', ADD_32, flags=['--verbose'])
+    assert verbose.returncode == 0, verbose.stderr
+    # The search's progress, the allocator's among it
+    assert 'Starting Phase 1: Instruction Selection...' in verbose.stdout
+    assert 'Starting Google OR-Tools constraint solver...' in verbose.stdout
+    assert verbose.stderr == ''

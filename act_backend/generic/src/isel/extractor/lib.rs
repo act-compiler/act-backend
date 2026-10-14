@@ -23,29 +23,30 @@ pub fn extract(
   let start = Instant::now();
   let mut piis_fast = extract_fast(egraph, root, inputs, hbm_offsets);
 
-  println!("Fast Extractor Algorithm over #nodes={}", nodes);
-  println!("Number of PII graphs extracted: {}", piis_fast.len());
-  println!("Extraction time: {:?}", start.elapsed());
+  report!("Fast Extractor Algorithm over #nodes={}", nodes);
+  report!("Number of PII graphs extracted: {}", piis_fast.len());
+  report!("Extraction time: {:?}", start.elapsed());
 
-  println!();
+  report!();
 
   let mut piis_slow: Vec<PiiGraph> = vec![];
   if limit <= SLOW_LIMIT_CUTOFF {
     let start = Instant::now();
     piis_slow = extract_slow(egraph, root, inputs, hbm_offsets, limit);
 
-    println!("Slow Extractor Algorithm over #nodes={}", nodes);
-    println!("Limit used: {}", limit);
-    println!("Number of PII graphs extracted: {}", piis_slow.len());
-    println!("Extraction time: {:?}", start.elapsed());
+    report!("Slow Extractor Algorithm over #nodes={}", nodes);
+    report!("Limit used: {}", limit);
+    report!("Number of PII graphs extracted: {}", piis_slow.len());
+    report!("Extraction time: {:?}", start.elapsed());
   } else {
-    println!(
+    report!(
       "Skipping Slow Extractor Algorithm (limit = {} > {})",
-      limit, SLOW_LIMIT_CUTOFF
+      limit,
+      SLOW_LIMIT_CUTOFF
     );
   }
 
-  println!();
+  report!();
 
   piis_fast.append(&mut piis_slow);
 
