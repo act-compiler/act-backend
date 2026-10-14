@@ -60,6 +60,32 @@ def matching():
             'ROOT %Out0 = bf16[64,64] broadcast(%s), dimensions={0}',
         ],
     )
+    # A product through a transpose, both inputs declared first
+    add_on_d1(
+        acc,
+        'turn_dot',
+        ['32', '32', '64'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%In1 = bf16[32,64] parameter(1)',
+            '%t = bf16[64,32] transpose(%In0), dimensions={1,0}',
+            (
+                'ROOT %Out0 = bf16[64,64] dot(%t, %In1), lhs_contracting_dims={1}, '
+                'rhs_contracting_dims={0}'
+            ),
+        ],
+    )
+    # Sums of 32 rows, a value named like a copy
+    add_on_d1(
+        acc,
+        'rowsum_32',
+        ['32', '32'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%s_dup = bf16[32] reduce_add(%In0), dimensions={1}',
+            'ROOT %Out0 = bf16[32,64] broadcast(%s_dup), dimensions={0}',
+        ],
+    )
     return acc
 
 
@@ -182,3 +208,43 @@ def test_rewrite_that_joins_unlike_values_ends_the_compile(backend, tmp_path):
     assert run.returncode != 0
     assert 'internal error: a rewrite joins the values s8[16, 16] and s8[1]' in run.stderr
     assert not output.exists()
+
+
+# One input's transpose times the other
+TURNED = """HloModule turned, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %t = bf16[64,32] transpose(%a), dimensions={1,0}
+  ROOT %c = bf16[64,64] dot(%t, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+"""
+
+
+def test_semantics_not_in_pattern_order_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, TURNED)
+    assert [name for name, _ in calls] == ['load_rm', 'load_rm', 'turn_dot', 'store_rm']
+    # The transposed input comes first, as in the kernel
+    loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
+    turned = calls[2][1]
+    assert (turned['addr_1'], turned['addr_2']) == (loaded['0'], loaded['4096'])
+
+
+# The rows' sums of 32 rows, spread along them
+SPREAD_32 = f"""HloModule spread_32, entry_computation_layout={{(bf16[32,64]{{1,0}})->bf16[32,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[32,64] parameter(0)
+  %zero = bf16[] constant(0)
+  %s = bf16[32] reduce(%x, %zero), dimensions={{1}}, to_apply=%reduce_add
+  ROOT %b = bf16[32,64] broadcast(%s), dimensions={{0}}
+}}
+"""
+
+
+def test_value_named_as_a_copy_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, SPREAD_32)
+    assert [name for name, _ in calls] == ['load_rm', 'rowsum_32', 'store_rm']

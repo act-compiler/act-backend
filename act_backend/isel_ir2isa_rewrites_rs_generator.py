@@ -35,19 +35,13 @@ class RustGeneratorVisitor(OperandVisitor):
         self.root_assignment = None
         self.comp_attributes = set()
         self.variable_definitions = {}
-        self.variable_usage = set()
 
     def visitModule(self, ctx):
         self.visitChildren(ctx)
 
-        duplicates = [a for a in self.assignments if a['lhs'].endswith('_dup')]
-        non_duplicates = [a for a in self.assignments if not a['lhs'].endswith('_dup')]
-        self.assignments = duplicates + non_duplicates
-
-        for assignment in self.assignments:
-            if assignment['lhs'] == self.root_assignment['lhs']:
-                self.root_assignment = assignment
-                break
+        # The values in the pattern order a match walks
+        self.assignments = self.pattern_order(self.root_assignment['lhs'])
+        self.root_assignment = self.assignments[-1]
 
         return {
             'assignments': self.assignments,
@@ -70,13 +64,6 @@ class RustGeneratorVisitor(OperandVisitor):
                 if operand_type == 'VALUE':
                     operand_names.append(operand_text)
 
-        for operand_text in operand_names:
-            if operand_text in self.variable_definitions:
-                if operand_text in self.variable_usage:
-                    self.duplicate_variable_recursive(operand_text)
-                else:
-                    self.variable_usage.add(operand_text)
-
         assignment = {
             'lhs': lhs_name,
             'dtype': lhs_type,
@@ -94,28 +81,13 @@ class RustGeneratorVisitor(OperandVisitor):
 
         return assignment
 
-    def duplicate_variable_recursive(self, var_name):
-        dup_name = f'{var_name}_dup'
-
-        if dup_name in self.variable_definitions:
-            return
-
-        original = self.assignments[self.variable_definitions[var_name]]
-
-        for operand in original['operands']:
-            if operand in self.variable_definitions:
-                self.duplicate_variable_recursive(operand)
-
-        duplicate = {
-            'lhs': dup_name,
-            'dtype': original['dtype'],
-            'shape': original['shape'],
-            'dims': original['dims'],
-            'first': original['first'],
-            'operands': original['operands'],
-        }
-        self.variable_definitions[dup_name] = len(self.assignments)
-        self.assignments.append(duplicate)
+    def pattern_order(self, name):
+        """A value after the values it reads, left to right, one entry per occurrence"""
+        assignment = self.assignments[self.variable_definitions[name]]
+        ordered = []
+        for operand in assignment['operands']:
+            ordered += self.pattern_order(operand)
+        return [*ordered, assignment]
 
     def extract_comp_attrs_from_text(self, text):
         pattern = r'@c\.(\w+)'
