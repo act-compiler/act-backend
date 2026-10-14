@@ -231,3 +231,30 @@ def test_attribute_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_pat
     run, _ = compiled(backend, tmp_path, kernel(A, line))
     assert run.returncode == 1
     assert run.stderr == f'Error: no assembly found: {reason}\n'
+
+
+@pytest.mark.parametrize(
+    'text',
+    [
+        kernel(A, 'ROOT %c = bf16[64,64]{0,1} add(%a, %a)'),
+        kernel(
+            A,
+            'ROOT %c = bf16[64,64] add(%a, %a)',
+            header='HloModule bad, entry_computation_layout={(bf16[64,64]{0,1})->bf16[64,64]{1,0}}',
+        ),
+    ],
+    ids=['line', 'header'],
+)
+def test_layout_other_than_row_major_ends_in_no_assembly(backend, tmp_path, text):
+    run, _ = compiled(backend, tmp_path, text)
+    assert run.returncode == 1
+    assert run.stderr == (
+        'Error: no assembly found: the layout {0,1} of the shape [64,64] is not row-major, '
+        'the only layout the backend supports\n'
+    )
+
+
+def test_layout_that_gives_no_order_is_read(endings_dir, tmp_path):
+    # A tile alone after the shape, which gives no order
+    text = kernel('%a = bf16[64,64]{:T(32,64)} parameter(0)', 'ROOT %c = bf16[64,64] add(%a, %a)')
+    assert "Var['%a']" in read_nodes(endings_dir, tmp_path, text)
