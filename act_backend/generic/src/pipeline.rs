@@ -117,6 +117,7 @@ struct Search {
   best: RefCell<Option<AsmCandidate>>,
   candidates: Cell<usize>,
   first_drop: RefCell<Option<String>>,
+  rewrites: RefCell<Option<String>>,
 }
 
 impl Search {
@@ -178,10 +179,15 @@ impl Search {
           Some(reason) => format!("every candidate was dropped, the first because {}", reason),
           None => "no candidate was extracted".to_string(),
         };
-        no_assembly(&format!(
-          "the time limit of {:?} ran out, and {}",
-          TIME_LIMIT, candidates
-        ));
+        // What ended the search
+        let ended = match &*self.rewrites.borrow() {
+          Some(rewrites) => format!(
+            "{} and the time limit of {:?} ran out",
+            rewrites, TIME_LIMIT
+          ),
+          None => format!("the time limit of {:?} ran out", TIME_LIMIT),
+        };
+        no_assembly(&format!("{}, and {}", ended, candidates));
       }
     }
     process::exit(0);
@@ -381,6 +387,7 @@ fn main() {
     best: RefCell::new(None),
     candidates: Cell::new(0),
     first_drop: RefCell::new(None),
+    rewrites: RefCell::new(None),
   });
 
   let rules = isel::rewrites::get_rewrites();
@@ -422,10 +429,19 @@ fn main() {
       println!();
     }
     StopReason::NodeLimit(_) | StopReason::Saturated => {
+      // What ended the rewrites, which the no-assembly line names
+      let rewrites = match runner.stop_reason {
+        Some(StopReason::NodeLimit(_)) => {
+          format!("the rewrites reached the node limit of {}", NODE_LIMIT)
+        }
+        _ => "the rewrites saturated".to_string(),
+      };
       println!(
-        "Info: Reached node limit or saturated. Running extraction until time limit is hit."
+        "Info: {}. Running extraction until time limit is hit.",
+        rewrites
       );
       println!();
+      *search.rewrites.borrow_mut() = Some(rewrites);
 
       let mut limit: usize = SLOW_LIMIT_START;
       while start.elapsed() < TIME_LIMIT {
