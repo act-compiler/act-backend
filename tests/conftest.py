@@ -114,6 +114,7 @@ def run_backend(backend_bin, example_dir, out_dir, env=None):
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     return run, output_path
 

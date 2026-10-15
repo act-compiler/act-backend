@@ -162,6 +162,7 @@ def generate_backend(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        check=False,
     )
     # A failed build is reported with what cargo printed
     if build.returncode != 0:

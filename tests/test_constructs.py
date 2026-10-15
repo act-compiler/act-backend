@@ -216,7 +216,7 @@ def compiled_calls(work_dir, tmp_path, kernel):
     backend = os.path.join(work_dir, 'backends', 'QKV')
     log = str(tmp_path / 'log')
     arguments = ['--input', str(path), '--output', str(output), '--log', log]
-    run = subprocess.run([backend, *arguments], capture_output=True, text=True)
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
     return [
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
