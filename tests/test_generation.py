@@ -6,11 +6,11 @@ import shutil
 import subprocess
 
 import pytest
+from conftest import EXAMPLES_DIR, instruction_calls, run_backend
 
 import act_backend
 from act_backend import generate_backend
 from act_backend.build_rs_generator import generate_build_rs_file
-from conftest import EXAMPLES_DIR, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
 

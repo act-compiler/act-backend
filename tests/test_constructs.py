@@ -5,10 +5,10 @@ import re
 import subprocess
 
 import pytest
+from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 import act_backend
 from act_backend import generate_backend
-from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
 

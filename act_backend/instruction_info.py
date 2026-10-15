@@ -1,7 +1,7 @@
 """What several generators read off an instruction: its record and its names"""
 
-from typing import List
 from dataclasses import dataclass
+from typing import List
 
 
 @dataclass

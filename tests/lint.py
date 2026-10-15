@@ -4,15 +4,16 @@ Usage: python tests/lint.py <example_dir>...; tests/lint.sh runs it for every ex
 image the tests run in, and for the first one once more with a cost library.
 """
 
-import os
-import sys
 import functools
+import os
 import subprocess
+import sys
 import tempfile
 from unittest import mock
 
-import act_backend
 from conftest import generate_oracle_and_backend
+
+import act_backend
 
 # The warnings the allocator's build is held to
 CXX_FLAGS = '-Wall -Wextra -Werror'

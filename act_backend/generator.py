@@ -6,24 +6,24 @@ ACT backend implementation.
 """
 
 import os
-from pathlib import Path
 import shutil
-from typing import List
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
+from typing import List
 
 from taidl import Accelerator
 
+from .build_rs_generator import generate_build_rs_file
 from .ir_buffer_rs_generator import generate_buffer_rs_file
 from .ir_egraph_rs_generator import generate_egraph_rs_file
+from .isel_applier_rs_generator import generate_applier_file
+from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
+from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
+from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .malloc_globals_cc_generator import generate_globals_file
 from .malloc_instructions_h_generator import generate_instructions_file
 from .malloc_parser_cc_generator import generate_parser_file
-from .isel_applier_rs_generator import generate_applier_file
-from .malloc_act_malloc_cc_generator import generate_act_malloc_file
-from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
-from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
-from .build_rs_generator import generate_build_rs_file
 from .spec_checks import check_names, check_operands, check_outputs, check_semantics
 
 

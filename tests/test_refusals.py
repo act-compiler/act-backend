@@ -4,10 +4,9 @@ import os
 import re
 
 import pytest
-from taidl import Accelerator
-
 import taidl.antlr4
 import taidl.operations
+from taidl import Accelerator
 
 import act_backend
 from act_backend import generate_backend, spec_checks

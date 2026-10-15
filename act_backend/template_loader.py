@@ -8,7 +8,6 @@ import os
 import re
 from typing import Dict
 
-
 # A fragment's key
 KEY = re.compile(r'\{\{(\w+)\}\}')
 
