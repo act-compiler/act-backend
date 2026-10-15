@@ -392,13 +392,17 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
         ),
         (
             {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
-            "its operand on 'd1' has the address '@a.addr_1 * 2', "
-            'which is not one address attribute of the instruction',
+            (
+                "its operand on 'd1' has the address '@a.addr_1 * 2', "
+                'which is not one address attribute of the instruction'
+            ),
         ),
         (
             {'inputs': [['d1', ['0'], ['64']], SECOND]},
-            "its operand on 'd1' has the address '0', "
-            'which is not one address attribute of the instruction',
+            (
+                "its operand on 'd1' has the address '0', "
+                'which is not one address attribute of the instruction'
+            ),
         ),
     ],
 )
