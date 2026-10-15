@@ -23,6 +23,25 @@ case "${1:-}" in
     ;;
 esac
 
+usage() {
+  echo "Usage: $0 [--cpu|--cuda13] [-h|--help]"
+}
+
+# Past the image flag, only --help is read
+if [ $# -gt 0 ]; then
+  case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 
