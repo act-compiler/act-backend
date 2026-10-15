@@ -124,7 +124,11 @@ def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
         with open(manifest) as f:
             content = f.read()
         with open(manifest, 'w') as f:
-            f.write(re.sub(r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.M))
+            f.write(
+                re.sub(
+                    r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.MULTILINE
+                )
+            )
 
     monkeypatch.setattr(act_backend.generator, 'generate_build_rs_file', generate_stale)
     with pytest.raises(RuntimeError, match='--locked'):
