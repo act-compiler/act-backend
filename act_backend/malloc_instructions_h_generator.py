@@ -56,15 +56,16 @@ def generate_instruction_class(instruction, templates):
     if comp_attrs:
         comp_attr_init = ', ' + ', '.join(f'{attr}({attr})' for attr in comp_attrs)
 
-    str_format = ''
-    for attr in comp_attrs:
-        if str_format:
-            str_format += ', '
-        str_format += f'{attr} = " + std::to_string({attr}) + "'
-    for param in params:
-        if str_format:
-            str_format += ', '
-        str_format += f'{param} = " + std::to_string({param}->Value()) + "'
+    # The text names each attribute's value, a line each
+    values = [(attr, attr) for attr in comp_attrs]
+    values += [(param, f'{param}->Value()') for param in params]
+    str_pieces = ''
+    for index, (attr, value) in enumerate(values):
+        str_pieces += templates.render_lines(
+            'instructions.h.INSTRUCTION_CLASSES.str_piece.txt',
+            label=(', ' if index else '') + f'{attr} = ',
+            value=value,
+        )
 
     # Generate get_int_var list
     get_int_var_list = ', '.join(params)
@@ -79,7 +80,7 @@ def generate_instruction_class(instruction, templates):
         GET_H_METHODS=get_h_methods,
         COMP_ATTR_PARAMS=comp_attr_params,
         COMP_ATTR_INIT=comp_attr_init,
-        STR_FORMAT=str_format,
+        STR_PIECES=str_pieces,
         GET_H_CASES=get_h_cases,
         GET_INT_VAR_LIST=get_int_var_list,
     )
