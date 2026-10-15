@@ -6,7 +6,6 @@ mutable global variables.
 
 import os
 import re
-from typing import Dict
 
 # A fragment's key
 KEY = re.compile(r'\{\{(\w+)\}\}')
@@ -23,7 +22,7 @@ class TemplateLoader:
             template_dir: Directory containing template files
         """
         self.template_dir = template_dir
-        self.cache: Dict[str, str] = {}
+        self.cache: dict[str, str] = {}
 
     def load(self, template_file: str) -> str:
         """
@@ -77,7 +76,7 @@ PLACEHOLDER = re.compile(
 )
 
 
-def fill_placeholders(content: str, replacements: Dict[str, str], source: str) -> str:
+def fill_placeholders(content: str, replacements: dict[str, str], source: str) -> str:
     """
     Replace each placeholder of a skeleton with its generated code
 

@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 from .instruction_info import (
     InstructionInfo,
@@ -30,7 +29,7 @@ def generate_buffer_variants(data_models, templates):
     return variants, display_arms
 
 
-def generate_buffer_assignment_arms(instructions_info: List[InstructionInfo], templates):
+def generate_buffer_assignment_arms(instructions_info: list[InstructionInfo], templates):
     """Generate buffer assignment arms using templates"""
     buffer_assignment_arms = []
 

@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 from .instruction_info import (
     InstructionInfo,
@@ -10,7 +9,7 @@ from .instruction_info import (
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
-def generate_instruction_variants(instructions_info: List[InstructionInfo], templates):
+def generate_instruction_variants(instructions_info: list[InstructionInfo], templates):
     """Generate instruction variants using templates"""
     enum_variants = []
     num_children_arms = []

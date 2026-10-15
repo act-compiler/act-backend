@@ -10,7 +10,6 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 from taidl import Accelerator
 
@@ -36,7 +35,7 @@ class InstructionMetadata:
     rhs_size: int
 
 
-def get_instruction_metadata(instructions) -> List[InstructionMetadata]:
+def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
     """Extract instruction metadata needed for rewrite rule generation"""
     metadata_list = []
     for instruction in instructions:
