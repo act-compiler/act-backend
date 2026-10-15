@@ -9,6 +9,8 @@ import re
 
 # A fragment's key
 KEY = re.compile(r'\{\{(\w+)\}\}')
+# The formatters' line width, as rustfmt.toml and .clang-format set it
+LINE_WIDTH = 100
 
 
 class TemplateLoader:
@@ -67,6 +69,13 @@ class TemplateLoader:
     def render_lines(self, template_file: str, **kwargs) -> str:
         """Render a template as whole lines, the last one ended with a newline"""
         return self.render(template_file, **kwargs) + '\n'
+
+    def render_fitting(self, template_file: str, **kwargs) -> str:
+        """Render a template, or its _wrapped twin where a line would not fit"""
+        text = self.render(template_file, **kwargs)
+        if all(len(line) <= LINE_WIDTH for line in text.split('\n')):
+            return text
+        return self.render(template_file.removesuffix('.txt') + '_wrapped.txt', **kwargs)
 
 
 # A skeleton's placeholder: a comment line of its own, a block comment inside a line, or bare
