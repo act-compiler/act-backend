@@ -50,7 +50,9 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
     return metadata_list
 
 
-def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str = None) -> None:
+def generate_backend(
+    accelerator: Accelerator, base_dir: str | None = None, cost: str | None = None
+) -> None:
     """
     Generate complete ACT backend code for an accelerator.
 
