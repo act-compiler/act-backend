@@ -36,7 +36,9 @@ else
 fi
 
 # collect candidate containers (all containers using the image)
-mapfile -t CONTAINERS < <(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}' | awk -v img="${IMAGE_NAME}" '$3 == img')
+LISTED=$(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}')
+# Not piped: a failed docker ps ends the script
+mapfile -t CONTAINERS < <(awk -v img="${IMAGE_NAME}" '$3 == img' <<<"${LISTED}")
 
 NUM_CONTAINERS=${#CONTAINERS[@]}
 if [ ${NUM_CONTAINERS} -eq 0 ]; then
@@ -56,7 +58,7 @@ for line in "${CONTAINERS[@]}"; do
   case "${RESP}" in
     y | Y)
       echo "Removing ${CNAME}..."
-      docker rm -f "${CID}" || { echo "Failed to remove ${CNAME}"; }
+      docker rm -f "${CID}"
       ;;
     *)
       echo "Keeping ${CNAME}."
