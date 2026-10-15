@@ -3,3 +3,5 @@
 __version__ = '1.6'
 
 from .generator import generate_backend
+
+__all__ = ['generate_backend']
