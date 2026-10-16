@@ -15,7 +15,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
-# The e-graph's operators, by their rule words
+# The e-graph's operators, by their rewrite words
 EGRAPH_WORDS = {
     'add',
     'bitcvt',
@@ -256,7 +256,7 @@ ADDRESS_ATTRIBUTE_NAMES = {
     'y',
 }
 
-# Plus the parser's and rules' names beside a computational one
+# Plus the parser's and rewrites' names beside a computational one
 COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'attr_str',
     'end',
