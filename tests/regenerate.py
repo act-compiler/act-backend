@@ -30,7 +30,7 @@ if __name__ == '__main__':
     with tempfile.TemporaryDirectory() as work_dir:
         generate_oracle_and_backend(example_dir, work_dir)
         assembly = compile_hlo(work_dir, example_dir)
-        output = np.asarray(run_compiled_kernel(work_dir, assembly, data_dir))
+        output = np.asarray(run_compiled_kernel(work_dir, assembly, example_dir))
 
     # Never write a golden the reference rejects
     reference, tol = attention_reference(data_dir)

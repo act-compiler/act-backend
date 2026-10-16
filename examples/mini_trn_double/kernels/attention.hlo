@@ -1,4 +1,4 @@
-HloModule qkv, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+HloModule attention, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
 
 // Helper function for reduce_sum
 %reduce_add (x: bf16[], y: bf16[]) -> bf16[] {

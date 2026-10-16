@@ -21,9 +21,8 @@ CXX_FLAGS = '-Wall -Wextra -Werror'
 COST_MODEL = os.path.join(os.path.dirname(__file__), 'cost', 'model.c')
 
 
-def lint_crate(work_dir):
-    """Lint the crate generated in work_dir, its generated sources and build script among them"""
-    backend_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend')
+def lint_crate(backend_dir):
+    """Lint a generated crate, its generated sources and build script among them"""
     subprocess.run(
         ['cargo', 'clippy', '--release', '--', '-D', 'warnings'], cwd=backend_dir, check=True
     )
@@ -34,10 +33,13 @@ if __name__ == '__main__':
         # The generated trees go with their directory
         with tempfile.TemporaryDirectory() as work_dir:
             generate_oracle_and_backend(os.path.abspath(example), work_dir)
-            lint_crate(work_dir)
+            # An example's accelerator is named as its directory
+            name = os.path.basename(os.path.abspath(example))
+            backend_dir = os.path.join(work_dir, 'targets', name, 'backend')
+            lint_crate(backend_dir)
 
             # The allocator, in a build tree apart from the crate's own
-            allocator_dir = os.path.join(work_dir, 'targets', 'QKV', 'backend', 'cpp', 'malloc')
+            allocator_dir = os.path.join(backend_dir, 'cpp', 'malloc')
             build_dir = os.path.join(work_dir, 'lint')
             subprocess.run(
                 ['cmake', '-S', allocator_dir, '-B', build_dir, f'-DCMAKE_CXX_FLAGS={CXX_FLAGS}'],
@@ -51,9 +53,10 @@ if __name__ == '__main__':
     with tempfile.TemporaryDirectory() as work_dir:
         library = os.path.join(work_dir, 'libmodel.so')
         subprocess.run(['cc', '-shared', '-fPIC', COST_MODEL, '-o', library], check=True)
-        # The spec calls generate_backend(qkv): name the library in that call
+        # The spec calls generate_backend(mini_trn): name the library in that call
         with_cost = functools.partial(act_backend.generate_backend, cost=library)
         with mock.patch.object(act_backend, 'generate_backend', with_cost):
             generate_oracle_and_backend(os.path.abspath(example), work_dir)
-        lint_crate(work_dir)
+        name = os.path.basename(os.path.abspath(example))
+        lint_crate(os.path.join(work_dir, 'targets', name, 'backend'))
     print(f'{example} with a cost library: no lint warning')
