@@ -254,7 +254,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
 def test_operation_the_selector_lacks_refused(tmp_path):
     message = refusal(with_semantics([IN0, IN1, result('maximum(%In0, %In1)')]), tmp_path)
     assert message == (
-        "gemm: its semantics uses the operation 'maximum', which the selector does not have"
+        "gemm: its semantics uses the operation 'maximum', which the selector does not support"
     )
 
 
@@ -329,7 +329,7 @@ def test_element_type_handled_or_refused(element_type, tmp_path):
     else:
         assert refusal(acc, tmp_path) == (
             f"gemm: its semantics uses the element type '{element_type}', "
-            'which the selector does not have'
+            'which the selector does not support'
         )
 
 
@@ -345,8 +345,7 @@ def test_concatenate_of_three_refused(tmp_path):
     lines = [IN0, IN1, result('concatenate(%In0, %In1, %In0), dimensions={0}')]
     message = refusal(with_semantics(lines), tmp_path)
     assert message == (
-        "gemm: its semantics gives the operation 'concatenate' 3 values, "
-        "where the selector's takes 2"
+        "gemm: its semantics gives the operation 'concatenate' 3 values, where the selector takes 2"
     )
 
 
