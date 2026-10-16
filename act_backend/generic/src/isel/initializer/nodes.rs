@@ -243,9 +243,32 @@ pub fn add_binary_op(
       "shift-right-logical" => TensorOp::OpShiftRightLogical,
       "or" => TensorOp::OpOr,
       "shift-left" => TensorOp::OpShiftLeft,
-      "dot" => TensorOp::OpDot,
       "divide" => TensorOp::OpDivide
   });
+  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
+}
+
+// One argument per field of the kernel's line
+#[allow(clippy::too_many_arguments)]
+pub fn add_dot(
+  tsymbol: &str,
+  ttype: &str,
+  tshape: &str,
+  lhs: &str,
+  rhs: &str,
+  dimensions: &str,
+  egraph: &mut EGraph<TensorOp, TensorInfo>,
+  table: &mut EggSymbolTable,
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
+
+  // The four dimension lists, one after another
+  let node = egraph.add(TensorOp::OpDot(
+    dimensions.to_string(),
+    [lookup(table, lhs)?, lookup(table, rhs)?],
+  ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
   Ok(())
 }

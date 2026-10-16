@@ -15,7 +15,7 @@ pub enum TensorOp {
   OpConvert(String, [Id; 1]),
   OpCopy([Id; 1]),
   OpDivide([Id; 2]),
-  OpDot([Id; 2]),
+  OpDot(String, [Id; 2]),
   OpExp([Id; 1]),
   OpEye(String),
   OpOr([Id; 2]),
@@ -105,6 +105,7 @@ impl TensorOp {
       TensorOp::OpConcat(data, _) => *data = metadata.expect("OpConcat needs metadata!"),
       TensorOp::OpConstant(data) => *data = metadata.expect("OpConstant needs metadata!"),
       TensorOp::OpConvert(data, _) => *data = metadata.expect("OpConvert needs metadata!"),
+      TensorOp::OpDot(data, _) => *data = metadata.expect("OpDot needs metadata!"),
       TensorOp::OpEye(data) => *data = metadata.expect("OpEye needs metadata!"),
       TensorOp::OpReduceSum(data, _) => *data = metadata.expect("OpReduceSum needs metadata!"),
       TensorOp::OpReshape(data, _) => *data = metadata.expect("OpReshape needs metadata!"),
@@ -138,7 +139,7 @@ impl Language for TensorOp {
       TensorOp::OpConvert(_, ids) => LanguageChildren::as_slice(ids),
       TensorOp::OpCopy(ids) => LanguageChildren::as_slice(ids),
       TensorOp::OpDivide(ids) => LanguageChildren::as_slice(ids),
-      TensorOp::OpDot(ids) => LanguageChildren::as_slice(ids),
+      TensorOp::OpDot(_, ids) => LanguageChildren::as_slice(ids),
       TensorOp::OpExp(ids) => LanguageChildren::as_slice(ids),
       TensorOp::OpEye(_) => &[],
       TensorOp::OpOr(ids) => LanguageChildren::as_slice(ids),
@@ -165,7 +166,7 @@ impl Language for TensorOp {
       TensorOp::OpConvert(_, ids) => LanguageChildren::as_mut_slice(ids),
       TensorOp::OpCopy(ids) => LanguageChildren::as_mut_slice(ids),
       TensorOp::OpDivide(ids) => LanguageChildren::as_mut_slice(ids),
-      TensorOp::OpDot(ids) => LanguageChildren::as_mut_slice(ids),
+      TensorOp::OpDot(_, ids) => LanguageChildren::as_mut_slice(ids),
       TensorOp::OpExp(ids) => LanguageChildren::as_mut_slice(ids),
       TensorOp::OpEye(_) => &mut [],
       TensorOp::OpOr(ids) => LanguageChildren::as_mut_slice(ids),
@@ -232,9 +233,12 @@ impl FromOp for TensorOp {
         let children = <[Id; 2] as LanguageChildren>::from_vec(children);
         Ok(TensorOp::OpDivide(children))
       }
-      op if op == "dot" && <[Id; 2] as LanguageChildren>::can_be_length(children.len()) => {
+      op if op.split('_').next().unwrap() == "dot"
+        && <[Id; 2] as LanguageChildren>::can_be_length(children.len()) =>
+      {
+        let data = op.split('_').next_back().unwrap();
         let children = <[Id; 2] as LanguageChildren>::from_vec(children);
-        Ok(TensorOp::OpDot(children))
+        Ok(TensorOp::OpDot(data.to_string(), children))
       }
       op if op == "exponential" && <[Id; 1] as LanguageChildren>::can_be_length(children.len()) => {
         let children = <[Id; 1] as LanguageChildren>::from_vec(children);
@@ -309,7 +313,7 @@ impl std::fmt::Display for TensorOp {
       TensorOp::OpConvert(data, _) => write!(f, "convert[dtype='{}']", data),
       TensorOp::OpCopy(_) => write!(f, "copy"),
       TensorOp::OpDivide(_) => write!(f, "divide"),
-      TensorOp::OpDot(_) => write!(f, "dot"),
+      TensorOp::OpDot(data, _) => write!(f, "dot[dims='{}']", data),
       TensorOp::OpExp(_) => write!(f, "exponential"),
       TensorOp::OpEye(data) => write!(f, "eye[ttype='{}']", data),
       TensorOp::OpOr(_) => write!(f, "or"),
