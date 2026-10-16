@@ -29,9 +29,9 @@ ELEMENT_TYPES = {
 }
 
 # The operations whose payload holds their attributes' integers, in order
-COMPARED = {'concatenate', 'reduce_add', 'slice', 'transpose'}
+COMPARED = {'broadcast', 'concatenate', 'reduce_add', 'slice', 'transpose'}
 # The operations whose payload holds none of their attributes
-UNCOMPARED = {'broadcast', 'dot'}
+UNCOMPARED = {'dot'}
 
 # rustfmt's fn_call_width: the widest a call's arguments stay on one line
 CALL_WIDTH = 60
@@ -300,9 +300,17 @@ def generate_attr_checks(assignments, expressions, templates):
             source(expressions[value.EXPRESSION()]) if value.EXPRESSION() else value.getText()
             for value in values
         ]
+        # A broadcast of one element matches whatever its map
+        guard = ''
+        if assignment['op'] == 'broadcast':
+            # Its value stands just before it in pattern order
+            spread = f'lhs_metadata[{index - 1}].shape.iter().any(|&dim| dim != 1)'
+            checks += f'  let spread = {spread};\n'
+            guard = 'spread && '
         if len(f'&lhs_enodes[{index}], &[{", ".join(ints)}]') <= CALL_WIDTH:
             checks += templates.render_lines(
                 'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.attr_check.txt',
+                guard=guard,
                 index=str(index),
                 ints=', '.join(ints),
             )
@@ -310,12 +318,14 @@ def generate_attr_checks(assignments, expressions, templates):
         # Too many for one line: the count, then each integer
         checks += templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.attr_check_len.txt',
+            guard=guard,
             index=str(index),
             count=str(len(ints)),
         )
         for position, (value, text) in enumerate(zip(values, ints)):
             check = templates.render_lines(
                 'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.attr_check_int.txt',
+                guard=guard,
                 index=str(index),
                 position=str(position),
                 value=text,
@@ -325,6 +335,7 @@ def generate_attr_checks(assignments, expressions, templates):
                 checks += value_lets('value', expressions[value.EXPRESSION()])
                 check = templates.render_lines(
                     'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.attr_check_int.txt',
+                    guard=guard,
                     index=str(index),
                     position=str(position),
                     value='value',

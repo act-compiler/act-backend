@@ -276,7 +276,7 @@ def add_on_hbm(acc, name, sizes, lines, attributes=()):
 
 
 def hbm_only():
-    """No data model but the HBM: a product and a sum, each reading its inputs' bytes"""
+    """No data model but the HBM: a product, a sum and a fill, each reading HBM bytes"""
     acc = Accelerator('HBM_ONLY')
     add_on_hbm(
         acc,
@@ -310,6 +310,20 @@ def hbm_only():
             'ROOT %Out0 = u8[`@c.n * 128`] reshape(%c)',
         ],
         ['n'],
+    )
+    # One bf16 value spread over 64 by 64
+    add_on_hbm(
+        acc,
+        'fill',
+        ['2', '8192'],
+        [
+            '%In0 = u8[2] parameter(0)',
+            '%a = u8[1,2] reshape(%In0)',
+            '%x = bf16[1] bitcast_convert(%a)',
+            '%b = bf16[64,64] broadcast(%x), dimensions={0}',
+            '%c = u8[64,64,2] bitcast_convert(%b)',
+            'ROOT %Out0 = u8[8192] reshape(%c)',
+        ],
     )
     return acc
 
@@ -559,6 +573,47 @@ def test_accelerator_with_no_on_chip_data_model_compiles(hbm_backend, tmp_path):
     assert (total['addr_1'], total['addr_2']) == (product['addr_out'], '16384')
 
 
+# One bf16 value spread over 64 by 64, from a value of rank 0 and of one element
+FILL_FROM_RANK_0 = """HloModule fill_from_rank_0, entry_computation_layout={(bf16[])->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %s = bf16[] parameter(0)
+  ROOT %b = bf16[64,64] broadcast(%s), dimensions={}
+}
+"""
+
+FILL_FROM_ONE_ELEMENT = """HloModule fill_from_one_element, entry_computation_layout={(bf16[1]{0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %s = bf16[1] parameter(0)
+  ROOT %b = bf16[64,64] broadcast(%s), dimensions={0}
+}
+"""
+
+
+@pytest.mark.parametrize(
+    'kernel', [FILL_FROM_RANK_0, FILL_FROM_ONE_ELEMENT], ids=['rank_0', 'one_element']
+)
+def test_broadcast_of_one_element_is_selected_whatever_its_map(hbm_backend, tmp_path, kernel):
+    calls = selected(hbm_backend, tmp_path, kernel)
+    # The semantics spreads a bf16[1] with dimensions={0}
+    assert [name for name, _ in calls] == ['fill']
+
+
+def test_broadcast_of_rank_0_with_no_map_compiles_as_with_the_empty_map(hbm_backend, tmp_path):
+    # XLA-HLO lets a rank-0 value's broadcast give no dimensions
+    unmapped = FILL_FROM_RANK_0.replace(', dimensions={}', '')
+    assert 'dimensions' not in unmapped
+    assemblies = []
+    for name, kernel in [('mapped', FILL_FROM_RANK_0), ('unmapped', unmapped)]:
+        (tmp_path / name).mkdir()
+        selected(hbm_backend, tmp_path / name, kernel)
+        text = (tmp_path / name / 'kernel.py').read_text()
+        # The assembly, its header comments aside, which name the input file
+        assemblies.append([line for line in text.splitlines() if not line.startswith('#')])
+    assert assemblies[0] == assemblies[1]
+
+
 # The input added to itself and each sum: 26 sums
 SUMS = (
     """HloModule sums, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
@@ -748,8 +803,36 @@ ENTRY main {{
 }}
 """
 
+# The rows' sums, spread along each row
+ROW_SUM_ACROSS = f"""HloModule row_sum_across, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
 
-@pytest.mark.parametrize('kernel', [KEPT_EXP, COLUMN_SUM])
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%x, %zero), dimensions={{1}}, to_apply=%reduce_add
+  ROOT %b = bf16[64,64] broadcast(%s), dimensions={{1}}
+}}
+"""
+
+# The exponentials divided by the rows' sums spread along each row
+SOFTMAX_ACROSS = f"""HloModule softmax_across, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %ex = bf16[64,64] exponential(%x)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%ex, %zero), dimensions={{1}}, to_apply=%reduce_add
+  %b = bf16[64,64] broadcast(%s), dimensions={{1}}
+  ROOT %out = bf16[64,64] divide(%ex, %b)
+}}
+"""
+
+
+@pytest.mark.parametrize('kernel', [KEPT_EXP, COLUMN_SUM, ROW_SUM_ACROSS, SOFTMAX_ACROSS])
 def test_operation_whose_attributes_no_instruction_spells_finds_no_assembly(
     backend, tmp_path, kernel
 ):

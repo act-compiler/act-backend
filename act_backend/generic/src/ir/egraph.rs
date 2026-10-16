@@ -62,12 +62,14 @@ impl TensorOp {
   // The integers a compared operation's payload holds, in order
   fn payload_ints(enode: &Option<TensorOp>) -> Option<Vec<i32>> {
     let data = match enode {
+      // A broadcast's map follows its shape
+      Some(TensorOp::OpBroadcast(data, _)) => data.split_once(';')?.1,
       Some(
         TensorOp::OpConcat(data, _)
         | TensorOp::OpReduceSum(data, _)
         | TensorOp::OpSlice(data, _)
         | TensorOp::OpTranspose(data, _),
-      ) => data,
+      ) => data.as_str(),
       _ => return None,
     };
     data
