@@ -4,7 +4,7 @@ import re
 import subprocess
 
 import pytest
-from conftest import TREE_DIR, add_on_d1
+from conftest import TREE_DIR, add_on_d1, long_names
 from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
@@ -218,6 +218,15 @@ def test_constant_literals_are_laid_out_as_rustfmt_lays_them(templates, tmp_path
         ]
         add_on_d1(acc, f'offset_{length}', ['64', '64'], lines)
     instructions = get_instruction_metadata(acc.instructions)
+    functions = '\n'.join(generate_ir2isa_rust_functions(i, templates) for i in instructions)
+    # Every line within the width, as rustfmt lays it out
+    assert max(len(line) for line in functions.split('\n')) <= 100
+    assert rustfmt_complaints(functions, tmp_path) == ''
+
+
+@pytest.mark.parametrize('length', [30, 60, 76, 86])
+def test_long_attribute_names_are_laid_out_within_the_width(length, templates, tmp_path):
+    instructions = get_instruction_metadata(long_names(length).instructions)
     functions = '\n'.join(generate_ir2isa_rust_functions(i, templates) for i in instructions)
     # Every line within the width, as rustfmt lays it out
     assert max(len(line) for line in functions.split('\n')) <= 100

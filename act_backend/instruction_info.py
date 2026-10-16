@@ -69,6 +69,10 @@ def get_buffer_name(data_model_name: str) -> str:
     return 'HBM' if data_model_name == 'd0' else f'Model{data_model_name}'
 
 
+# rustfmt's widest vec! on one line
+ARRAY_WIDTH = 60
+
+
 def extract_instruction_info(instructions) -> list[InstructionInfo]:
     info_list = []
     type_names = get_type_names([instruction.instruction for instruction in instructions])

@@ -347,6 +347,78 @@ ENTRY {
     return acc
 
 
+def long_names(length=60):
+    """Long names: two attributes of about the length given, four instructions, two data models"""
+    rows = ('the_number_of_rows_' * 9)[:length].rstrip('_')
+    first = ('the_first_row_' * 12)[:length].rstrip('_')
+    staging = 'the_staging_buffer_of_the_vector_engine_x'
+    result = 'the_result_buffer_of_the_vector_engine_xy'
+    acc = Accelerator('LONG')
+    acc.add_data_model(staging, [512], [64], 'bf16')
+    acc.add_data_model(result, [512], [64], 'bf16')
+
+    # Each attribute read from a shape, both in a slice
+    instr = acc.add_instruction(
+        'load_the_window_of_rows_into_the_staging_buffer', [rows, first], ['addr_in', 'addr_out']
+    )
+    instr.set_inputs([['d0', ['@a.addr_in'], [f'@c.{rows} * 128']]])
+    instr.set_outputs([[staging, ['@a.addr_out'], [f'@c.{first}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = u8[`@c.{rows} * 128`] parameter(0);
+    %a = u8[`@c.{rows}`,64,2] reshape(%In0);
+    %b = bf16[`@c.{rows}`,64] bitcast_convert(%a);
+    ROOT %Out0 = bf16[`@c.{first}`,64] slice(%b), slice={{[`@c.{rows} - @c.{first}`:`@c.{rows}`], [0:64]}};
+}}
+""")
+
+    # One attribute, read from a second dimension
+    instr = acc.add_instruction(
+        'exponentiate_the_rows_of_the_staging_buffer_now', [rows], ['addr_in', 'addr_out']
+    )
+    instr.set_inputs([[staging, ['@a.addr_in'], ['64']]])
+    instr.set_outputs([[result, ['@a.addr_out'], ['64']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[64,`@c.{rows}`] parameter(0);
+    ROOT %Out0 = bf16[64,`@c.{rows}`] exponential(%In0);
+}}
+""")
+
+    # No attribute, two inputs
+    instr = acc.add_instruction(
+        'add_the_rows_of_the_staging_buffer_to_the_result', [], ['addr_1', 'addr_2', 'addr_out']
+    )
+    instr.set_inputs([[staging, ['@a.addr_1'], ['64']], [result, ['@a.addr_2'], ['64']]])
+    instr.set_outputs([[result, ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] add(%In0, %In1);
+}
+""")
+
+    # A dimension that sums both attributes
+    instr = acc.add_instruction(
+        'join_the_rows_of_the_staging_buffer_into_the_result',
+        [rows, first],
+        ['addr_1', 'addr_2', 'addr_out'],
+    )
+    instr.set_inputs(
+        [[staging, ['@a.addr_1'], [f'@c.{rows}']], [staging, ['@a.addr_2'], [f'@c.{first}']]]
+    )
+    instr.set_outputs([[result, ['@a.addr_out'], [f'@c.{rows} + @c.{first}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[`@c.{rows}`,64] parameter(0);
+    %In1 = bf16[`@c.{first}`,64] parameter(1);
+    ROOT %Out0 = bf16[`@c.{rows} + @c.{first}`,64] concatenate(%In0, %In1), dimensions={{0}};
+}}
+""")
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(request):
     """Generate the module's oracle and backend in a directory of its own, removed after"""

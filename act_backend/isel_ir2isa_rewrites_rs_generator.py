@@ -7,7 +7,7 @@ from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
 from .expression_writer import source
-from .instruction_info import get_attribute_name
+from .instruction_info import ARRAY_WIDTH, get_attribute_name
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, fits, get_backend_template_loader
 
@@ -236,7 +236,7 @@ def generate_comp_attr_extraction(assignments, attributes, checked, expressions)
             # A matched value may have fewer dimensions
             code += f'  if {shape}.len() <= {dimension} {{\n    return false;\n  }}\n'
         division = f' / {factor}' if factor != 1 else ''
-        code += f'  let {name} = {shape}[{dimension}]{division};\n'
+        code += let_line(name, f'{shape}[{dimension}]{division}')
     return code
 
 
@@ -301,6 +301,31 @@ def value_lets(name, tree):
             step = f'{name} {operator.getText()} {name}_{position}'
         lines += let_line(name, step)
     return lines
+
+
+def shape_vec(assignment):
+    """A shape's vec! as rustfmt lays it out, and the lets of any dimension too wide for it"""
+    lets = ''
+    dims = []
+    for position, (dim, tree) in enumerate(zip(assignment['dims'], assignment['trees'])):
+        if not fits(f'        {dim},'):
+            # A dimension too wide for its line, computed first
+            lets += value_lets(f'dim_{position}', tree)
+            dim = f'dim_{position}'
+        dims.append(dim)
+    items = ', '.join(dims)
+    # One dimension stays on the line where it fits, more within the array width
+    if len(items) <= ARRAY_WIDTH or (len(dims) == 1 and fits(f'      shape: vec![{items}],')):
+        return lets, f'vec![{items}]'
+    return lets, 'vec![\n' + ''.join(f'        {dim},\n' for dim in dims) + '      ]'
+
+
+def assignment_lines(target, value):
+    """An assignment as rustfmt lays it out, the value on a line of its own where it is too wide"""
+    line = f'  {target} = {value};'
+    if fits(line):
+        return f'{line}\n'
+    return f'  {target} =\n    {value};\n'
 
 
 def generate_attr_checks(assignments, expressions, templates):
@@ -391,15 +416,15 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
     # Generate shape/dtype checks for all assignments
     for i, assignment in enumerate(assignments):
         dtype_rust = ELEMENT_TYPES[assignment['dtype']]
-        shape_vec = f'vec![{", ".join(assignment["dims"])}]'
+        lets, shape = shape_vec(assignment)
 
         shape_check = templates.render(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_check.txt',
             index=str(i),
-            shape_vec=shape_vec,
+            shape_vec=shape,
             dtype=dtype_rust,
         )
-        shape_checks.append(shape_check)
+        shape_checks.append(lets + shape_check)
 
     shape_checks_code = '\n'.join(shape_checks)
 
@@ -435,11 +460,25 @@ def generate_metadata_function(
 
         # The attributes as one string, in declared order
         names = [get_attribute_name(attribute) for attribute in attributes]
+        target = '*rhs_metadata.last_mut().unwrap()'
         if len(names) == 1:
-            value = f'{names[0]}.to_string()'
+            value = assignment_lines(target, f'Some({names[0]}.to_string())')
+            if not fits(value):
+                # The call's argument on a line, its method below where too wide
+                call = f'{names[0]}.to_string()'
+                if not fits(f'    {call},'):
+                    call = f'{names[0]}\n      .to_string()'
+                value = f'  {target} = Some(\n    {call},\n  );\n'
         else:
             pieces = ','.join(['{}'] * len(names))
-            value = f'format!("{pieces}", {", ".join(names)})'
+            call = f'format!("{pieces}", {", ".join(names)})'
+            value = assignment_lines(target, f'Some({call})')
+            if len(call) > CALL_WIDTH or not fits(value):
+                # The string on a line, then the names on one where they fit
+                rest = ', '.join(names)
+                if not fits(f'    {rest},'):
+                    rest = ',\n    '.join(names)
+                value = f'  {target} = Some(format!(\n    "{pieces}",\n    {rest}\n  ));\n'
 
         return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',
@@ -447,7 +486,7 @@ def generate_metadata_function(
             egraph='egraph' if shaped else '_',
             enodes='_' if len(shaped) == len(attributes) else 'lhs_enodes',
             num_assignments=str(num_assignments),
-            attributes=value,
+            metadata=value,
             comp_attr_extraction=(LHS_METADATA if shaped else '') + comp_attr_extraction,
             rhs_size=str(rhs_size),
         )
@@ -478,11 +517,11 @@ def generate_set_shapes_function(
 
     # Generate shape setting
     dtype_rust = ELEMENT_TYPES[root_assignment['dtype']]
-    shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
+    lets, shape = shape_vec(root_assignment)
 
-    shape_setting = templates.render_lines(
+    shape_setting = lets + templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
-        shape_vec=shape_vec,
+        shape_vec=shape,
         dtype=dtype_rust,
     )
 
