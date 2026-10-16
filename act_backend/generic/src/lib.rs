@@ -11,8 +11,6 @@ pub static PROCESSED: LazyLock<Mutex<HashSet<(Symbol, Id, Subst)>>> =
 
 // External Timeout
 pub const TIME_LIMIT: Duration = Duration::from_millis(10000);
-// Number of iterations after which the extractor runs
-pub const N: usize = 1;
 // Max PiiGraph size for Slow Extractor Algorithm
 pub const SLOW_LIMIT_START: usize = 10;
 pub const SLOW_LIMIT_CUTOFF: usize = 15;

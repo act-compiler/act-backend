@@ -63,7 +63,7 @@ fn get_pii_graph(
   'en_loop: for en in &egraph[eclass].nodes {
     // A snapshot to roll back to if this enode fails
     let snapshot = selected.clone();
-    // base case: input enode -- TODO: this assumes only 1 enode in the eclass
+    // base case: input enode
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
       selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
       return true;

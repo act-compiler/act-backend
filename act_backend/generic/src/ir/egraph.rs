@@ -325,7 +325,7 @@ impl Analysis<TensorOp> for TensorInfo {
     }
   }
 
-  // TODO: ensure that the two eclasses have the same shape
+  // A merged class is constant if either one is
   fn merge(&mut self, a: &mut Self::Data, b: Self::Data) -> DidMerge {
     let x = a.is_const;
     a.is_const |= b.is_const;

@@ -65,7 +65,7 @@ pub fn metadata_0(
     .collect();
   let i = lhs_metadata[0].shape[0] / 16;
 
-  // TODO: fix string to slice the first dim and keep all others
+  // Each half of the first dimension, as a slice
   let mut rhs_metadata = vec![None; 12];
   rhs_metadata[1] = Some(format!("{}:{}", 0, (i / 2) * 16));
   rhs_metadata[5] = Some(format!("{}:{}", 0, (i / 2) * 16));
