@@ -1,6 +1,6 @@
 """ACT Backend - Compiler Backend Generator for TAIDL"""
 
-__version__ = '1.6'
+__version__ = '1.7'
 
 from .generator import generate_backend
 
