@@ -12,12 +12,6 @@ class OperandVisitor(IDLV2Visitor):
         return operand_list
 
     def visitOperand(self, ctx):
-        value_ctx = ctx.value()
-        value_text = value_ctx.getText()
-
-        if value_ctx.IDENTIFIER():
-            operand_type = 'IDENTIFIER'
-        else:
-            operand_type = 'EXPRESSION'
-
-        return (value_text, operand_type)
+        # A value by its name, else a literal
+        text = ctx.getText()
+        return (text, 'VALUE' if text.startswith('%') else 'LITERAL')

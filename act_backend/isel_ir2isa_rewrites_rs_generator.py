@@ -5,6 +5,23 @@ from .expression_writer import source
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
+# The e-graph's element types, by their semantics word
+ELEMENT_TYPES = {
+    'pred': 'Dtype::Pred',
+    's8': 'Dtype::I8',
+    's16': 'Dtype::I16',
+    's32': 'Dtype::I32',
+    's64': 'Dtype::I64',
+    'u8': 'Dtype::U8',
+    'u16': 'Dtype::U16',
+    'u32': 'Dtype::U32',
+    'u64': 'Dtype::U64',
+    'f16': 'Dtype::FP16',
+    'bf16': 'Dtype::BF16',
+    'f32': 'Dtype::FP32',
+    'f64': 'Dtype::FP64',
+}
+
 
 class RustGeneratorVisitor(OperandVisitor):
     def __init__(self, expressions):
@@ -48,7 +65,7 @@ class RustGeneratorVisitor(OperandVisitor):
             operands = self.visit(ctx.operands())
             for operand_text, operand_type in operands:
                 self.extract_comp_attrs_from_text(operand_text)
-                if operand_type == 'IDENTIFIER':
+                if operand_type == 'VALUE':
                     operand_names.append(operand_text)
 
         for operand_text in operand_names:
@@ -113,20 +130,6 @@ class RustGeneratorVisitor(OperandVisitor):
         if ctx.INT():
             return ctx.INT().getText()
         return source(self.expressions[ctx.EXPRESSION()])
-
-
-def map_dtype_to_rust(dtype):
-    dtype_map = {
-        's8': 'Dtype::I8',
-        'u8': 'Dtype::U8',
-        's32': 'Dtype::I32',
-        'u32': 'Dtype::U32',
-        'bf16': 'Dtype::BF16',
-    }
-
-    rust_type = dtype_map.get(dtype)
-    assert rust_type != None
-    return rust_type
 
 
 def extract_comp_attr_from_shape(shape_text, comp_attrs):
@@ -199,7 +202,7 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     # Generate shape/dtype checks for all assignments
     shape_checks = []
     for i, assignment in enumerate(assignments):
-        dtype_rust = map_dtype_to_rust(assignment['dtype'])
+        dtype_rust = ELEMENT_TYPES[assignment['dtype']]
         shape_vec = f'vec![{", ".join(assignment["dims"])}]'
 
         shape_check = templates.render(
@@ -270,7 +273,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         )
 
     # Generate shape setting
-    dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
+    dtype_rust = ELEMENT_TYPES[root_assignment['dtype']]
     shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
 
     shape_setting = templates.render_lines(

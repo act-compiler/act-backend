@@ -6,7 +6,7 @@ from antlr4.tree.Tree import TerminalNode
 from taidl.antlr4 import IDLV2ExprParser
 
 from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
-from .isel_ir2isa_rewrites_rs_generator import RustGeneratorVisitor
+from .isel_ir2isa_rewrites_rs_generator import ELEMENT_TYPES, RustGeneratorVisitor
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
@@ -400,6 +400,12 @@ class SemanticsChecker(OperandVisitor):
     def visitInstruction(self, ctx):
         word = ctx.OPERATION().getText()
         value = ctx.IDENTIFIER().getText()
+        element_type = ctx.result_type().TYPE().getText()
+        if element_type not in ELEMENT_TYPES:
+            raise ValueError(
+                f"{self.name}: its semantics uses the element type '{element_type}', "
+                'which the selector does not have'
+            )
         operands = self.visit(ctx.operands()) if ctx.operands() else []
         if word == 'parameter':
             # An input, read by its number
@@ -411,7 +417,7 @@ class SemanticsChecker(OperandVisitor):
                     'which the selector does not have'
                 )
             # The operands that name a value are what the operator takes
-            named = [text for text, kind in operands if kind == 'IDENTIFIER']
+            named = [text for text, kind in operands if kind == 'VALUE']
             _, count = OPERATIONS[word]
             if len(named) != count:
                 raise ValueError(

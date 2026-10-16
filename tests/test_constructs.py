@@ -168,6 +168,65 @@ ENTRY main {
 """
 
 
+def add_f32(acc):
+    """Rows of f32 loaded and stored, and an instruction that adds two values of them"""
+    add_moves(acc, 'f32', 4)
+    add_binary(acc, 'add_f32', 'add', 'f32')
+
+
+# A kernel that adds two inputs of f32
+SUMMED = """HloModule summed, entry_computation_layout={(f32[32,64]{1,0}, f32[32,64]{1,0})->f32[32,64]{1,0}}
+
+ENTRY main {
+  %a = f32[32,64] parameter(0)
+  %b = f32[32,64] parameter(1)
+  ROOT %c = f32[32,64] add(%a, %b)
+}
+"""
+
+
+def add_pred(acc):
+    """Rows of pred loaded and stored, and an instruction that joins two values of them"""
+    add_moves(acc, 'pred', 1)
+    add_binary(acc, 'either', 'or', 'pred')
+
+
+# A kernel that joins two inputs of pred
+EITHER = """HloModule either, entry_computation_layout={(pred[32,64]{1,0}, pred[32,64]{1,0})->pred[32,64]{1,0}}
+
+ENTRY main {
+  %a = pred[32,64] parameter(0)
+  %b = pred[32,64] parameter(1)
+  ROOT %c = pred[32,64] or(%a, %b)
+}
+"""
+
+
+def add_true_constant(acc):
+    """An instruction that inverts 32 rows of pred on d1, by a constant written true"""
+    instr = acc.add_instruction('invert', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['32']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = pred[32,64] parameter(0);
+    %yes = pred[32,64] constant(true);
+    ROOT %Out0 = pred[32,64] xor(%In0, %yes);
+}
+""")
+
+
+# A kernel that inverts its input of pred
+INVERTED = """HloModule inverted, entry_computation_layout={(pred[32,64]{1,0})->pred[32,64]{1,0}}
+
+ENTRY main {
+  %a = pred[32,64] parameter(0)
+  %yes = pred[32,64] constant(true)
+  ROOT %b = pred[32,64] xor(%a, %yes)
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -188,6 +247,9 @@ def work_dir(tmp_path_factory):
         add_rank_0_result(acc)
         add_slice(acc)
         add_bit_operations(acc)
+        add_f32(acc)
+        add_pred(acc)
+        add_true_constant(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -258,6 +320,26 @@ def test_or_and_the_shifts_are_selected(work_dir, tmp_path):
     assert (joined['addr_1'], joined['addr_2']) == (a, b)
     assert (left['addr_1'], left['addr_2']) == (joined['addr_out'], b)
     assert (right['addr_1'], right['addr_2']) == (left['addr_out'], a)
+
+
+def test_f32_values_are_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, SUMMED)
+    assert [name for name, _ in calls] == ['load_f32', 'load_f32', 'add_f32', 'store_f32']
+    # Each input is four bytes an element
+    assert {call['addr_in'] for _, call in calls[:2]} == {'0', '8192'}
+
+
+def test_pred_values_are_selected(work_dir, tmp_path):
+    kernel = tmp_path / 'kernel.py'
+    calls = compiled_calls(work_dir, tmp_path, EITHER)
+    assert [name for name, _ in calls] == ['load_pred', 'load_pred', 'either', 'store_pred']
+    # The assembly types each input and the output as booleans
+    assert kernel.read_text().count("'dtype': jnp.bool_") == 3
+
+
+def test_constant_written_true_is_read(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, INVERTED)
+    assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):

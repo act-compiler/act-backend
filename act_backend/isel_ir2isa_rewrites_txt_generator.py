@@ -78,7 +78,7 @@ class RewriteRuleVisitor(OperandVisitor):
         if ctx.operands():
             operand_info = self.visit(ctx.operands())
             for operand_value, operand_type in operand_info:
-                if operand_type == 'IDENTIFIER':
+                if operand_type == 'VALUE':
                     pattern = self.variable_definitions[operand_value]
 
                     if operand_value in self.used_values:

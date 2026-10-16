@@ -11,7 +11,10 @@ from taidl import Accelerator
 import act_backend
 from act_backend import generate_backend, spec_checks
 from act_backend.generator import get_instruction_metadata
-from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
+from act_backend.isel_ir2isa_rewrites_rs_generator import (
+    ELEMENT_TYPES,
+    generate_ir2isa_rust_functions,
+)
 from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
@@ -71,12 +74,12 @@ def result(operation):
 DOT = 'dot(%In0, %In1), lhs_contracting_dims={1}, rhs_contracting_dims={0}'
 
 
-def grammar_words():
-    """The operation words the installed grammar lexes"""
+def grammar_words(rule):
+    """The words the installed grammar lexes by one rule, OPERATION or TYPE"""
     with open(os.path.join(os.path.dirname(taidl.antlr4.__file__), 'IDLV2.g4')) as f:
         grammar = re.sub(r'//.*', '', f.read())
-    rule = re.search(r'^OPERATION\s*:(.*?);', grammar, re.MULTILINE | re.DOTALL).group(1)
-    return re.findall(r"'(\w+)'", rule)
+    words = re.search(rf'^{rule}\s*:(.*?);', grammar, re.MULTILINE | re.DOTALL).group(1)
+    return re.findall(r"'(\w+)'", words)
 
 
 def with_operands(inputs=None, outputs=None, addresses=None, models=(), lines=None, state=()):
@@ -281,7 +284,9 @@ def line_of(word):
     return result(', '.join([f'{word}({", ".join(operands)})', *given]))
 
 
-@pytest.mark.parametrize('word', [word for word in grammar_words() if word != 'parameter'])
+@pytest.mark.parametrize(
+    'word', [word for word in grammar_words('OPERATION') if word != 'parameter']
+)
 def test_operation_word_handled_or_refused(word):
     lines = spec_checks.SemanticsChecker('gemm')
     semantics = with_semantics([IN0, line_of(word)], 1).instructions[0].instr_semantics_ast
@@ -294,7 +299,7 @@ def test_operation_word_handled_or_refused(word):
 
 
 def test_operations_are_words_of_the_grammar():
-    assert set(OPERATIONS) <= set(grammar_words())
+    assert set(OPERATIONS) <= set(grammar_words('OPERATION'))
 
 
 def test_operations_are_the_egraphs_own():
@@ -310,6 +315,30 @@ def test_operations_are_the_egraphs_own():
     children = {word: int(count) for _, word, count in arms if word != 'eye'}
     assert {word.removesuffix('_?'): count for word, count in OPERATIONS.values()} == children
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
+
+
+@pytest.mark.parametrize('element_type', grammar_words('TYPE'))
+def test_element_type_handled_or_refused(element_type, tmp_path):
+    lines = [
+        f'%In0 = {element_type}[64,64] parameter(0)',
+        f'ROOT %Out0 = {element_type}[64,64] copy(%In0)',
+    ]
+    acc = with_semantics(lines, 1)
+    if element_type in ELEMENT_TYPES:
+        spec_checks.check_semantics(acc.instructions)
+    else:
+        assert refusal(acc, tmp_path) == (
+            f"gemm: its semantics uses the element type '{element_type}', "
+            'which the selector does not have'
+        )
+
+
+def test_element_types_are_the_egraphs_own():
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    with open(os.path.join(generic, 'src', 'ir', 'dtype.rs')) as f:
+        dtype = f.read()
+    # The kernel reader's element types, by their kernel word
+    assert dict(re.findall(r'"(\w+)" => (Dtype::\w+),', dtype)) == ELEMENT_TYPES
 
 
 def test_concatenate_of_three_refused(tmp_path):
