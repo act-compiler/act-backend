@@ -267,7 +267,7 @@ pub fn metadata_2(
     .map(|id| egraph[*id].data.clone())
     .collect();
   let mut metadata = lhs_metadata[0].shape.iter().join(",");
-  metadata.push_str(format!(",{:?}", lhs_metadata[0].dtype).as_str());
+  metadata.push_str(format!(",{}", lhs_metadata[0].dtype).as_str());
 
   let mut rhs_metadata = vec![None; 3];
   rhs_metadata[1] = Some(metadata);

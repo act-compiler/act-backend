@@ -90,7 +90,7 @@ MetaData::MetaData(std::ifstream &metadata_path,
         why = "the constant tensor " + tensor->get_name() + " has no known value";
         return;
       }
-      if (known_constants.at(tensor) != "reshape[shape='256'](bitcvt(eye[ttype='16,16,I8']()))") {
+      if (known_constants.at(tensor) != "reshape[shape='256'](bitcvt(eye[ttype='16,16,s8']()))") {
         std::cerr << "Warning: only constant tensor with value reshape(eye) is "
                      "supported now, continue anyway."
                   << std::endl;

@@ -864,6 +864,30 @@ def test_dot_is_compared_as_matched_not_as_another_of_its_class(product_backend,
     assert not output.exists()
 
 
+# An s8 value added to itself, which reaches d2 only as its product by the identity
+DOUBLED_S8 = """HloModule doubled_s8, entry_computation_layout={(s8[16,16]{1,0})->s8[16,16]{1,0}}
+
+ENTRY main {
+  %x = s8[16,16] parameter(0)
+  ROOT %y = s8[16,16] add(%x, %x)
+}
+"""
+
+
+def test_value_carried_through_the_identity_compiles_quietly(product_backend, tmp_path):
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(DOUBLED_S8)
+    output = tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([product_backend, *arguments], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    # The identity is known by its spelling, so no warning
+    assert run.stderr == ''
+    assembly = output.read_text()
+    assert 'api.gemm16(' in assembly
+    assert 'jnp.reshape(jnp.eye(16, dtype=jnp.int8).astype(jnp.uint8), (256,))' in assembly
+
+
 # The input added to itself and each sum: 26 sums
 SUMS = (
     """HloModule sums, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
