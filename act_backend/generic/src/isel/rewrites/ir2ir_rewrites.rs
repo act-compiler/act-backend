@@ -6,7 +6,11 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 
 // Each rewrite's precondition, RHS metadata and RHS shapes
 
-pub fn precond_0(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_0(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 5);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -162,7 +166,11 @@ pub fn set_shapes_0(
   );
 }
 
-pub fn precond_1(_: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_1(
+  _: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 3);
   true
 }
@@ -219,7 +227,11 @@ pub fn set_shapes_1(
   );
 }
 
-pub fn precond_2(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_2(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -272,7 +284,11 @@ pub fn set_shapes_2(
   egraph.set_analysis_data(rhs_eclasses[2], lhs_metadata[0].clone());
 }
 
-pub fn precond_3(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_3(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -329,7 +345,11 @@ pub fn set_shapes_3(
   egraph.set_analysis_data(rhs_eclasses[2], lhs_metadata[0].clone());
 }
 
-pub fn precond_4(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_4(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -384,7 +404,11 @@ pub fn set_shapes_4(
   egraph.set_analysis_data(rhs_eclasses[2], lhs_metadata[0].clone());
 }
 
-pub fn precond_5(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_5(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 3);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -462,7 +486,11 @@ pub fn set_shapes_5(
   );
 }
 
-pub fn precond_6(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_6(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 3);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -504,7 +532,11 @@ pub fn set_shapes_6(
   assert_eq!(rhs_eclasses.len(), 1);
 }
 
-pub fn precond_7(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_7(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 1);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -543,7 +575,11 @@ pub fn set_shapes_7(
   egraph.set_analysis_data(rhs_eclasses[1], lhs_metadata[0].clone());
 }
 
-pub fn precond_8(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_8(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 2);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()
@@ -581,7 +617,11 @@ pub fn set_shapes_8(
   assert_eq!(rhs_eclasses.len(), 1);
 }
 
-pub fn precond_9(egraph: &EGraph<TensorOp, TensorInfo>, lhs_eclasses: &[Id]) -> bool {
+pub fn precond_9(
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  lhs_eclasses: &[Id],
+  _: &[Option<TensorOp>],
+) -> bool {
   assert_eq!(lhs_eclasses.len(), 3);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
     .iter()

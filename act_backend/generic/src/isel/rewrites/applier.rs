@@ -60,7 +60,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
 }
 
 // The three functions a rewrite is applied through
-type PrecondFn = fn(&EGraph<TensorOp, TensorInfo>, &[Id]) -> bool;
+type PrecondFn = fn(&EGraph<TensorOp, TensorInfo>, &[Id], &[Option<TensorOp>]) -> bool;
 type MetadataFn =
   fn(&EGraph<TensorOp, TensorInfo>, &[Id], &[Option<TensorOp>]) -> Vec<Option<String>>;
 type SetShapesFn = fn(&mut EGraph<TensorOp, TensorInfo>, &[Id], &[Id]);
@@ -114,7 +114,7 @@ impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
 
     for lhs_match in lhs_matches {
       let (lhs_eclasses, lhs_enodes): (Vec<_>, Vec<_>) = lhs_match.into_iter().unzip();
-      let precond = (self.precond_fn)(egraph, &lhs_eclasses);
+      let precond = (self.precond_fn)(egraph, &lhs_eclasses, &lhs_enodes);
       if !precond {
         continue;
       }
