@@ -70,6 +70,11 @@ def generate_backend(
     for path in (final_dest_path, partial_path):
         if os.path.lexists(path):
             os.remove(path)
+    # An earlier crate goes too, before any refusal
+    target_dir = os.path.join(base_dir, 'targets', accelerator.name)
+    backend_gen_dir = os.path.join(target_dir, 'backend')
+    if os.path.exists(backend_gen_dir):
+        shutil.rmtree(backend_gen_dir)
 
     # The cost library is linked from where it lies
     if cost is not None:
@@ -106,15 +111,11 @@ def generate_backend(
     check_state(instructions)
 
     # Setup directories
-    target_dir = os.path.join(base_dir, 'targets', accelerator.name)
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
     generic_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'generic')
-    backend_gen_dir = os.path.join(target_dir, 'backend')
 
     # Copy the generic backend, with no build directory left
-    if os.path.exists(backend_gen_dir):
-        shutil.rmtree(backend_gen_dir)
     shutil.copytree(generic_dir, backend_gen_dir, ignore=shutil.ignore_patterns('target', 'build'))
 
     print(f'Copied generic backend structure to {backend_gen_dir}')

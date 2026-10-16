@@ -605,3 +605,14 @@ def test_state_read_refused(tmp_path):
     assert message == (
         "scale: its semantics reads the state variable '@s.mode', which the backend does not model"
     )
+
+
+def test_refused_spec_leaves_no_earlier_crate(tmp_path):
+    # What an earlier generation left
+    crate = tmp_path / 'targets' / 'ONE' / 'backend'
+    crate.mkdir(parents=True)
+    (crate / 'Cargo.toml').write_text('an earlier crate\n')
+    # A refused spec of the same name
+    with pytest.raises(ValueError):
+        generate_backend(with_state(update=['@s.mode = 1']), str(tmp_path))
+    assert not crate.exists()
