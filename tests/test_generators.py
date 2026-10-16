@@ -13,7 +13,10 @@ from act_backend.instruction_info import extract_instruction_info, get_type_name
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
 from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
-from act_backend.malloc_act_malloc_cc_generator import generate_buffer_names
+from act_backend.malloc_act_malloc_cc_generator import (
+    generate_buffer_names,
+    generate_topological_order,
+)
 from act_backend.malloc_globals_cc_generator import generate_globals_models
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
@@ -313,6 +316,21 @@ def test_attribute_names_of_every_length_are_laid_out_as_clang_format_lays_them(
         assert clang_format_complaints(source, tmp_path) == ''
 
 
+@pytest.mark.parametrize('length', [30, 60, 76])
+def test_long_data_model_names_are_laid_out_as_clang_format_lays_them(length, templates, tmp_path):
+    acc = Accelerator('LONG')
+    # One access dimension and two, each name of about the length given
+    acc.add_data_model(('the_staging_buffer_' * 5)[:length].rstrip('_'), [512], [64], 'bf16')
+    acc.add_data_model(('the_result_buffer_' * 5)[:length].rstrip('_'), [128, 64], [64], 'bf16')
+    models = '\n'.join(generate_globals_models(acc.data_model))
+    storages = f'std::map<std::string, Storage *> g_storage = {{\n{models}\n}};'
+    order = f'void schedule() {{\n{generate_topological_order(acc.data_model, templates)}\n}}'
+    for source in (storages, order):
+        # Every line within the width, as clang-format lays it out
+        assert max(len(line) for line in source.split('\n')) <= 100
+        assert clang_format_complaints(source, tmp_path) == ''
+
+
 def test_address_ranges(accelerator, templates):
     load_rm = accelerator.instructions[0]
     load_rm = squeeze(generate_instruction_class(load_rm, 'InstrLoadRm', templates))
@@ -371,7 +389,7 @@ def test_rule_functions(accelerator):
 
 def test_buffer_names(accelerator, templates):
     # Every buffer but HBM, in the spec's order
-    assert generate_buffer_names(accelerator.data_model, templates) == '"Modeld1", "Modeld2"'
+    assert generate_buffer_names(accelerator.data_model, templates) == ['"Modeld1"', '"Modeld2"']
 
 
 def test_parser_cases(accelerator, templates):

@@ -66,7 +66,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
 
   progress << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
 
-  auto scheduled = scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
+  // {{TOPOLOGICAL_ORDER}}
   if (scheduled.size() != instructions.size())
     return no_assembly(reason, reason_size,
                        "the allocator orders only " + std::to_string(scheduled.size()) +

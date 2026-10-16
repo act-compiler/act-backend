@@ -13,7 +13,7 @@ from conftest import (
     instruction_calls,
     long_names,
     run_backend,
-    unformatted_rust,
+    unformatted_sources,
 )
 from taidl import Accelerator
 
@@ -274,17 +274,19 @@ def lines_of(path):
         return f.read().split('\n')
 
 
-def test_long_names_are_laid_out_as_rustfmt_lays_them(tmp_path):
+def test_long_names_are_laid_out_as_the_formatters_lay_them(tmp_path):
     # Long attribute, instruction and data-model names, each prefixed
     generate_backend(long_names(), str(tmp_path))
     backend_dir = os.path.join(str(tmp_path), 'targets', 'LONG', 'backend')
-    assert unformatted_rust(backend_dir) == ''
+    assert unformatted_sources(backend_dir) == ''
 
 
-# The longest names each layout of their lines holds: an instruction's, a data model's, an attribute's
+# The longest names each layout of their lines holds: an instruction's, a data model's, a
+# computational attribute's in the Rust and the C++, and an address attribute's
 INSTRUCTION_NAME_WIDTH = 100 - len('      TensorOp::Instr(data, _) => {')
 MODEL_NAME_WIDTH = 100 - len('      Buffer::Model => {')
-ATTRIBUTE_NAME_WIDTH = 100 - len('  let attr_ =')
+ATTRIBUTE_NAME_WIDTH = min(100 - len('  let attr_ ='), 100 - len('            attr_) {'))
+ADDRESS_NAME_WIDTH = 100 - len('            attr_->Value());')
 
 
 def named(letter, length):
@@ -293,7 +295,7 @@ def named(letter, length):
 
 
 def named_at_every_length():
-    """Instructions, data models and attributes, each name at every length the backend takes"""
+    """Instructions, data models and both kinds of attribute, each name at every length taken"""
     acc = Accelerator('NAMED')
     acc.add_data_model('d1', [512], [64], 'bf16')
     add_moves(acc)
@@ -315,6 +317,12 @@ def named_at_every_length():
         attribute = named('n', length)
         lines_a = [line.replace('64,', f'`@c.{attribute}`,') for line in lines]
         add_on_d1(acc, f'a{length}', [f'@c.{attribute}'] * 2, lines_a, [attribute])
+    for length in range(1, ADDRESS_NAME_WIDTH + 1):
+        source, target = named('s', length), named('t', length)
+        instr = acc.add_instruction(f'b{length}', [], [source, target])
+        instr.set_inputs([['d1', [f'@a.{source}'], ['64']]])
+        instr.set_outputs([['d1', [f'@a.{target}'], ['64']]])
+        instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
     # Two attributes of the longest name on the longest instruction name
     first, second = (f'@c.{letter * ATTRIBUTE_NAME_WIDTH}' for letter in 'fs')
     lines_f = [
@@ -343,8 +351,9 @@ def test_names_of_every_length_are_laid_out_within_the_width(tmp_path, monkeypat
     backend_dir = os.path.join(str(tmp_path), 'targets', 'NAMED', 'backend')
     # Every line the generators write within the width, the generic sources' own aside
     generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
-    own = {line for path in generated_files(generic, '.rs') for line in lines_of(path)}
-    sources = generated_files(backend_dir, '.rs')
+    suffixes = ('.rs', '.cc', '.h')
+    own = {line for path in generated_files(generic, suffixes) for line in lines_of(path)}
+    sources = generated_files(backend_dir, suffixes)
     wide = [line for path in sources for line in lines_of(path) if len(line) > 100]
     assert [line for line in wide if line not in own] == []
-    assert unformatted_rust(backend_dir) == ''
+    assert unformatted_sources(backend_dir) == ''

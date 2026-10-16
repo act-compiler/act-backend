@@ -1,7 +1,7 @@
 import os
 
 from .instruction_info import get_buffer_name
-from .template_loader import fill_placeholders
+from .template_loader import call_lines, fill_placeholders, fits
 
 
 def generate_globals_models(data_models):
@@ -14,9 +14,15 @@ def generate_globals_models(data_models):
             access_dims = '{' + ', '.join(str(dim) for dim in data_model.access_dim) + '}'
             num_unit = len(data_model.unit_dim)
             # Every entry ends in a comma, the last one too
-            models.append(
+            entry = (
                 f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}},'
             )
+            if not fits(entry):
+                # Broken after the name, the storage's arguments packed
+                arguments = [f'"{buffer_name}"', access_dims, str(num_unit)]
+                storage = call_lines('     new Storage(', arguments, ')},', 5)
+                entry = f'    {{"{buffer_name}",\n{storage}'
+            models.append(entry)
 
     return models
 
