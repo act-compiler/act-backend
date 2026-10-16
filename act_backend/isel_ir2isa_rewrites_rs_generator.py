@@ -1,12 +1,15 @@
 import os
 import re
+from .expression_writer import source
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
 
 class RustGeneratorVisitor(OperandVisitor):
-    def __init__(self):
+    def __init__(self, expressions):
         super().__init__()
+        # Each backtick expression's parsed tree, by its node
+        self.expressions = expressions
         self.assignments = []
         self.root_assignment = None
         self.comp_attributes = set()
@@ -20,11 +23,10 @@ class RustGeneratorVisitor(OperandVisitor):
         non_duplicates = [a for a in self.assignments if not a['lhs'].endswith('_dup')]
         self.assignments = duplicates + non_duplicates
 
-        if self.root_assignment:
-            for assignment in self.assignments:
-                if assignment['lhs'] == self.root_assignment['lhs']:
-                    self.root_assignment = assignment
-                    break
+        for assignment in self.assignments:
+            if assignment['lhs'] == self.root_assignment['lhs']:
+                self.root_assignment = assignment
+                break
 
         return {
             'assignments': self.assignments,
@@ -34,8 +36,7 @@ class RustGeneratorVisitor(OperandVisitor):
 
     def visitInstruction(self, ctx):
         lhs_name = ctx.IDENTIFIER().getText()
-        result_type_info = self.visit(ctx.result_type())
-        lhs_type, lhs_shape = result_type_info
+        lhs_type, lhs_shape, lhs_dims = self.visit(ctx.result_type())
 
         is_root = ctx.ROOT() is not None
 
@@ -56,16 +57,11 @@ class RustGeneratorVisitor(OperandVisitor):
                 else:
                     self.variable_usage.add(operand_text)
 
-        if ctx.attributes():
-            attributes = self.visit(ctx.attributes())
-            for _, attr_value, attr_type in attributes:
-                if attr_type in ['EXPRESSION', 'BRACELIST']:
-                    self.extract_comp_attrs_from_text(str(attr_value))
-
         assignment = {
             'lhs': lhs_name,
             'dtype': lhs_type,
             'shape': lhs_shape,
+            'dims': lhs_dims,
             'operands': operand_names,
         }
 
@@ -93,6 +89,7 @@ class RustGeneratorVisitor(OperandVisitor):
             'lhs': dup_name,
             'dtype': original['dtype'],
             'shape': original['shape'],
+            'dims': original['dims'],
             'operands': original['operands'],
         }
         self.variable_definitions[dup_name] = len(self.assignments)
@@ -104,48 +101,17 @@ class RustGeneratorVisitor(OperandVisitor):
         self.comp_attributes.update(matches)
 
     def visitResult_type(self, ctx):
-        shape_info = self.visit(ctx.shape())
-        shape_dims, shape_type = shape_info
-        return (shape_type, shape_dims)
+        # A rank-0 result is one element, like a kernel's
+        if ctx.shape() is None:
+            return (ctx.TYPE().getText(), '', ['1'])
+        # The type, the written shape, and each dimension in Rust
+        dims = [self.visit(dim) for dim in ctx.shape().dim()]
+        return (ctx.TYPE().getText(), ctx.shape().getText(), dims)
 
-    def visitShape(self, ctx):
-        dims = ctx.getText()
-        typ = ctx.parentCtx.TYPE().getText()
-        return (dims, typ)
-
-    def visitAttributes(self, ctx):
-        attributes_list = []
-        for attribute_ctx in ctx.attribute():
-            attr_info = self.visit(attribute_ctx)
-            attributes_list.append(attr_info)
-        return attributes_list
-
-    def visitAttribute(self, ctx):
-        attr_name = ctx.IDENTIFIER().getText()
-        attr_value_info = self.visit(ctx.attributeValue())
-        attr_value, attr_type = attr_value_info
-        return (attr_name, attr_value, attr_type)
-
-    def visitAttributeValue(self, ctx):
-        if ctx.braceList():
-            brace_info = self.visit(ctx.braceList())
-            return (brace_info, 'BRACELIST')
-        elif ctx.value():
-            value_ctx = ctx.value()
-            value_text = value_ctx.getText()
-
-            if value_ctx.INT():
-                value_type = 'INT'
-            elif value_ctx.IDENTIFIER():
-                value_type = 'IDENTIFIER'
-            elif value_ctx.EXPRESSION():
-                value_type = 'EXPRESSION'
-            else:
-                value_type = 'UNKNOWN'
-
-            return (value_text, value_type)
-        else:
-            return ('', 'UNKNOWN')
+    def visitDim(self, ctx):
+        if ctx.INT():
+            return ctx.INT().getText()
+        return source(self.expressions[ctx.EXPRESSION()])
 
 
 def map_dtype_to_rust(dtype):
@@ -174,27 +140,9 @@ def root_comp_attr(semantics_data):
     # The attribute the root's shape names, if the semantics has one
     root_assignment = semantics_data['root_assignment']
     comp_attrs = semantics_data['comp_attributes']
-    if root_assignment and comp_attrs:
+    if comp_attrs:
         return extract_comp_attr_from_shape(root_assignment['shape'], comp_attrs)
     return None
-
-
-def shape_to_rust_vec(shape_expr, comp_attr):
-    # Parse shape expression to extract dimensions
-    shape_expr = shape_expr.replace('`', '').replace(' ', '')
-
-    # Replace all @c.attr patterns with variable names
-    if comp_attr:
-        shape_expr = shape_expr.replace(f'@c.{comp_attr}', comp_attr)
-
-    shape_expr = re.sub(r'@c\.(\w+)', r'\1', shape_expr)
-
-    if ',' in shape_expr:
-        dims = [d.strip() for d in shape_expr.split(',')]
-    else:
-        dims = [shape_expr]
-
-    return f'vec![{", ".join(dims)}]'
 
 
 def parse_comp_attr_expression(shape_expr, comp_attr):
@@ -221,7 +169,7 @@ def parse_comp_attr_expression(shape_expr, comp_attr):
 
 def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
     # Generate computational attribute extraction code from ROOT assignment
-    if not comp_attr or not root_assignment:
+    if not comp_attr:
         return ''
 
     comp_attr, factors = parse_comp_attr_expression(root_assignment['shape'], comp_attr)
@@ -251,7 +199,7 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     shape_checks = []
     for i, assignment in enumerate(assignments):
         dtype_rust = map_dtype_to_rust(assignment['dtype'])
-        shape_vec = shape_to_rust_vec(assignment['shape'], comp_attr)
+        shape_vec = f'vec![{", ".join(assignment["dims"])}]'
 
         shape_check = templates.render(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_check.txt',
@@ -321,23 +269,17 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
         )
 
     # Generate shape setting
-    shape_setting = ''
-    if root_assignment:
-        dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
-        shape_vec = shape_to_rust_vec(root_assignment['shape'], comp_attr)
+    dtype_rust = map_dtype_to_rust(root_assignment['dtype'])
+    shape_vec = f'vec![{", ".join(root_assignment["dims"])}]'
 
-        shape_setting = templates.render_lines(
-            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
-            shape_vec=shape_vec,
-            dtype=dtype_rust,
-        )
-
-    # Without a root the function reads no e-graph
-    egraph_param = 'egraph' if root_assignment else '_'
+    shape_setting = templates.render_lines(
+        'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.shape_setting.txt',
+        shape_vec=shape_vec,
+        dtype=dtype_rust,
+    )
 
     return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.set_shapes.txt',
-        egraph_param=egraph_param,
         instruction_name=instruction_name,
         num_assignments=str(num_assignments),
         rhs_size=str(rhs_size),
@@ -347,7 +289,7 @@ def generate_set_shapes_function(instruction_name, semantics_data, rhs_size, tem
 
 
 def generate_ir2isa_rust_functions(metadata, templates):
-    visitor = RustGeneratorVisitor()
+    visitor = RustGeneratorVisitor(metadata.expressions)
     semantics_data = visitor.visit(metadata.semantics_ast)
 
     precond = generate_precond_function(metadata.name, semantics_data, templates)

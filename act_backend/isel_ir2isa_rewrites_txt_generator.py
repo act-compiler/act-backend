@@ -18,7 +18,6 @@ OPERATIONS = {
     'dot': ('dot', 2),
     'exponential': ('exponential', 1),
     'or': ('or', 2),
-    'reduce': ('reduce', 1),
     'reduce_add': ('reduce_?', 1),
     'reshape': ('reshape_?', 1),
     'shift_left': ('shift-left', 2),
@@ -32,7 +31,6 @@ OPERATIONS = {
 class RewriteRuleVisitor(OperandVisitor):
     def __init__(self):
         super().__init__()
-        self.pattern_stack = []
         self.variable_counter = 0
         self.parameter_variables = {}
         self.variable_definitions = {}
@@ -52,9 +50,8 @@ class RewriteRuleVisitor(OperandVisitor):
 
     def visitModule(self, ctx: IDLV2Parser.ModuleContext):
         self.visitChildren(ctx)
-        if self.root_variable and self.root_variable in self.variable_definitions:
-            return self.variable_definitions[self.root_variable]
-        return self.pattern_stack[-1]
+        # The pattern of the one line that carries ROOT
+        return self.variable_definitions[self.root_variable]
 
     def get_parameter_variables(self):
         sorted_params = sorted(self.parameter_variables.items(), key=lambda x: x[0])
@@ -104,7 +101,6 @@ class RewriteRuleVisitor(OperandVisitor):
         )
 
         self.variable_definitions[lhs_name] = pattern
-        self.pattern_stack.append(pattern)
 
         return pattern
 

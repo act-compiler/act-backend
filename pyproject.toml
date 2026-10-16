@@ -13,7 +13,7 @@ authors = [
 ]
 readme = "README.md"
 dependencies = [
-    "taidl @ git+https://github.com/act-compiler/taidl.git@v2.3",
+    "taidl @ git+https://github.com/act-compiler/taidl.git@v2.13",
 ]
 
 [tool.setuptools.packages.find]

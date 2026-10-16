@@ -15,9 +15,7 @@ class OperandVisitor(IDLV2Visitor):
         value_ctx = ctx.value()
         value_text = value_ctx.getText()
 
-        if value_ctx.INT():
-            operand_type = 'INT'
-        elif value_ctx.IDENTIFIER():
+        if value_ctx.IDENTIFIER():
             operand_type = 'IDENTIFIER'
         else:
             operand_type = 'EXPRESSION'

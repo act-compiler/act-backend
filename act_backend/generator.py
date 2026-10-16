@@ -24,13 +24,14 @@ from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
 from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
 from .build_rs_generator import generate_build_rs_file
-from .spec_checks import check_accelerator_name, check_names, check_operands, check_semantics
+from .spec_checks import check_names, check_operands, check_outputs, check_semantics
 
 
 @dataclass
 class InstructionMetadata:
     name: str
     semantics_ast: object
+    expressions: dict
     has_comp_attrs: bool
     rhs_size: int
 
@@ -42,6 +43,7 @@ def get_instruction_metadata(instructions) -> List[InstructionMetadata]:
         metadata = InstructionMetadata(
             name=instruction.instruction,
             semantics_ast=instruction.instr_semantics_ast,
+            expressions=instruction.instr_expression_asts,
             has_comp_attrs=len(instruction.comp_attr) > 0,
             rhs_size=len(instruction.instr_inputs) + 1,
         )
@@ -60,9 +62,6 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
     """
     if base_dir is None:
         base_dir = accelerator.base_dir
-
-    # The backend is written under the accelerator's name
-    check_accelerator_name(accelerator.name)
 
     # An earlier binary and a part of one go first
     final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
@@ -97,6 +96,8 @@ def generate_backend(accelerator: Accelerator, base_dir: str = None, cost: str =
 
     # A spec the checks refuse is refused by name
     check_names(instructions, accelerator.data_model)
+    # Count the outputs first: each is a semantics line
+    check_outputs(instructions)
     check_semantics(instructions)
     check_operands(instructions, accelerator.data_model)
 

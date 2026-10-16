@@ -66,7 +66,8 @@ def test_preconditions(accelerator, templates):
     assert 'let n = lhs_metadata[2].shape[0];' in functions
     # Every value of the semantics is held to its shape and type
     assert functions.count('if lhs_metadata[') == 3
-    for index, shape, dtype in [(1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]:
+    shapes = [(0, 'n * 128', 'U8'), (1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]
+    for index, shape, dtype in shapes:
         value = f'TensorInfo {{ shape: vec![{shape}], dtype: Dtype::{dtype}, is_const: false, }}'
         assert f'if lhs_metadata[{index}] != ({value})' in functions
     # An instruction with no attribute reads none
@@ -78,6 +79,18 @@ def test_address_ranges(accelerator, templates):
     # Range 0 is the output's, range 1 the input's, each its address and its size
     assert 'get_h0() { return {{addr_out, MAKE_SUM(addr_out, n)}}; }' in load_rm
     assert 'get_h1() { return {{addr_in, MAKE_SUM(addr_in, n * 128)}}; }' in load_rm
+
+
+def test_size_written_from_its_tree(templates):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    instr = acc.add_instruction('load', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['(@c.n+1)*2-@c.n/2']]])
+    instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
+    load = squeeze(generate_instruction_class(instr, templates))
+    # Operators spaced, the spec's brackets, attributes by name
+    assert 'MAKE_SUM(addr_in, (n + 1) * 2 - n / 2)' in load
+    assert 'MAKE_SUM(addr_out, 64)' in load
 
 
 def test_storages(accelerator):
