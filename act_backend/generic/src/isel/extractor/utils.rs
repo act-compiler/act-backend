@@ -3,8 +3,7 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::ir::egraph::*;
 
-/// Worklist algorithm for compile-time detection of constants.
-/// Returns the set of constant eclass ids.
+/// The constant e-classes, found by a worklist
 pub fn detect_constants(
   egraph: &EGraph<TensorOp, TensorInfo>,
   inputs: &HashSet<Id>,
@@ -42,10 +41,7 @@ pub fn detect_constants(
   constants
 }
 
-/// Annotate the egraph for the given constant e-classes.
-/// For each eclass in `constants` this sets the `is_const` flag in the analysis
-/// data and inserts a `TensorOp::DetectedConst(repr)` enode where `repr` is a
-/// human-friendly operator-only representative (if available).
+/// Mark each constant class and add its DetectedConst node
 pub fn annotate_constants(egraph: &mut EGraph<TensorOp, TensorInfo>, constants: &HashSet<Id>) {
   for eclass in constants.iter() {
     let mut new_metadata = egraph[*eclass].data.clone();
@@ -65,8 +61,7 @@ pub fn annotate_constants(egraph: &mut EGraph<TensorOp, TensorInfo>, constants: 
   }
 }
 
-// Try to produce a string representation for an eclass whose expression is composed
-// purely of Op* operators. Returns None if no such representative can be found.
+// An e-class's text in Op* operators alone, or None
 fn op_repr(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -94,7 +89,7 @@ fn op_repr_en(
   en: &TensorOp,
   visited: &mut HashSet<Id>,
 ) -> Option<String> {
-  // Only accept operator-only enodes (Op*). Reject ISA instructions, Var, DetectedConst, etc.
+  // Operators alone (Op*): no instruction, Var or DetectedConst
   let label = match en {
     TensorOp::OpAdd(_)
     | TensorOp::OpBitcvt(_)

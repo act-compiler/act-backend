@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
-# Pick the cuda13 image and pass the GPU on a GPU host
+# On a GPU host, the cuda13 image and the GPU
 VARIANT=""
 GPU_FLAGS=()
 if nvidia-smi >/dev/null 2>&1 &&

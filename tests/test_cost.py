@@ -25,7 +25,7 @@ def build_library(kind, source, out_dir):
         subprocess.run(['ar', 'rcs', library, object_file], check=True)
     else:
         library = os.path.join(out_dir, 'libmodel.so')
-        # A build system gives a shared library a soname, cc alone none
+        # A build system gives a soname, cc alone none
         soname = ['-Wl,-soname,libmodel.so'] if kind == 'soname' else []
         subprocess.run(['cc', '-shared', object_file, '-o', library, *soname], check=True)
     os.remove(object_file)
@@ -42,7 +42,7 @@ def work_dir(request, tmp_path_factory):
         with_cost = functools.partial(generate_backend, cost=library)
         patch.setattr(act_backend, 'generate_backend', with_cost)
         generate_oracle_and_backend(EXAMPLE_DIR, work_dir)
-    # An object file or a static library is inside the binary
+    # An object or static library is inside the binary
     if request.param in ('object', 'static'):
         os.remove(library)
     return work_dir
@@ -62,7 +62,7 @@ def compile_attention(work_dir, tmp_path, mode=None):
 def test_model_ranks_the_candidates(work_dir, tmp_path):
     run, output_path = compile_attention(work_dir, tmp_path)
     assert run.returncode == 0, run.stderr
-    # The default settles on nine calls, the test model on more
+    # Nine calls by default, more by the test model
     assert sum(instruction_calls(output_path).values()) > 9
 
 
@@ -94,7 +94,7 @@ def test_crate_holds_no_default_model(work_dir):
 
 @pytest.mark.parametrize('work_dir', ['object'], indirect=True)
 def test_backend_relinks_when_the_library_changes(work_dir, tmp_path):
-    # Another model where the first one lay, and the crate built again by hand
+    # Another model in its place, the crate rebuilt by hand
     build_library('object', os.path.join(COST_DIR, 'fail.c'), work_dir)
     crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
     subprocess.run(['cargo', 'build', '--release', '--locked'], cwd=crate, check=True)

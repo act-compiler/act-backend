@@ -7,7 +7,7 @@ unsafe extern "C" {
   fn act_cost(asm_path: *const c_char, cost: *mut c_double) -> c_int;
 }
 
-/// The cost of a candidate, or why the cost model gave none
+/// A candidate's cost, or why the cost model gave none
 pub fn c_bridge(asm_path: &Path) -> Result<f64, String> {
   let path = CString::new(asm_path.to_str().unwrap()).unwrap();
   let mut cost: c_double = 0.0;

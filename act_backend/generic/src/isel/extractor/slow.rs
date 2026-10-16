@@ -9,9 +9,7 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Phase 1 Module 3: Graph Extractor, which selects instructions from the e-graph.
-/// Slow exponential-time extraction algorithm. Computes all pii graphs with up to `limit` e-nodes
-/// by obtaining full extraction trees and collapsing them with GVN.
+/// Slow extraction: every pii graph of up to `limit` e-nodes
 pub fn extract_slow(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
@@ -49,8 +47,7 @@ struct Extraction {
   parent: HashMap<usize, Option<usize>>,
 }
 
-/// Pre-order traversal algorithm for extraction.
-/// Returns a list of extractions (set of enodes).
+/// Pre-order extraction: each extraction, a set of enodes
 fn get_extraction_trees(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -116,7 +113,7 @@ fn get_extraction_trees(
   trees
 }
 
-/// Given a preorder extraction tree, recover the parent/child edges between nodes.
+/// The parent and child edges of a preorder extraction tree
 fn get_edges(tree: &[TensorOp]) -> (HashMap<usize, Vec<usize>>, HashMap<usize, Option<usize>>) {
   let mut children = HashMap::new();
   let mut parent = HashMap::new();
@@ -221,7 +218,7 @@ fn extraction_to_piigraph(
 ) -> PiiGraph {
   let mut pii = PiiGraph::default();
 
-  // Build a postorder traversal starting from root index 0 using the extraction's children map.
+  // A postorder from root 0, by the extraction's children map
   let mut postorder: Vec<usize> = Vec::new();
   let mut visited: HashSet<usize> = HashSet::new();
 

@@ -15,13 +15,13 @@ def test_wheel_holds_the_package_alone():
 
 
 def test_wheel_builds_with_the_least_setuptools(tmp_path):
-    # The floor the build declares, as the one version pip may take
+    # The declared floor, the one version pip may take
     with open(os.path.join(ROOT, 'pyproject.toml'), 'rb') as f:
         (floor,) = tomllib.load(f)['build-system']['requires']
     constraint = tmp_path / 'build.txt'
     constraint.write_text(floor.replace('>=', '==') + '\n')
 
-    # A copy of what the wheel is built from, so the tree keeps no build files
+    # The wheel's sources copied: the tree gets no build files
     source = tmp_path / 'source'
     source.mkdir()
     for name in ['pyproject.toml', 'README.md', 'LICENSE']:

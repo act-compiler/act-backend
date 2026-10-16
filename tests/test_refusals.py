@@ -61,7 +61,7 @@ def with_semantics(lines, inputs=2, attributes=()):
     return acc
 
 
-# The two inputs of gemm, and its result by an operation
+# gemm's two inputs, and its result by an operation
 IN0 = '%In0 = bf16[64,64] parameter(0)'
 IN1 = '%In1 = bf16[64,64] parameter(1)'
 
@@ -206,7 +206,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
         with open(os.path.join(generic, *path)) as f:
             return f.read()
 
-    # Each word the e-graph reads an operator by, and each variant beside the instructions'
+    # The e-graph's operator words, and its own variants
     egraph = read('src', 'ir', 'egraph.rs')
     assert set(re.findall(r'== "([a-z-]+)"', egraph)) == spec_checks.EGRAPH_WORDS
     variants = egraph[egraph.index('pub enum TensorOp') : egraph.index('impl TensorOp')]
@@ -228,7 +228,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     types = re.findall(r'^(?:class|struct) (\w+)|^using (\w+) =', '\n'.join(sources), re.MULTILINE)
     assert {a or b for a, b in types} == spec_checks.ALLOCATOR_TYPES
 
-    # Each name the sources generated for load_rm spell, its own apart, with its macros' bodies
+    # Names load_rm's sources spell, macro bodies too, its own apart
     templates = get_backend_template_loader()
     load_rm = accelerator.instructions[0]
     own = {'LoadRm', 'n', 'n_str', 'addr_in', 'addr_out'}
@@ -290,7 +290,7 @@ def line_of(word):
 def test_operation_word_handled_or_refused(word):
     lines = spec_checks.SemanticsChecker('gemm')
     semantics = with_semantics([IN0, line_of(word)], 1).instructions[0].instr_semantics_ast
-    # Handled: a line that gives the word the values it takes passes
+    # Handled: a line giving the word its values passes
     if word in OPERATIONS:
         lines.visit(semantics)
     else:
@@ -306,7 +306,7 @@ def test_operations_are_the_egraphs_own():
     generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
     with open(os.path.join(generic, 'src', 'ir', 'egraph.rs')) as f:
         egraph = f.read()
-    # Each operator's word, whether it carries an attribute, and its number of children
+    # Each operator's word, whether it carries an attribute, its arity
     arms = re.findall(
         r"op(\.split\('_'\)\.next\(\)\.unwrap\(\))? == \"([a-z-]+)\"\s+&& <\[Id; (\d)\]", egraph
     )
@@ -353,7 +353,7 @@ def test_concatenate_of_three_refused(tmp_path):
 @pytest.mark.parametrize(
     'lines, inputs, value',
     [
-        # An input no operation reads, and a line whose value none reads
+        # An input no operation reads, and a value none reads
         ([IN0, IN1, '%In2 = bf16[64,64] parameter(2)', result(DOT)], 3, '%In2'),
         ([IN0, IN1, '%a = bf16[64,64] exponential(%In0)', result(DOT)], 2, '%a'),
     ],
@@ -507,7 +507,7 @@ def test_division_by_zero_in_a_size_refused(size, tmp_path):
 def test_sizes_the_allocator_reads():
     acc = loader()
     (instruction,) = acc.instructions
-    # An integer, an attribute, and their products, quotients, sums and differences
+    # Integers, attributes, and their products, quotients, sums, differences
     for size in [64, '64', '@c.n', '@c.n * 128', '(@c.n + 1) * 2 - @c.n / 2']:
         instruction.set_outputs([['d1', ['@a.addr_out'], [size]]])
         spec_checks.check_operands(acc.instructions, acc.data_model)

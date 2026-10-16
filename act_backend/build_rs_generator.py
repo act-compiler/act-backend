@@ -15,7 +15,7 @@ def generate_cost_model(cost, templates):
         return templates.render('build.rs.COST_MODEL.default.txt')
 
     lines = [templates.render('build.rs.COST_MODEL.library.txt', library=rust_string(cost))]
-    # A shared library is found again at each run, in its directory
+    # A shared library's directory goes on the run path
     if cost.endswith('.so'):
         directory = rust_string(os.path.dirname(cost))
         lines.append(templates.render('build.rs.COST_MODEL.run_path.txt', directory=directory))

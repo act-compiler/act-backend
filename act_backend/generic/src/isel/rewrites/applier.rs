@@ -59,7 +59,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
   })
 }
 
-// The three functions a rule is applied through
+// The three functions a rewrite is applied through
 type PrecondFn = fn(&EGraph<TensorOp, TensorInfo>, &[Id]) -> bool;
 type MetadataFn =
   fn(&EGraph<TensorOp, TensorInfo>, &[Id], &[Option<TensorOp>]) -> Vec<Option<String>>;
@@ -129,8 +129,7 @@ impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
   }
 }
 
-/// Creates the enodes for the RHS of a rewrite.
-/// Returns the Id of the RHS root.
+/// Add a rewrite's RHS enodes; return its root's Id
 fn apply_pat(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   rhs_pat: &[ENodeOrVar<TensorOp>],
@@ -156,8 +155,7 @@ fn apply_pat(
   *rhs_eclasses.last().unwrap()
 }
 
-/// Return all sequences of eclasses and enodes corresponding to a pattern match at eclass.
-/// Each sequence will be in post-order.
+/// Each pattern match at eclass, its nodes in post-order
 fn find_matches(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -175,7 +173,7 @@ fn find_matches(
     }
     ENodeOrVar::ENode(e) => {
       for en in egraph[eclass].nodes.iter() {
-        // only consider enodes in root eclass of the same variant as e
+        // Only the root class's enodes of e's variant
         if e.discriminant() != en.discriminant() {
           continue;
         }

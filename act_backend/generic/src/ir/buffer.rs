@@ -17,8 +17,7 @@ impl std::fmt::Display for Buffer {
   }
 }
 
-// Return buffer assignment for an instruction enode.
-// Returns Some(vec![out_buf, in_buf1, in_buf2, ...]) or None if not applicable.
+// An instruction's buffers, Some(vec![out, in1, in2, ...]), else None
 pub fn buffer_assignment(en: &TensorOp) -> Option<Vec<Buffer>> {
   match en {
     // {{ISA_BUFFER_ASSIGNMENT_MATCH_ARMS}}

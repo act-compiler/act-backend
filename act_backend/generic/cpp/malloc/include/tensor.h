@@ -32,7 +32,7 @@ public:
     offsets.reserve(storage->get_addressing_dims());
     for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
       sizes.push_back(shape[i]);
-      // Offset upper bound should be capacity - size to ensure the tensor fits.
+      // The tensor fits: offset at most capacity - size
       int64 cap = storage->get_capacity(i)->Max();
       int64 max_off = cap - sizes[i];
       if (max_off < 0)

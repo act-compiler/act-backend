@@ -66,8 +66,7 @@ int64 esun(Instruction *instr, const std::string &d, EsunCache &esun_cache) {
       esun_x_i = esun(rhs_instrs[i], d, esun_cache);
     } else {
       esun_x_i = 0;
-      // default if rhs operand's instruction is nullptr
-      // (i.e., input or constant leaf)
+      // An input or constant leaf has no instruction
     }
     int64 tau_x_i = esun_x_i + mem_xs_sum - mem_xs[i];
     tau_x_min = std::min(tau_x_min, tau_x_i);

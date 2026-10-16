@@ -49,7 +49,7 @@ pub fn parse_line(line: &str) -> Option<(String, String, String, String, String,
   let mut parts = line.splitn(2, '=');
   let mut tsymbol = parts.next()?.trim().to_string();
 
-  // Check if this is a ROOT operation and trim the prefix
+  // A ROOT line, its prefix trimmed
   let is_root = tsymbol.starts_with("ROOT ");
   if is_root {
     tsymbol = tsymbol.replacen("ROOT ", "", 1).trim().to_string();
@@ -57,14 +57,14 @@ pub fn parse_line(line: &str) -> Option<(String, String, String, String, String,
 
   let rest = parts.next()?.trim();
 
-  // 2. rest starts with type + shape + operator(operands) + rest
+  // 2. rest: type, shape, operator(operands), then the rest
 
   // Find the first space to get type+shape
   let first_space = rest.find(' ')?;
   let (type_shape, after_type_shape) = rest.split_at(first_space);
   let after_type_shape = after_type_shape.trim_start();
 
-  // 3. Extract type, shape, and tile annotation from type_shape (e.g. u64[3,8]{;T(16,4)})
+  // 3. Type, shape and tile, as in u64[3,8]{;T(16,4)}
   let (ttype, tshape, ttile) = parse_type_shape(type_shape);
 
   // 4. Extract operator name before '('
@@ -259,12 +259,10 @@ pub fn parse_hlo_expr(
     }
 
     "slice" => {
-      // slice(Arg_0.0), slice={[0:1:1], [0:8:1]}
-      // Operands before comma are source, after comma look for slice spec in rest
+      // slice(source), slice={[0:1:1], [0:8:1]}: the slices in the rest
       let source = toperands.trim().to_string();
 
-      // Parse slices from rest string like "slice={[0:1:1], [0:8:1]}"
-      // We'll parse what's inside {...}
+      // The text inside the braces, split at commas
       let slices = if let Some(start) = trest.find('{') {
         if let Some(end) = trest.find('}') {
           let slice_str = &trest[start + 1..end];
@@ -645,13 +643,12 @@ pub fn parse_region(
 
   let first_line = lines[start_idx].trim();
 
-  // Check if this is a region definition (starts with region name and has opening brace)
+  // A region opens with its name and a brace
   let brace_pos = first_line.find('{')?;
 
   let region_name_with_signature = first_line[..brace_pos].trim();
 
-  // Extract just the region name (before the function signature)
-  // Format: %region_name (params) -> return_type
+  // The region's name, before its signature: %name (params) -> type
   let region_name = if let Some(paren_pos) = region_name_with_signature.find('(') {
     region_name_with_signature[..paren_pos].trim().to_string()
   } else {
@@ -659,9 +656,9 @@ pub fn parse_region(
   };
   let mut instructions = Vec::new();
   let mut idx = start_idx + 1;
-  let mut brace_count = 1; // We already found the opening brace
+  let mut brace_count = 1; // The opening brace, found above
 
-  // Parse until we find the matching closing brace
+  // Parse up to the matching closing brace
   while idx < lines.len() && brace_count > 0 {
     let line = lines[idx].trim();
 
@@ -674,7 +671,7 @@ pub fn parse_region(
       }
     }
 
-    // If this line contains an instruction (not just braces), parse it
+    // Parse a line that holds more than braces
     if !line.is_empty()
       && !line
         .chars()

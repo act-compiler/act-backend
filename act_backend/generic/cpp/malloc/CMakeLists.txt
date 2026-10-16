@@ -37,7 +37,7 @@ target_link_libraries(malloc_static PUBLIC ortools::ortools)
 target_link_libraries(malloc_static PUBLIC nlohmann_json)
 target_include_directories(malloc_static PRIVATE include)
 
-# The default cost model, in a backend that names no other
+# The default cost model, where no other is named
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../cost/count.cc")
   add_library(cost_static STATIC ../cost/count.cc)
 endif()

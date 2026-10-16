@@ -87,8 +87,7 @@ impl Language for TensorOp {
     std::mem::discriminant(self)
   }
 
-  // All variants have a fixed number of children, so if self and other are the same variant,
-  // then they must have the same arity.
+  // Each variant has a fixed arity, so its discriminant decides
   fn matches(&self, other: &Self) -> bool {
     std::mem::discriminant(self) == std::mem::discriminant(other)
   }
@@ -151,7 +150,7 @@ impl Language for TensorOp {
 impl FromOp for TensorOp {
   type Error = FromOpError;
 
-  // The first arm whose word and number of children match wins
+  // The first arm matching word and child count wins
   fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
     match op {
       // {{ISA_FROM_OP_MATCH_ARMS}}

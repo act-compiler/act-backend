@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 fn main() {
-  // Rerun when the script, the allocator's sources or the cost model change
+  // Rerun when the script, allocator or cost model changes
   println!("cargo:rerun-if-changed=build.rs");
   println!("cargo:rerun-if-changed=cpp/malloc/CMakeLists.txt");
   println!("cargo:rerun-if-changed=cpp/malloc/include");
@@ -48,7 +48,7 @@ fn main() {
   // The JSON headers, which the allocator's build reads from NLOHMANN_JSON_DIR
   println!("cargo:rerun-if-env-changed=NLOHMANN_JSON_DIR");
 
-  // Make cpp/malloc/build anew, run `cmake ..` inside it, then `make -j4`
+  // A fresh cpp/malloc/build, then `cmake ..` and `make -j4` there
   let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
   let cpp_build_dir = manifest.join("cpp").join("malloc").join("build");
   if cpp_build_dir.exists() {
@@ -77,6 +77,6 @@ fn main() {
   println!("cargo:rustc-link-search=native={}", cpp_build_dir.display());
   println!("cargo:rustc-link-lib=static=malloc_static");
 
-  // The cost model: the default, or the library the backend names
+  // The cost model: the default or the named library
   // {{COST_MODEL}}
 }

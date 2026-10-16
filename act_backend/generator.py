@@ -1,9 +1,4 @@
-"""Backend code generator for ACT compiler
-
-This module provides the main interface for generating backend code.
-It coordinates all the individual file generators to produce a complete
-ACT backend implementation.
-"""
+"""Generate an accelerator's ACT backend, each source by its own generator"""
 
 import os
 import shutil
@@ -44,7 +39,7 @@ class InstructionMetadata:
 
 
 def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
-    """Extract instruction metadata needed for rewrite rule generation"""
+    """Extract instruction metadata needed to generate the rewrites"""
     metadata_list = []
     for instruction in instructions:
         metadata = InstructionMetadata(
@@ -61,13 +56,10 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
 def generate_backend(
     accelerator: Accelerator, base_dir: str | None = None, cost: str | None = None
 ) -> None:
-    """
-    Generate complete ACT backend code for an accelerator.
+    """Generate the ACT backend of a TAIDL accelerator and build its binary
 
-    Args:
-        accelerator: TAIDL Accelerator object
-        base_dir: Base directory of the project. Defaults to accelerator.base_dir.
-        cost: Library that defines the cost function act_cost. Defaults to the instruction count.
+    base_dir defaults to accelerator.base_dir; cost names a library that defines the cost
+    function act_cost, the instruction count by default.
     """
     if base_dir is None:
         base_dir = accelerator.base_dir
@@ -90,7 +82,7 @@ def generate_backend(
         # The build passes the path on as one line
         if '\n' in cost:
             raise ValueError(f'Cost library {cost!r} has a line break in its path')
-        # A run path, which finds a shared library again, is split at colons
+        # A run path is split at colons
         if cost.endswith('.so') and ':' in os.path.dirname(cost):
             raise ValueError(
                 f'Cost library {cost} is a shared library under a directory with a colon'
@@ -98,7 +90,7 @@ def generate_backend(
         if not os.path.isfile(cost):
             raise FileNotFoundError(f'Cost library {cost} does not exist')
 
-    # An instruction with no semantics is never selected, so the backend leaves it out
+    # An instruction with no semantics is never selected: left out
     instructions = [
         instruction for instruction in accelerator.instructions if instruction.instr_semantics_ast
     ]
@@ -120,7 +112,7 @@ def generate_backend(
     generic_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'generic')
     backend_gen_dir = os.path.join(target_dir, 'backend')
 
-    # Copy generic backend structure, without a build directory left in it
+    # Copy the generic backend, with no build directory left
     if os.path.exists(backend_gen_dir):
         shutil.rmtree(backend_gen_dir)
     shutil.copytree(generic_dir, backend_gen_dir, ignore=shutil.ignore_patterns('target', 'build'))
@@ -129,7 +121,7 @@ def generate_backend(
 
     instruction_metadata = get_instruction_metadata(instructions)
 
-    # Generate rewrite rules
+    # Generate the rewrites
     generate_ir2isa_rewrites_txt_file(backend_gen_dir, instruction_metadata)
     print('Generated ir2isa_rewrites.txt')
 

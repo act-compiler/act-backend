@@ -379,11 +379,7 @@ fn main() {
       .run(&rules.clone())
   };
 
-  // Logic based on the stop reason:
-  // 1. TimeLimit: No more extraction, just return.
-  // 2. NodeLimit, Saturated: Run extraction until time limit is hit.
-  // 3. IterationLimit: Should not have happened. Recheck if there is a default limit.
-  // 4. Other: Should not have happened. Requires investigation.
+  // What follows the search, by its stop reason
 
   match runner.stop_reason.as_ref().unwrap() {
     StopReason::TimeLimit(_) => {

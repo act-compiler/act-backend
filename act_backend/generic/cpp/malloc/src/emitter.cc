@@ -81,9 +81,7 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   std::string indent3 = indent2 + indent1;
   std::string indent4 = indent3 + indent1;
 
-  // Process hlo_name and pii_number from outpath.
-  // Accept any path with a filename stem; use parent directory as hlo_name
-  // when available, otherwise fall back to metadata.module_name.
+  // hlo_name and pii_number from outpath's directory and stem
   std::string path_str(outpath);
   size_t lslash = path_str.find_last_of('/');
   size_t fname_start = (lslash == std::string::npos) ? 0 : lslash + 1;

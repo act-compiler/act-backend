@@ -74,13 +74,11 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
   }
   all_vars.insert(all_vars.end(), new_vars.begin(), new_vars.end());
 
-  // Heuristic: order variables by domain width (smallest first) to prioritize
-  // tightly constrained variables first
+  // Narrowest domains first: the tightest variables lead
   std::vector<operations_research::IntVar *> ordered_vars = all_vars;
   std::sort(ordered_vars.begin(), ordered_vars.end(),
             [](operations_research::IntVar *a, operations_research::IntVar *b) {
-              // domain width may overflow if computed as unsigned; use 128-bit
-              // safe path
+              // By domain width, then by lower bound
               int64 w_a = a->Max() - a->Min();
               int64 w_b = b->Max() - b->Min();
               if (w_a != w_b)
@@ -93,7 +91,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path) {
       solver.MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
                        operations_research::Solver::ASSIGN_MIN_VALUE);
 
-  // Add a conservative time limit (0.5 seconds) to prevent long hangs
+  // A 0.5 s time limit against long hangs
   auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(500));
   solver.NewSearch(decision_builder, time_limit);
   if (solver.NextSolution()) {

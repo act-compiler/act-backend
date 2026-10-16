@@ -8,9 +8,7 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Phase 1 Module 3: Graph Extractor, which selects instructions from the e-graph.
-/// Fast linear-time extraction algorithm. Computes one pii graph by visiting each e-class (at most
-/// once) and adds selected enodes to a `selected` HashMap.
+/// Fast extraction: one pii graph, visiting each e-class once
 pub fn extract_fast(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
@@ -39,8 +37,7 @@ pub fn extract_fast(
   }
 }
 
-/// Pre-order traversal algorithm for extraction.
-/// Returns true if there exists an extraction rooted at eclass.
+/// Pre-order extraction: whether one is rooted at eclass
 fn get_pii_graph(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -56,8 +53,7 @@ fn get_pii_graph(
 
   for en in &egraph[eclass].nodes {
     if let Some(bufs) = get_bufs(en) {
-      // memoization case: previously selected enode
-      // This is where we lose completeness for fast extraction.
+      // memoization case: a selected enode, at a cost to completeness
       if selected.get(en).is_some() && target_buf == bufs[0] {
         return true;
       }
@@ -65,9 +61,7 @@ fn get_pii_graph(
   }
 
   'en_loop: for en in &egraph[eclass].nodes {
-    // snapshot selected so we can rollback any provisional selections if this enode
-    // attempt fails (backtracking). This prevents nodes selected while exploring
-    // a branch that later fails from remaining in `selected`.
+    // A snapshot to roll back to if this enode fails
     let snapshot = selected.clone();
     // base case: input enode -- TODO: this assumes only 1 enode in the eclass
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
@@ -113,8 +107,7 @@ fn get_pii_graph(
   false
 }
 
-/// Convert a HashMap of selected e-nodes into a pii graph.
-/// Algorithm builds the pii graph bottom-up in topological order.
+/// The selected e-nodes as a pii graph, built bottom-up
 fn select2pii_graph(
   selected: &HashMap<TensorOp, (Id, TensorInfo)>,
   hbm_offsets: &[(Option<Id>, i32)],
@@ -169,8 +162,7 @@ fn select2pii_graph(
       }
     }
     if !progress {
-      // This should not happen: `selected` is expected to be topologically closed
-      // (all children of selected nodes are also selected). Treat this as a bug.
+      // No node left has all its children added
       debug_assert!(false, "select2pii_graph: possible infinite loop");
       break;
     }

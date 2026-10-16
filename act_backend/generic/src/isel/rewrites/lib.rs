@@ -4,7 +4,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::isel::rewrites::applier::get_applier;
 
 pub fn get_rewrites() -> Vec<Rewrite<TensorOp, TensorInfo>> {
-  // The rules are read into the binary when it is built
+  // The rewrites are compiled into the binary
   let ir2ir = include_str!("ir2ir_rewrites.txt");
   let ir2ir: Vec<&str> = ir2ir.split('\n').filter(|s| !s.is_empty()).collect();
 

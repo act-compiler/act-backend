@@ -15,7 +15,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
-# Operators of the e-graph, by the word a rule spells each with
+# The e-graph's operators, by their rule words
 EGRAPH_WORDS = {
     'add',
     'bitcvt',
@@ -38,7 +38,7 @@ EGRAPH_WORDS = {
     'transpose',
 }
 
-# Variants the e-graph holds beside the instructions', and the name Rust keeps for the type
+# The e-graph's own variants, and Rust's name for the type
 EGRAPH_VARIANTS = {
     'OpAdd',
     'OpBitcvt',
@@ -82,7 +82,7 @@ ALLOCATOR_TYPES = {
     'EsunCache',
 }
 
-# Words the allocator reads as a declaration where a line's instruction stands
+# Words the allocator reads as a declaration, not an instruction
 DECLARATION_WORDS = ('Var', 'DCC')
 
 # Buffers the selector holds beside the data models'
@@ -229,7 +229,7 @@ CPP_KEYWORDS = {
     'xor_eq',
 }
 
-# Names the generated class of the allocator spells beside an attribute
+# Names the allocator's generated class spells beside an attribute
 ADDRESS_ATTRIBUTE_NAMES = {
     'Constraints',
     'INT64_MAX',
@@ -256,7 +256,7 @@ ADDRESS_ATTRIBUTE_NAMES = {
     'y',
 }
 
-# Those, and the names the parser's case and the rule functions spell beside a computational one
+# Plus the parser's and rules' names beside a computational one
 COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'attr_str',
     'end',
@@ -303,7 +303,7 @@ def check_instruction_names(instructions):
                 f"Instruction name '{name}' starts with Var or DCC, "
                 'which the allocator reads as a declaration'
             )
-        # The variant of the e-graph and the class of the allocator
+        # The e-graph's variant and the allocator's class
         generated = to_camel_case(name)
         if not generated[:1].isalpha():
             raise ValueError(
@@ -421,7 +421,7 @@ class SemanticsChecker(OperandVisitor):
                     f"{self.name}: its semantics uses the operation '{word}', "
                     'which the selector does not have'
                 )
-            # The operands that name a value are what the operator takes
+            # The operator takes the operands that name a value
             named = [text for text, kind in operands if kind == 'VALUE']
             _, count = OPERATIONS[word]
             if len(named) != count:
@@ -484,7 +484,7 @@ def check_semantics(instructions):
         name = instruction.instruction
         checker = SemanticsChecker(name)
         checker.visit(instruction.instr_semantics_ast)
-        # The rule's pattern is the last line's, and holds what that line reads
+        # The pattern is the last line's, holding what it reads
         for value in checker.values[:-1]:
             if value not in checker.read:
                 raise ValueError(
@@ -492,7 +492,7 @@ def check_semantics(instructions):
                 )
             if value in checker.roots:
                 raise ValueError(f"{name}: its semantics marks '{value}' ROOT above its last line")
-        # The rule is matched over the inputs, each read by one parameter
+        # The rewrite matches over the inputs, one parameter each
         if len(checker.inputs) != len(instruction.instr_inputs):
             raise ValueError(
                 f'{name}: its semantics reads {len(checker.inputs)} inputs by parameter, '

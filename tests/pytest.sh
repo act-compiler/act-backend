@@ -9,7 +9,7 @@ if [ $# -gt 0 ]; then
   ARGS=$(printf '%q ' "$@")
 fi
 
-# The wheel, built anew: a stale build/ adds files the package has dropped
+# The wheel, built anew: a stale build/ keeps dropped files
 ./docker/exec.sh \
   "rm -rf build && pip install . -q && \
   pip install -r tests/requirements.txt -q && \
