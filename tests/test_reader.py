@@ -16,6 +16,8 @@ def region(name, operation):
 
 
 A = '%a = bf16[64,64] parameter(0)'
+# A kernel of one bf16[64,60] input and output
+TILED_HEADER = 'HloModule tiled, entry_computation_layout={(bf16[64,60]{1,0})->bf16[64,60]{1,0}}'
 ZERO = '%z = bf16[] constant(0)'
 
 
@@ -111,6 +113,24 @@ ZERO = '%z = bf16[] constant(0)'
             kernel('%a = bf16[64,64]{1,0:T(8)} parameter(0)', 'ROOT %c = bf16[64,64] add(%a, %a)'),
             'the tile (8) of the shape [64,64] does not give one size per dimension',
         ),
+        (
+            kernel(
+                '%a = bf16[64,60]{1,0:T(32,16)} parameter(0)',
+                'ROOT %c = bf16[64,60] add(%a, %a)',
+                header=TILED_HEADER,
+            ),
+            'the tile (32,16) does not divide the shape [64,60]',
+        ),
+        (
+            kernel(
+                '%a = bf16[64,64]{1,0:T(32,16)(2,1)} parameter(0)',
+                'ROOT %c = bf16[64,64] add(%a, %a)',
+            ),
+            (
+                'the layout {1,0:T(32,16)(2,1)} of the shape [64,64] gives a second tile, '
+                'which the backend does not support'
+            ),
+        ),
         ('', 'the kernel is empty'),
     ],
     ids=[
@@ -131,6 +151,8 @@ ZERO = '%z = bf16[] constant(0)'
         'parameter_root',
         'one_value',
         'tile',
+        'undivided_tile',
+        'second_tile',
         'empty',
     ],
 )

@@ -88,6 +88,7 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
       tile, shape
     ));
   }
+  whole_tiles(&shape_vec, &tile_vec, shape, tile)?;
 
   let divided: Vec<String> = shape_vec
     .iter()
@@ -106,6 +107,17 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
   );
 
   Ok(result)
+}
+
+// Whether each dimension holds whole tiles, or why not
+fn whole_tiles(dims: &[i32], tiles: &[i32], shape: &str, tile: &str) -> Result<(), String> {
+  if dims.iter().zip(tiles).any(|(dim, size)| dim % size != 0) {
+    return Err(format!(
+      "the tile ({}) does not divide the shape [{}]",
+      tile, shape
+    ));
+  }
+  Ok(())
 }
 
 // One size of a tile, or why it is none
@@ -137,6 +149,7 @@ pub fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
       ttile, tshape
     ));
   }
+  whole_tiles(&dims, &tiles, tshape, ttile)?;
 
   let mut result = Vec::new();
   for (d, t) in dims.iter().zip(tiles.iter()) {

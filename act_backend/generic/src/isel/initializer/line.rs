@@ -55,6 +55,13 @@ pub fn parse_type_shape(type_shape: &str) -> Result<(String, String, String), St
         if let Some(start_paren) = tile_str.find('(') {
           if let Some(end_paren) = tile_str.find(')') {
             ttile = tile_str[start_paren + 1..end_paren].to_string();
+            // A second tile, as in T(32,16)(2,1)
+            if tile_str[end_paren + 1..].starts_with('(') {
+              return Err(format!(
+                "the layout {{{}}} of the shape [{}] gives a second tile, which the backend does not support",
+                layout, tshape
+              ));
+            }
           } else {
             // No closing ')'
             return Err(malformed());
