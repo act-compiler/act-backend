@@ -342,6 +342,62 @@ def test_constant_written_true_is_read(work_dir, tmp_path):
     assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
 
 
+# A kernel whose product takes the operands OPERANDS
+PRODUCT = """HloModule product, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  ROOT %c = bf16[64,64] dot(OPERANDS), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+"""
+
+
+@pytest.mark.parametrize('operands', ['%a', '%a, %b, %a'])
+def test_binary_operation_of_other_than_two_operands_refused(work_dir, tmp_path, operands):
+    kernel = tmp_path / 'kernel.hlo'
+    kernel.write_text(PRODUCT.replace('OPERANDS', operands))
+    backend = os.path.join(work_dir, 'backends', 'mini_trn')
+    output, log = str(tmp_path / 'kernel.py'), str(tmp_path / 'log')
+    arguments = ['--input', str(kernel), '--output', output, '--log', log]
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
+    assert run.returncode != 0
+    count = len(operands.split(','))
+    assert f'dot expects exactly 2 operands, got {count}: {operands}' in run.stderr
+
+
+# A library caller handing the allocator one candidate's files
+ALLOCATE = """use std::path::Path;
+
+fn main() {
+  let paths: Vec<String> = std::env::args().skip(1).collect();
+  let path = |k: usize| Path::new(&paths[k]).to_path_buf();
+  let _ = backend::malloc::cpp_bridge(&path(0), &path(1), &path(2));
+}
+"""
+
+
+def test_metadata_that_does_not_parse_ends_the_compile(work_dir, tmp_path):
+    compiled_calls(work_dir, tmp_path, PRODUCT.replace('OPERANDS', '%a, %b'))
+    # A candidate the allocator placed, beside a broken metadata.json
+    candidates = sorted((tmp_path / 'log').glob('*.pii'))
+    pii = next(path for path in candidates if path.with_suffix('.py').exists())
+    broken = tmp_path / 'broken.json'
+    broken.write_text('{"module_name": ')
+    crate = os.path.join(work_dir, 'targets', 'mini_trn', 'backend')
+    os.makedirs(os.path.join(crate, 'examples'), exist_ok=True)
+    with open(os.path.join(crate, 'examples', 'allocate.rs'), 'w') as f:
+        f.write(ALLOCATE)
+    build = ['cargo', 'build', '--release', '--locked', '--example', 'allocate']
+    subprocess.run(build, cwd=crate, check=True, capture_output=True)
+    paths = [str(pii), str(broken), str(tmp_path / 'kernel.py')]
+    command = ['cargo', 'run', '-q', '--release', '--locked', '--example', 'allocate', '--', *paths]
+    run = subprocess.run(command, cwd=crate, capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: failed to parse metadata.json: ')
+    assert run.stderr.count('\n') == 1
+
+
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
     allocator = os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'cpp', 'malloc')
     with open(os.path.join(allocator, 'src', 'globals.cc')) as f:

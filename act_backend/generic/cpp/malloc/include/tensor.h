@@ -67,10 +67,7 @@ public:
   }
 
   void set_defined_by(Instruction *instr) {
-    if (defined_by != nullptr) {
-      std::cerr << "Warning: Tensor " << name << " is already defined by another instruction."
-                << std::endl;
-    }
+    assert(defined_by == nullptr && "a tensor is defined by one instruction");
     defined_by = instr;
   }
 
