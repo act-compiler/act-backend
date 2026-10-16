@@ -12,7 +12,7 @@ if nvidia-smi >/dev/null 2>&1 &&
   VARIANT="-cuda13"
   GPU_FLAGS=(--gpus all)
 fi
-# --cpu or --cuda13 overrides the host's pick
+# --cpu or --cuda13 overrides the host's default
 case "${1:-}" in
   --cpu)
     VARIANT=""
