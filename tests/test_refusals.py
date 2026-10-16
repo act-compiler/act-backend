@@ -525,7 +525,7 @@ def test_input_marked_in_place_refused(tmp_path):
     spec_checks.check_inplace(acc.instructions)
     gemm.set_inplace([False, True])
     message = refusal(acc, tmp_path)
-    assert message == 'gemm: its input 1 is marked in place, which the backend does not read'
+    assert message == 'gemm: its input 1 is marked in place, which the backend does not support'
 
 
 def test_constraint_refused(tmp_path):
@@ -536,7 +536,7 @@ def test_constraint_refused(tmp_path):
     spec_checks.check_constraints(acc.instructions)
     gemm.add_constraints(['@a.addr_1 <= @a.addr_2'])
     assert refusal(acc, tmp_path) == (
-        "gemm: it declares the constraint '@a.addr_1 <= @a.addr_2', which the backend does not read"
+        "gemm: it declares the constraint '@a.addr_1 <= @a.addr_2', which the backend does not support"
     )
 
 
@@ -559,7 +559,7 @@ def test_placement_mark_refused(mark, constraint, tmp_path):
     spec_checks.check_constraints(acc.instructions)
     getattr(gemm, mark)([False, True])
     assert refusal(acc, tmp_path) == (
-        f"gemm: {mark} gives it the constraint '{constraint}', which the backend does not read"
+        f"gemm: {mark} gives it the constraint '{constraint}', which the backend does not support"
     )
 
 
