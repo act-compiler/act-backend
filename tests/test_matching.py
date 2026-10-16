@@ -831,8 +831,20 @@ ENTRY main {{
 }}
 """
 
+# The exponentials of a broadcast that turns its rows into columns
+TURNED_SPREAD_EXP = """HloModule turned_spread_exp, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
 
-@pytest.mark.parametrize('kernel', [KEPT_EXP, COLUMN_SUM, ROW_SUM_ACROSS, SOFTMAX_ACROSS])
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %t = bf16[64,64] broadcast(%x), dimensions={1,0}
+  ROOT %e = bf16[64,64] exponential(%t)
+}
+"""
+
+
+@pytest.mark.parametrize(
+    'kernel', [KEPT_EXP, COLUMN_SUM, ROW_SUM_ACROSS, SOFTMAX_ACROSS, TURNED_SPREAD_EXP]
+)
 def test_operation_whose_attributes_no_instruction_spells_finds_no_assembly(
     backend, tmp_path, kernel
 ):
