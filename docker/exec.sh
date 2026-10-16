@@ -24,18 +24,28 @@ else
 fi
 
 HOST_MOUNT="$(pwd)/.."
+# One name per call: the trap removes this run's container
+CONTAINER_NAME="act-backend-exec-$$-${RANDOM}"
 
-# The container writes as root: restore the caller's ownership at exit
+# At exit, remove the container and restore the caller's ownership
 restore_ownership() {
   local status=$?
+  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
   ./chown.sh >/dev/null 2>&1 || echo "warning: could not restore the ownership of the files this run wrote" >&2
   exit "$status"
 }
 trap restore_ownership EXIT
+# A signal ends the run at once, with its status
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-docker run --rm --entrypoint bash \
+# Created in the foreground: a signal waits for the create
+docker create --rm --name "${CONTAINER_NAME}" --entrypoint bash \
   ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} \
   -v "${HOST_MOUNT}:/workspace:rw" \
   -w /workspace \
   "${IMAGE_NAME}" \
-  -ilc "$*"
+  -ilc "$*" >/dev/null
+# Backgrounded, so a signal reaches the trap mid-run
+docker start -a "${CONTAINER_NAME}" &
+wait $!
