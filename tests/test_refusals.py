@@ -9,7 +9,7 @@ import taidl.operations
 from taidl import Accelerator
 
 import act_backend
-from act_backend import generate_backend, spec_checks
+from act_backend import generate_backend, isel_ir2isa_rewrites_rs_generator, spec_checks
 from act_backend.isel_ir2isa_rewrites_rs_generator import ELEMENT_TYPES
 from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 
@@ -174,6 +174,15 @@ def test_operations_are_the_egraphs_own():
     children = {word: int(count) for _, word, count in arms if word != 'eye'}
     assert {word.removesuffix('_?'): count for word, count in OPERATIONS.values()} == children
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
+
+
+def test_each_operation_with_attributes_is_compared_or_uncompared():
+    # Each operation taidl gives attributes is in one set
+    carrying = {word for word in OPERATIONS if taidl.operations.OPERATIONS[word][1]}
+    compared = isel_ir2isa_rewrites_rs_generator.COMPARED
+    uncompared = isel_ir2isa_rewrites_rs_generator.UNCOMPARED
+    assert carrying == compared | uncompared
+    assert not compared & uncompared
 
 
 @pytest.mark.parametrize('element_type', grammar_words('TYPE'))

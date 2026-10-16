@@ -1,0 +1,3 @@
+  if TensorOp::payload_int(&lhs_enodes[{{index}}], {{position}}) != Some({{value}}) {
+    return false;
+  }

@@ -77,6 +77,16 @@ ZERO = '%z = bf16[] constant(0)'
             '%r reduces 3 operands, where a reduce takes 2, a value and its initial value',
         ),
         (
+            kernel(
+                A,
+                ZERO,
+                '%r = bf16[64] reduce(%a, %z), dimensions={y}, to_apply=%sum',
+                'ROOT %c = bf16[64,64] broadcast(%r), dimensions={0}',
+                regions=region('sum', 'add'),
+            ),
+            "%r gives 'y' in dimensions, which is not a dimension",
+        ),
+        (
             kernel(A, 'ROOT %c = f8e4m3fn[64,64] convert(%a)'),
             "the element type 'f8e4m3fn' is not one the backend supports",
         ),
@@ -141,6 +151,7 @@ ZERO = '%z = bf16[] constant(0)'
         'maximum_region',
         'divide_region',
         'three_operands',
+        'reduce_not_a_number',
         'element_type',
         'dimension',
         'type',
@@ -239,6 +250,10 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
             '%c gives transpose no dimensions attribute',
         ),
         (
+            'ROOT %c = bf16[64,64] transpose(%a), dimensions={1,y}',
+            "%c gives 'y' in dimensions, which is not a dimension",
+        ),
+        (
             'ROOT %c = bf16[32,64] slice(%a)',
             '%c gives slice no slice attribute',
         ),
@@ -251,7 +266,14 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
             '%c applies reverse, an operation the backend does not support',
         ),
     ],
-    ids=['batch_dims', 'no_dimensions', 'no_slice', 'three_values', 'unread_operation'],
+    ids=[
+        'batch_dims',
+        'no_dimensions',
+        'transpose_not_a_number',
+        'no_slice',
+        'three_values',
+        'unread_operation',
+    ],
 )
 def test_attribute_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_path, line, reason):
     run, _ = compiled(backend, tmp_path, kernel(A, line))

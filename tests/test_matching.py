@@ -177,6 +177,17 @@ ENTRY {
         ],
         ['m', 'n'],
     )
+    # The last n of m rows
+    add_on_d1(
+        acc,
+        'bottom',
+        ['@c.m', '@c.n'],
+        [
+            '%In0 = bf16[`@c.m`,64] parameter(0)',
+            'ROOT %Out0 = bf16[`@c.n`,64] slice(%In0), slice={[`@c.m - @c.n`:`@c.m`], [0:64]}',
+        ],
+        ['m', 'n'],
+    )
     # A tile, m rows of n f32: loaded, exponentiated, stored
     instr = acc.add_instruction('load_tile', ['m', 'n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.m * @c.n * 4']]])
@@ -653,6 +664,76 @@ def test_two_attributes_are_carried_into_the_assembly(backend, tmp_path):
     assert [name for name, _ in calls] == ['load_rm', 'top', 'store_rm']
     # Each attribute by name, from the dimension holding it
     assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
+
+
+# The last 32 of 64 rows
+BOTTOM = """HloModule bottom, entry_computation_layout={(bf16[64,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  ROOT %y = bf16[32,64] slice(%x), slice={[32:64], [0:64]}
+}
+"""
+
+
+def test_slice_is_selected_by_its_ranges(backend, tmp_path):
+    calls = selected(backend, tmp_path, BOTTOM)
+    assert [name for name, _ in calls] == ['load_rm', 'bottom', 'store_rm']
+    assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
+
+
+# The middle 32 of 64 rows
+MIDDLE = """HloModule middle, entry_computation_layout={(bf16[64,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  ROOT %y = bf16[32,64] slice(%x), slice={[16:48], [0:64]}
+}
+"""
+
+
+def test_slice_of_ranges_no_instruction_spells_selects_none(backend, tmp_path):
+    calls = selected(backend, tmp_path, MIDDLE)
+    # Neither top nor bottom, which slice other rows
+    assert not {'top', 'bottom'} & {name for name, _ in calls}
+
+
+# The exponentials of a transpose that keeps each dimension
+KEPT_EXP = """HloModule kept_exp, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %k = bf16[64,64] parameter(0)
+  %t = bf16[64,64] transpose(%k), dimensions={0,1}
+  ROOT %e = bf16[64,64] exponential(%t)
+}
+"""
+
+# The columns' sums, spread along each row
+COLUMN_SUM = f"""HloModule column_sum, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%x, %zero), dimensions={{0}}, to_apply=%reduce_add
+  ROOT %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+}}
+"""
+
+
+@pytest.mark.parametrize('kernel', [KEPT_EXP, COLUMN_SUM])
+def test_operation_whose_attributes_no_instruction_spells_finds_no_assembly(
+    backend, tmp_path, kernel
+):
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(kernel)
+    output = tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    assert run.stderr.endswith('and no candidate was extracted\n')
+    assert not output.exists()
 
 
 # The exponentials of 32 rows of 16 f32 values

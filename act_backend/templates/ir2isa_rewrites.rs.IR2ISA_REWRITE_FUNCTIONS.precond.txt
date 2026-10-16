@@ -1,7 +1,7 @@
 pub fn precond_{{instruction_name}}(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &[Id],
-  _: &[Option<TensorOp>],
+  {{enodes}}: &[Option<TensorOp>],
 ) -> bool {
   assert_eq!(lhs_eclasses.len(), {{num_assignments}});
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -10,5 +10,5 @@ pub fn precond_{{instruction_name}}(
     .collect();
 {{comp_attr_code}}
 {{shape_checks}}
-  true
+{{attr_checks}}  true
 }
