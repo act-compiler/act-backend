@@ -294,6 +294,26 @@ def hbm_only():
             'ROOT %Out0 = u8[8192] reshape(%c)',
         ],
     )
+    # A product of each pair of 32 by 32 blocks
+    add_on_hbm(
+        acc,
+        'bgemm',
+        ['4096', '4096', '4096'],
+        [
+            '%In0 = u8[4096] parameter(0)',
+            '%In1 = u8[4096] parameter(1)',
+            '%a = u8[2,32,32,2] reshape(%In0)',
+            '%b = u8[2,32,32,2] reshape(%In1)',
+            '%x = bf16[2,32,32] bitcast_convert(%a)',
+            '%y = bf16[2,32,32] bitcast_convert(%b)',
+            (
+                '%z = bf16[2,32,32] dot(%x, %y), lhs_batch_dims={0}, rhs_batch_dims={0}, '
+                'lhs_contracting_dims={2}, rhs_contracting_dims={1}'
+            ),
+            '%c = u8[2,32,32,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[4096] reshape(%c)',
+        ],
+    )
     add_on_hbm(
         acc,
         'vadd',
@@ -747,10 +767,37 @@ ENTRY main {
 """
 
 
+# A product of each pair of blocks, each value in the HBM
+BATCHED = """HloModule batched, entry_computation_layout={(bf16[2,32,32]{2,1,0}, bf16[2,32,32]{2,1,0})->bf16[2,32,32]{2,1,0}}
+
+ENTRY main {
+  %a = bf16[2,32,32] parameter(0)
+  %b = bf16[2,32,32] parameter(1)
+  ROOT %p = bf16[2,32,32] dot(%a, %b), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+"""
+
+
+def test_batched_dot_is_selected(hbm_backend, tmp_path):
+    calls = selected(hbm_backend, tmp_path, BATCHED)
+    assert [name for name, _ in calls] == ['bgemm']
+
+
+# A batched product over the last dimension of both blocks, each value in the HBM
+BATCHED_ROWS = """HloModule batched_rows, entry_computation_layout={(bf16[2,32,32]{2,1,0}, bf16[2,32,32]{2,1,0})->bf16[2,32,32]{2,1,0}}
+
+ENTRY main {
+  %a = bf16[2,32,32] parameter(0)
+  %b = bf16[2,32,32] parameter(1)
+  ROOT %p = bf16[2,32,32] dot(%a, %b), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+"""
+
+
 @pytest.mark.parametrize(
     'kernel',
-    [TURNED_PRODUCT, contracted('0,1', '1,0'), LISTS_APART],
-    ids=['turned', 'crossed_pairs', 'lists_apart'],
+    [TURNED_PRODUCT, contracted('0,1', '1,0'), LISTS_APART, BATCHED_ROWS],
+    ids=['turned', 'crossed_pairs', 'lists_apart', 'batched_rows'],
 )
 def test_dot_whose_dimensions_no_instruction_spells_finds_no_assembly(
     hbm_backend, tmp_path, kernel

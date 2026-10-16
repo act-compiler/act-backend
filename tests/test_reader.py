@@ -242,18 +242,17 @@ def test_dot_dimensions_are_read_by_name(endings_dir, tmp_path):
     line = 'ROOT %c = bf16[] dot(%a, %a), lhs_contracting_dims={1,0}, rhs_contracting_dims={0,1}'
     # The contracting pairs as written
     assert "dot[dims=';1,0;;0,1']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
+    line = (
+        'ROOT %c = bf16[64] dot(%a, %a), rhs_batch_dims={1}, lhs_batch_dims={0}, '
+        'lhs_contracting_dims={1}, rhs_contracting_dims={0}'
+    )
+    # Each input's batch list, then its contracting list
+    assert "dot[dims='0;1;1;0']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
 
 
 @pytest.mark.parametrize(
     'line, reason',
     [
-        (
-            (
-                'ROOT %c = bf16[64,64] dot(%a, %a), lhs_batch_dims={0}, rhs_batch_dims={0}, '
-                'lhs_contracting_dims={1}, rhs_contracting_dims={1}'
-            ),
-            '%c gives dot the attribute lhs_batch_dims, which the backend does not support',
-        ),
         (
             'ROOT %c = bf16[64,64] dot(%a, %a), lhs_contracting_dims={1}',
             '%c gives dot no rhs_contracting_dims attribute',
@@ -292,7 +291,6 @@ def test_dot_dimensions_are_read_by_name(endings_dir, tmp_path):
         ),
     ],
     ids=[
-        'batch_dims',
         'no_contracting',
         'contracting_not_a_number',
         'no_dimensions',

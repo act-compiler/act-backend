@@ -464,19 +464,5 @@ pub fn parse_hlo_expr(
     }
   };
 
-  // A dot's batch dimensions, which the backend does not read
-  let unread: &[&str] = match toperator {
-    "dot" => &["lhs_batch_dims", "rhs_batch_dims"],
-    _ => &[],
-  };
-  if let Some((name, _)) = attributes
-    .iter()
-    .find(|(name, _)| unread.contains(&name.as_str()))
-  {
-    return Err(format!(
-      "{} gives {} the attribute {}, which the backend does not support",
-      tsymbol, toperator, name
-    ));
-  }
   Ok(expr)
 }
