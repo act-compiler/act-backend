@@ -1,0 +1,3 @@
+    str +=
+        "{{label}}" +
+        std::to_string({{value}});

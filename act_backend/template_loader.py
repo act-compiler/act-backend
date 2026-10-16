@@ -9,11 +9,43 @@ KEY = re.compile(r'\{\{(\w+)\}\}')
 LINE_WIDTH = 100
 # rustfmt's fn_call_width: the widest a call's arguments stay on one line
 CALL_WIDTH = 60
+# A template's twins, in the order the formatters prefer them
+TWINS = ('wrapped', 'aligned', 'stacked', 'vertical', 'stacked_vertical')
 
 
 def fits(text: str) -> bool:
     """Whether every line of text fits the formatters' line width"""
     return all(len(line) <= LINE_WIDTH for line in text.split('\n'))
+
+
+def packed(lead: str, items: list[str], tail: str, column: int) -> list[str]:
+    """Items after lead, comma-separated, as many to a line as fit, each new line at column"""
+    lines = [lead]
+    for k, item in enumerate(items):
+        item += tail if k == len(items) - 1 else ','
+        gap = '' if lines[-1].endswith('(') or lines[-1].isspace() else ' '
+        if fits(lines[-1] + gap + item):
+            lines[-1] += gap + item
+        else:
+            lines.append(' ' * column + item)
+    return lines
+
+
+def call_lines(lead: str, items: list[str], tail: str, indent: int, declaration=False) -> str:
+    """A C++ call as clang-format lays it out: on one line, else its arguments packed
+
+    Aligned after the parenthesis lead ends in, else below it on lines of indent plus four,
+    where aligned does not fit or, in a call, takes more lines.
+    """
+    one = lead + ', '.join(items) + tail
+    if fits(one):
+        return one
+    aligned = packed(lead, items, tail, len(lead))
+    below = [lead, *packed(' ' * (indent + 4), items, tail, indent + 4)]
+    # A declaration stays aligned wherever it fits
+    if fits('\n'.join(aligned)) and (declaration or len(aligned) <= len(below)):
+        return '\n'.join(aligned)
+    return '\n'.join(below)
 
 
 class TemplateLoader:
@@ -53,12 +85,12 @@ class TemplateLoader:
         return self.render(template_file, **kwargs) + '\n'
 
     def render_fitting(self, template_file: str, **kwargs) -> str:
-        """Render a template, else the first of its _wrapped and _vertical twins whose lines fit
+        """Render a template, else the first of its twins, in the order of TWINS, whose lines fit
 
         The last twin where none fits.
         """
         stem = template_file.removesuffix('.txt')
-        twins = [f'{stem}_{twin}.txt' for twin in ('wrapped', 'vertical')]
+        twins = [f'{stem}_{twin}.txt' for twin in TWINS]
         twins = [twin for twin in twins if os.path.isfile(os.path.join(self.template_dir, twin))]
         text = self.render(template_file, **kwargs)
         for twin in twins:

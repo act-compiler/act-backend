@@ -6,4 +6,4 @@
     std::string value;
 {{attribute_parses}}
 
-    return new {{ClassName}}(lhs_tensor, rhs_tensors, {{attributes}});
+{{construction}}

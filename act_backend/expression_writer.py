@@ -41,3 +41,13 @@ class ExpressionWriter(IDLV2ExprVisitor):
 def source(tree):
     """The Rust or C++ that computes a value"""
     return ExpressionWriter().visit(tree)
+
+
+def chain(tree):
+    """A value's outermost run: its operands' sources and the operators between them"""
+    additive = tree.additive()
+    run = additive if len(additive.multiplicative()) > 1 else additive.multiplicative(0)
+    operands = run.multiplicative() if run is additive else run.unary()
+    operators = [run.getChild(2 * k + 1).getText() for k in range(len(operands) - 1)]
+    writer = ExpressionWriter()
+    return [writer.visit(operand) for operand in operands], operators
