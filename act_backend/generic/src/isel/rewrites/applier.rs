@@ -129,7 +129,7 @@ impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
   }
 }
 
-/// Add a rewrite's RHS enodes; return its root's Id
+/// Add a rewrite's RHS e-nodes; return its root's Id
 fn apply_pat(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   rhs_pat: &[ENodeOrVar<TensorOp>],
@@ -173,7 +173,7 @@ fn find_matches(
     }
     ENodeOrVar::ENode(e) => {
       for en in egraph[eclass].nodes.iter() {
-        // Only the root class's enodes of e's variant
+        // Only the root class's e-nodes of e's variant
         if e.discriminant() != en.discriminant() {
           continue;
         }

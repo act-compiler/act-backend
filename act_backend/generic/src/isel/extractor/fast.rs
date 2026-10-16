@@ -53,7 +53,7 @@ fn get_pii_graph(
 
   for en in &egraph[eclass].nodes {
     if let Some(bufs) = get_bufs(en) {
-      // memoization case: a selected enode, at a cost to completeness
+      // Memoization case: a selected e-node, at a cost to completeness
       if selected.get(en).is_some() && target_buf == bufs[0] {
         return true;
       }
@@ -61,20 +61,20 @@ fn get_pii_graph(
   }
 
   'en_loop: for en in &egraph[eclass].nodes {
-    // A snapshot to roll back to if this enode fails
+    // A snapshot to roll back to if this e-node fails
     let snapshot = selected.clone();
-    // base case: input enode
+    // Base case: input e-node
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
       selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
       return true;
     }
-    // base case: detected constant enode
+    // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
       selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
       return true;
     }
 
-    // only consider instruction enodes
+    // Only consider instruction e-nodes
     if let Some(bufs) = get_bufs(en) {
       if bufs[0] != Buffer::ANY && bufs[0] != target_buf {
         continue;
@@ -88,12 +88,12 @@ fn get_pii_graph(
           target_buf
         };
         if !get_pii_graph(egraph, *child_ec, out_buf, inputs, path, selected) {
-          // rollback any selections that happened while attempting this enode
+          // Roll back any selections that happened while attempting this e-node
           selected.clear();
           for (k, v) in snapshot.iter() {
             selected.insert(k.clone(), v.clone());
           }
-          // remove current eclass from path before trying next enode
+          // Remove current e-class from path before trying next e-node
           path.remove(&eclass);
           continue 'en_loop;
         }
@@ -115,10 +115,10 @@ fn select2pii_graph(
   let mut pii_graph = PiiGraph::default();
 
   let mut to_remove: Vec<TensorOp> = vec![];
-  // map selected enode's eclass -> node index in pii graph
+  // Map selected e-node's e-class -> node index in pii graph
   let mut eclass_map: HashMap<Id, usize> = HashMap::new();
 
-  // Add leaf enodes to the pii graph
+  // Add leaf e-nodes to the pii graph
   for (en, (ec_id, info)) in selected.iter() {
     if en.is_leaf() {
       let new_id = pii_graph.add_node(
@@ -132,7 +132,7 @@ fn select2pii_graph(
     }
   }
 
-  // Add first candidate enode to the pii graph
+  // Add first candidate e-node to the pii graph
   while to_remove.len() < selected.len() {
     let mut progress = false;
     for (en, (ec_id, info)) in selected.iter() {
