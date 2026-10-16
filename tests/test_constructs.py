@@ -312,6 +312,41 @@ ENTRY main {
 """
 
 
+def add_rowsum_from_one(acc):
+    """An instruction that sums each of 32 rows of bf16 on d1 from 1, spread along it"""
+    instr = acc.add_instruction('rowsum_from_one', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['32']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[32,64] parameter(0);
+    %sum = bf16[32] reduce_add(%In0), dimensions={1};
+    %one = bf16[] constant(1);
+    %ones = bf16[32] broadcast(%one), dimensions={};
+    %total = bf16[32] add(%sum, %ones);
+    ROOT %Out0 = bf16[32,64] broadcast(%total), dimensions={0};
+}
+""")
+
+
+# A kernel that sums each row from START, spread along it
+STARTED = """HloModule started, entry_computation_layout={(bf16[32,64]{1,0})->bf16[32,64]{1,0}}
+
+%sum (x: bf16[], y: bf16[]) -> bf16[] {
+  %x = bf16[] parameter(0)
+  %y = bf16[] parameter(1)
+  ROOT %v = bf16[] add(%x, %y)
+}
+
+ENTRY main {
+  %x = bf16[32,64] parameter(0)
+  %start = bf16[] constant(START)
+  %s = bf16[32] reduce(%x, %start), dimensions={1}, to_apply=%sum
+  ROOT %b = bf16[32,64] broadcast(%s), dimensions={0}
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -338,6 +373,7 @@ def work_dir(tmp_path_factory):
         add_offset(acc)
         add_rescale(acc)
         add_fill(acc)
+        add_rowsum_from_one(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -495,6 +531,19 @@ def test_instruction_with_no_inputs_is_selected(work_dir, tmp_path):
     written = {name: call['addr_out'] for name, call in calls}
     added = dict(calls)['add_f32']
     assert {added['addr_1'], added['addr_2']} == {written['load_f32'], written['fill']}
+
+
+def test_sum_from_another_start_is_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, STARTED.replace('START', '1'))
+    # The sum from 0 plus the start, as rowsum_from_one computes
+    assert [name for name, _ in calls] == ['load_rm', 'rowsum_from_one', 'store_rm']
+
+
+def test_sum_from_another_start_matches_no_other_start(work_dir, tmp_path):
+    run, _ = compiled(work_dir, tmp_path, STARTED.replace('START', '2'))
+    # rowsum_from_one sums from 1, not 2
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: no assembly found:')
 
 
 # A kernel whose product takes the operands OPERANDS

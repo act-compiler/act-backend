@@ -1166,6 +1166,12 @@ def test_sum_from_another_start_is_not_read_as_the_sum_from_0(backend, tmp_path)
     assert not output.exists()
 
 
+def test_sum_from_negative_zero_is_read_as_the_sum_from_0(backend, tmp_path):
+    calls = selected(backend, tmp_path, ROW_SUM_FROM.replace('START', '-0'))
+    # -0 is a float sum's identity too
+    assert [name for name, _ in calls] == ['load_rm', 'rowsum', 'store_rm']
+
+
 # The exponentials of the transpose of 32 rows
 TURNED_EXP = """HloModule turned_exp, entry_computation_layout={(bf16[32,64]{1,0})->bf16[64,32]{1,0}}
 
