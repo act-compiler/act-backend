@@ -171,7 +171,7 @@ def attribute_factor(dimension, attribute):
     if tokens == [reference]:
         return 1
     if len(tokens) == 3 and tokens[:2] == [reference, '*'] and tokens[2].isdigit():
-        # No factor of zero: the rule divides by it
+        # No factor of zero: the rewrite divides by it
         return int(tokens[2]) or None
     return None
 
