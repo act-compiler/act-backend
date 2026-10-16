@@ -44,7 +44,7 @@ def loader(name='ONE', model='d1', **names):
     return acc
 
 
-def with_semantics(lines, inputs=2):
+def with_semantics(lines, inputs=2, attributes=()):
     """An accelerator whose one instruction, gemm, has the given inputs and semantics lines
 
     With inputs None the instruction never gives its inputs.
@@ -53,7 +53,7 @@ def with_semantics(lines, inputs=2):
     acc.add_data_model('d1', [128], [64], 'bf16')
     acc.add_data_model('d2', [64], [64], 'bf16')
     addresses = [f'addr_{number}' for number in range(1, (inputs or 0) + 1)]
-    instr = acc.add_instruction('gemm', [], [*addresses, 'addr_out'])
+    instr = acc.add_instruction('gemm', list(attributes), [*addresses, 'addr_out'])
     if inputs is not None:
         instr.set_inputs([['d1', [f'@a.{address}'], ['64']] for address in addresses])
     instr.set_outputs([['d2', ['@a.addr_out'], ['64']]])
@@ -380,11 +380,53 @@ def test_instruction_with_no_inputs_refused(tmp_path):
     assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
 
 
-def test_computational_attribute_no_line_names_refused(tmp_path):
-    acc = with_semantics([IN0, IN1, result(DOT)])
-    acc.instructions[0].comp_attr.append('k')
-    message = refusal(acc, tmp_path)
-    assert message == "gemm: no line of its semantics names the computational attribute 'k'"
+@pytest.mark.parametrize(
+    'lines',
+    [
+        # Named nowhere, only in a constant, only in an attribute
+        [IN0, IN1, result(DOT)],
+        [
+            IN0,
+            IN1,
+            '%c = bf16[64,64] constant(`@c.k`)',
+            '%a = bf16[64,64] add(%In0, %c)',
+            result('add(%a, %In1)'),
+        ],
+        [
+            IN0,
+            IN1,
+            '%a = bf16[64,64] add(%In0, %In1)',
+            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k`], [0:64]}',
+        ],
+    ],
+)
+def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
+    message = refusal(with_semantics(lines, attributes=['k']), tmp_path)
+    assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
+
+
+@pytest.mark.parametrize(
+    'dimension', ['@c.k*(64+64)', '@c.k * @c.k', '2 * @c.k', '@c.k + 1', '@c.k * 0']
+)
+def test_first_dimension_that_hides_its_attribute_refused(dimension, tmp_path):
+    lines = [
+        '%In0 = bf16[`@c.k`,64] parameter(0)',
+        f'ROOT %Out0 = bf16[`{dimension}`,64] copy(%In0)',
+    ]
+    message = refusal(with_semantics(lines, 1, attributes=['k']), tmp_path)
+    assert message == (
+        f"gemm: its result's first dimension '{dimension}' is not the computational "
+        "attribute 'k' alone or times a positive integer"
+    )
+
+
+def test_address_attribute_in_a_semantics_refused(tmp_path):
+    lines = [IN0, IN1, f'ROOT %Out0 = bf16[`64 + @a.addr_out`,64] {DOT}']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == (
+        "gemm: its semantics reads the address attribute '@a.addr_out', "
+        'which is not known when an instruction is selected'
+    )
 
 
 SECOND = ['d1', ['@a.addr_2'], ['64']]
@@ -449,6 +491,19 @@ def test_size_the_allocator_cannot_read_refused(size, tmp_path):
     )
 
 
+@pytest.mark.parametrize('dimension', ['64 / 0', '64 % 0', '64 / (0)', '64 % (1 - 1)'])
+def test_division_by_zero_in_a_semantics_refused(dimension, tmp_path):
+    lines = [IN0, IN1, f'ROOT %Out0 = bf16[`{dimension}`,64] {DOT}']
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == f"gemm: its semantics divides by zero in '{dimension}'"
+
+
+@pytest.mark.parametrize('size', ['64 / 0', '64 / (0)'])
+def test_division_by_zero_in_a_size_refused(size, tmp_path):
+    message = refusal(with_operands(outputs=[['d2', ['@a.addr_out'], [size]]]), tmp_path)
+    assert message == f"gemm: its operand on 'd2' has the size '{size}', which divides by zero"
+
+
 def test_sizes_the_allocator_reads():
     acc = loader()
     (instruction,) = acc.instructions
@@ -461,3 +516,92 @@ def test_sizes_the_allocator_reads():
 def test_address_attribute_no_operand_reads_refused(tmp_path):
     acc = with_operands(addresses=['addr_1', 'addr_2', 'addr_out', 'spare'])
     assert refusal(acc, tmp_path) == "gemm: no operand reads the address attribute 'spare'"
+
+
+def test_input_marked_in_place_refused(tmp_path):
+    acc = with_operands()
+    (gemm,) = acc.instructions
+    # A list that marks no input is the default
+    gemm.set_inplace([False, False])
+    spec_checks.check_inplace(acc.instructions)
+    gemm.set_inplace([False, True])
+    message = refusal(acc, tmp_path)
+    assert message == 'gemm: its input 1 is marked in place, which the backend does not read'
+
+
+def test_constraint_refused(tmp_path):
+    acc = with_operands()
+    (gemm,) = acc.instructions
+    # A list of no constraints is the default
+    gemm.add_constraints([])
+    spec_checks.check_constraints(acc.instructions)
+    gemm.add_constraints(['@a.addr_1 <= @a.addr_2'])
+    assert refusal(acc, tmp_path) == (
+        "gemm: it declares the constraint '@a.addr_1 <= @a.addr_2', which the backend does not read"
+    )
+
+
+@pytest.mark.parametrize(
+    'mark, constraint',
+    [
+        ('set_apart', '@a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1'),
+        (
+            'set_no_partial_overlap',
+            '@a.addr_1 == @a.addr_2 or @a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1',
+        ),
+    ],
+)
+def test_placement_mark_refused(mark, constraint, tmp_path):
+    # The output lies in d1, as the second input does
+    acc = with_operands(outputs=[['d1', ['@a.addr_1'], ['64']]], addresses=['addr_1', 'addr_2'])
+    (gemm,) = acc.instructions
+    # Marking no input is the default and appends nothing
+    getattr(gemm, mark)([False, False])
+    spec_checks.check_constraints(acc.instructions)
+    getattr(gemm, mark)([False, True])
+    assert refusal(acc, tmp_path) == (
+        f"gemm: {mark} gives it the constraint '{constraint}', which the backend does not read"
+    )
+
+
+def test_placement_mark_that_appends_no_constraint_passes():
+    acc = with_operands(outputs=[['d1', ['@a.addr_1'], ['64']]], addresses=['addr_1', 'addr_2'])
+    (gemm,) = acc.instructions
+    # The output shares the first input's start: nothing to hold
+    gemm.set_no_partial_overlap([True, False])
+    spec_checks.check_constraints(acc.instructions)
+
+
+def with_state(update=(), dimension='64'):
+    """An accelerator that declares the state variable mode, and one instruction, scale"""
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_initial_state('mode', 0)
+    instr = acc.add_instruction('scale', [], ['addr_in', 'addr_out'], update=update)
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[{dimension},64] parameter(0);
+    ROOT %Out0 = bf16[{dimension},64] copy(%In0);
+}}
+""")
+    return acc
+
+
+def test_state_no_instruction_uses_passes():
+    spec_checks.check_state(with_state().instructions)
+
+
+def test_state_update_refused(tmp_path):
+    message = refusal(with_state(update=['@s.mode = 1']), tmp_path)
+    assert message == (
+        "scale: it updates machine state by '@s.mode = 1', which the backend does not model"
+    )
+
+
+def test_state_read_refused(tmp_path):
+    message = refusal(with_state(dimension='`64 - @s.mode`'), tmp_path)
+    assert message == (
+        "scale: its semantics reads the state variable '@s.mode', which the backend does not model"
+    )

@@ -1,6 +1,9 @@
 import os
 import re
 
+from antlr4.tree.Tree import TerminalNode
+from antlr4.tree.Trees import Trees
+
 from .expression_writer import source
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
@@ -54,7 +57,7 @@ class RustGeneratorVisitor(OperandVisitor):
 
     def visitInstruction(self, ctx):
         lhs_name = ctx.IDENTIFIER().getText()
-        lhs_type, lhs_shape, lhs_dims = self.visit(ctx.result_type())
+        lhs_type, lhs_shape, lhs_dims, lhs_first = self.visit(ctx.result_type())
 
         is_root = ctx.ROOT() is not None
 
@@ -64,7 +67,6 @@ class RustGeneratorVisitor(OperandVisitor):
         if ctx.operands():
             operands = self.visit(ctx.operands())
             for operand_text, operand_type in operands:
-                self.extract_comp_attrs_from_text(operand_text)
                 if operand_type == 'VALUE':
                     operand_names.append(operand_text)
 
@@ -80,6 +82,7 @@ class RustGeneratorVisitor(OperandVisitor):
             'dtype': lhs_type,
             'shape': lhs_shape,
             'dims': lhs_dims,
+            'first': lhs_first,
             'operands': operand_names,
         }
 
@@ -108,6 +111,7 @@ class RustGeneratorVisitor(OperandVisitor):
             'dtype': original['dtype'],
             'shape': original['shape'],
             'dims': original['dims'],
+            'first': original['first'],
             'operands': original['operands'],
         }
         self.variable_definitions[dup_name] = len(self.assignments)
@@ -121,10 +125,12 @@ class RustGeneratorVisitor(OperandVisitor):
     def visitResult_type(self, ctx):
         # A rank-0 result is one element, like a kernel's
         if ctx.shape() is None:
-            return (ctx.TYPE().getText(), '', ['1'])
+            return (ctx.TYPE().getText(), '', ['1'], None)
         # The type, the written shape, and each dimension in Rust
         dims = [self.visit(dim) for dim in ctx.shape().dim()]
-        return (ctx.TYPE().getText(), ctx.shape().getText(), dims)
+        # The first dimension's tree, where it is an expression
+        first = self.expressions.get(ctx.shape().dim(0).EXPRESSION())
+        return (ctx.TYPE().getText(), ctx.shape().getText(), dims, first)
 
     def visitDim(self, ctx):
         if ctx.INT():
@@ -149,26 +155,25 @@ def root_comp_attr(semantics_data):
     return None
 
 
-def parse_comp_attr_expression(shape_expr, comp_attr):
-    # Only works with @c.attr or @c.attr * constant
-    # Very fragile but should work
-    if not comp_attr or f'@c.{comp_attr}' not in shape_expr:
-        return comp_attr, []
+def attribute_factor(dimension, attribute):
+    """Return the positive integer a dimension multiplies an attribute by, 1 where it stands alone
 
-    expr = shape_expr.replace('`', '').replace(' ', '')
-    pattern = f'@c.{comp_attr}'
-
-    if f'{pattern}*' in expr:
-        start = expr.index(pattern) + len(pattern) + 1
-        factor_str = ''
-        for char in expr[start:]:
-            if char.isdigit():
-                factor_str += char
-            else:
-                break
-        return comp_attr, [int(factor_str)]
-
-    return comp_attr, []
+    None for a dimension that holds the attribute in another form, or not at all.
+    """
+    if dimension is None:
+        return None
+    # The dimension's tokens, a bracket around a term left out
+    leaves = [
+        node.getText() for node in Trees.descendants(dimension) if isinstance(node, TerminalNode)
+    ]
+    tokens = [token for token in leaves if token not in ('(', ')')]
+    reference = f'@c.{attribute}'
+    if tokens == [reference]:
+        return 1
+    if len(tokens) == 3 and tokens[:2] == [reference, '*'] and tokens[2].isdigit():
+        # No factor of zero: the rule divides by it
+        return int(tokens[2]) or None
+    return None
 
 
 def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
@@ -176,15 +181,12 @@ def generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments):
     if not comp_attr:
         return ''
 
-    comp_attr, factors = parse_comp_attr_expression(root_assignment['shape'], comp_attr)
+    # Divide the first dimension by the attribute's integer factor
+    factor = attribute_factor(root_assignment['first'], comp_attr)
     root_index = num_assignments - 1  # ROOT is always the last assignment
 
-    if factors:
-        # Calculate division factor as product of all factors
-        division_factor = 1
-        for factor in factors:
-            division_factor *= factor
-        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {division_factor};\n'
+    if factor not in (None, 1):
+        return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0] / {factor};\n'
     else:
         return f'  let {comp_attr} = lhs_metadata[{root_index}].shape[0];\n'
 

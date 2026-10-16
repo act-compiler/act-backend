@@ -74,6 +74,25 @@ def test_preconditions(accelerator, templates):
     assert 'shape[0]' not in generate_ir2isa_rust_functions(gemm, templates)
 
 
+def test_attribute_read_through_its_factor(templates):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    instr = acc.add_instruction('store', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 128']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[`@c.n`,64] parameter(0);
+    %a = u8[`@c.n`,64,2] bitcast_convert(%In0);
+    ROOT %Out0 = u8[`@c.n * (128)`] reshape(%a);
+}
+""")
+    (store,) = get_instruction_metadata(acc.instructions)
+    # The first dimension over its factor, through a bracket
+    functions = squeeze(generate_ir2isa_rust_functions(store, templates))
+    assert 'let n = lhs_metadata[2].shape[0] / 128;' in functions
+
+
 def test_address_ranges(accelerator, templates):
     load_rm = squeeze(generate_instruction_class(accelerator.instructions[0], templates))
     # Range 0 is the output's, range 1 the input's, each its address and its size
