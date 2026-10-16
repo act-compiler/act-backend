@@ -342,6 +342,27 @@ def test_constant_written_true_is_read(work_dir, tmp_path):
     assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
 
 
+# A kernel that inverts its input of pred, another true beside its constant
+INVERTED_BESIDE = """HloModule inverted_beside, entry_computation_layout={(pred[32,64]{1,0})->pred[32,64]{1,0}}
+
+ENTRY main {
+  %a = pred[32,64] parameter(0)
+  %yes = pred[32,64] constant(true)
+  OTHER
+  ROOT %b = pred[32,64] xor(%a, %yes)
+}
+"""
+
+
+@pytest.mark.parametrize(
+    'other', ['%one = pred[] constant(true)', '%rows = pred[64,32] constant(true)']
+)
+def test_constants_of_one_text_and_two_shapes_stay_apart(work_dir, tmp_path, other):
+    calls = compiled_calls(work_dir, tmp_path, INVERTED_BESIDE.replace('OTHER', other))
+    # The constant xor reads keeps its own shape
+    assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
+
+
 # A kernel whose product takes the operands OPERANDS
 PRODUCT = """HloModule product, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
 

@@ -196,7 +196,11 @@ pub fn add_constant(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  let node = egraph.add(TensorOp::OpConstant(value.to_string()));
+  // The value with its type, value:dtype[shape]
+  let node = egraph.add(TensorOp::OpConstant(format!(
+    "{}:{}[{}]",
+    value, ttype, tshape
+  )));
   bind_node(tsymbol, node, shape, dtype, true, egraph, table);
   Ok(())
 }
