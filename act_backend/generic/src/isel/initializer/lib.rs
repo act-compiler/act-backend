@@ -292,9 +292,12 @@ fn add_expr_to_egraph(
       tshape,
       ttile,
       source,
+      init,
       dimensions,
     } => {
-      add_reduce(tsymbol, ttype, tshape, source, dimensions, egraph, table)?;
+      add_reduce(
+        tsymbol, ttype, tshape, source, init, dimensions, egraph, table,
+      )?;
       (tsymbol, ttype, tshape, ttile)
     }
 

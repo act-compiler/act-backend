@@ -472,17 +472,28 @@ pub fn add_convert(
   Ok(())
 }
 
+// One argument per field of the kernel's line
+#[allow(clippy::too_many_arguments)]
 pub fn add_reduce(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
   source: &str,
+  init: &str,
   dimensions: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+
+  // A sum is read from its identity, a constant 0
+  if !TensorOp::holds_constant(egraph, lookup(table, init)?, "0") {
+    return Err(format!(
+      "{} starts its sum from {}, where the backend supports a sum only from 0, its identity",
+      tsymbol, init
+    ));
+  }
 
   // The dimensions, then the result type
   let node = egraph.add(TensorOp::OpReduceSum(

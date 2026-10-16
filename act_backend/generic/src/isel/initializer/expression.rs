@@ -86,6 +86,7 @@ pub enum HLOExpr {
     tshape: String,
     ttile: String,
     source: String,
+    init: String,
     dimensions: String,
   },
   Exponential {
@@ -436,6 +437,7 @@ pub fn parse_hlo_expr(
       }
 
       let source = operands[0].to_string();
+      let init = operands[1].to_string();
 
       HLOExpr::ReduceSum {
         tsymbol: tsymbol.to_string(),
@@ -443,6 +445,7 @@ pub fn parse_hlo_expr(
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
+        init,
         dimensions,
       }
     }
