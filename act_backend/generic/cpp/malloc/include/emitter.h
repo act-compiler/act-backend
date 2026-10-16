@@ -45,8 +45,11 @@ public:
 
   MetaData(std::ifstream &metadata_path,
            const std::unordered_map<std::string, Tensor *> &tensor_map,
-           const std::unordered_map<Tensor *, std::string> &known_constants);
+           const std::unordered_map<Tensor *, std::string> &constant_values);
 };
+
+// A constant's value in jnp from its text, or set why it has none
+bool constant_value(const std::string &expr, std::string &value, std::string &why);
 
 // Write a candidate's assembly, or set why it cannot
 bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions,
