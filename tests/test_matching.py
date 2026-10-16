@@ -476,6 +476,42 @@ ENTRY {
     return acc
 
 
+def widening():
+    """Moves of four types, a product of s8 rows widened to s32 and a sum of bf16 rows to f32"""
+    acc = Accelerator('WIDENING')
+    acc.add_data_model('d1', [512], [64], 'bf16')
+    add_typed_moves(acc, 's8', 1)
+    add_typed_moves(acc, 's32', 4)
+    add_typed_moves(acc, 'bf16', 2)
+    add_typed_moves(acc, 'f32', 4)
+    # The product of two 64-row regions, at s32
+    add_on_d1(
+        acc,
+        'wide_product',
+        ['64', '64', '64'],
+        [
+            '%In0 = s8[64,64] parameter(0)',
+            '%In1 = s8[64,64] parameter(1)',
+            (
+                'ROOT %Out0 = s32[64,64] dot(%In0, %In1), '
+                'lhs_contracting_dims={1}, rhs_contracting_dims={0}'
+            ),
+        ],
+    )
+    # The sum of each of 64 rows, at f32, spread along it
+    add_on_d1(
+        acc,
+        'wide_rowsum',
+        ['64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%s = f32[64] reduce_add(%In0), dimensions={1}',
+            'ROOT %Out0 = f32[64,64] broadcast(%s), dimensions={0}',
+        ],
+    )
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
     """Generate the spec's backend once, in a directory of its own"""
@@ -531,6 +567,14 @@ def doubling_backend(tmp_path_factory):
     work_dir = str(tmp_path_factory.mktemp('doubling'))
     generate_backend(doubling(), work_dir)
     return os.path.join(work_dir, 'backends', 'DOUBLING')
+
+
+@pytest.fixture(scope='module')
+def widening_backend(tmp_path_factory):
+    """Generate the backend of the spec with widening instructions and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('widening'))
+    generate_backend(widening(), work_dir)
+    return os.path.join(work_dir, 'backends', 'WIDENING')
 
 
 def selected(backend, tmp_path, kernel):
@@ -622,31 +666,28 @@ def test_library_matches_as_much_in_a_second_run(work_dir, tmp_path):
     assert second == first
 
 
-# Two products of one pair typed apart, one broadcast onto itself
-TYPED_APART = """HloModule typed_apart, entry_computation_layout={(s8[16,16]{1,0}, s8[16,16]{1,0})->s32[16,16]{1,0}}
+# A broadcast onto its own shape that retypes its value
+RETYPED = """HloModule retyped, entry_computation_layout={(s8[64,64]{1,0})->s32[64,64]{1,0}}
 
 ENTRY main {
-  %a = s8[16,16] parameter(0)
-  %b = s8[16,16] parameter(1)
-  %wide = s32[16,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  %narrow = s8[16,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT %c = s32[16,16] broadcast(%wide), dimensions={0,1}
+  %a = s8[64,64] parameter(0)
+  ROOT %c = s32[64,64] broadcast(%a), dimensions={0,1}
 }
 """
 
 
 def test_rewrite_that_joins_unlike_values_ends_the_compile(backend, tmp_path):
     path = tmp_path / 'kernel.hlo'
-    path.write_text(TYPED_APART)
+    path.write_text(RETYPED)
     output = tmp_path / 'kernel.py'
     arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
-    # Both products one e-node, the broadcast dropped onto it
+    # The broadcast dropped onto a value of another type
     assert run.returncode != 0
     joined = re.findall(
         r'internal error: a rewrite joins the values (\S+ \d+\]) and (\S+ \d+\])', run.stderr
     )
-    assert [set(pair) for pair in joined] == [{'s32[16, 16]', 's8[16, 16]'}]
+    assert [set(pair) for pair in joined] == [{'s32[64, 64]', 's8[64, 64]'}]
     assert not output.exists()
 
 
@@ -882,6 +923,58 @@ def test_value_carried_through_the_identity_compiles_quietly(product_backend, tm
     assembly = output.read_text()
     assert 'api.gemm16(' in assembly
     assert 'jnp.reshape(jnp.eye(16, dtype=jnp.int8).astype(jnp.uint8), (256,))' in assembly
+
+
+# Two products of one pair typed apart, the wide one broadcast onto itself
+TYPED_APART = """HloModule typed_apart, entry_computation_layout={(s8[64,64]{1,0}, s8[64,64]{1,0})->s32[64,64]{1,0}}
+
+ENTRY main {
+  %a = s8[64,64] parameter(0)
+  %b = s8[64,64] parameter(1)
+  %wide = s32[64,64] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %narrow = s8[64,64] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %c = s32[64,64] broadcast(%wide), dimensions={0,1}
+}
+"""
+
+
+def test_products_of_one_pair_typed_apart_stay_apart(widening_backend, tmp_path):
+    calls = selected(widening_backend, tmp_path, TYPED_APART)
+    # The wide product keeps its own type
+    assert [name for name, _ in calls] == ['load_s8', 'load_s8', 'wide_product', 'store_s32']
+
+
+# Two sums of one input typed apart, the wide one broadcast onto itself, then along its rows
+SUMMED_APART = """HloModule summed_apart, entry_computation_layout={(bf16[64,64]{1,0})->f32[64,64]{1,0}}
+
+%sum_f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %v = f32[] add(%x, %y)
+}
+
+%sum_bf16 (x: bf16[], y: bf16[]) -> bf16[] {
+  %x = bf16[] parameter(0)
+  %y = bf16[] parameter(1)
+  ROOT %v = bf16[] add(%x, %y)
+}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %zf = f32[] constant(0)
+  %zb = bf16[] constant(0)
+  %wide = f32[64] reduce(%a, %zf), dimensions={1}, to_apply=%sum_f32
+  %narrow = bf16[64] reduce(%a, %zb), dimensions={1}, to_apply=%sum_bf16
+  %same = f32[64] broadcast(%wide), dimensions={0}
+  ROOT %c = f32[64,64] broadcast(%same), dimensions={0}
+}
+"""
+
+
+def test_sums_of_one_input_typed_apart_stay_apart(widening_backend, tmp_path):
+    calls = selected(widening_backend, tmp_path, SUMMED_APART)
+    # The wide sum keeps its own type
+    assert [name for name, _ in calls] == ['load_bf16', 'wide_rowsum', 'store_f32']
 
 
 # The input added to itself and each sum: 26 sums

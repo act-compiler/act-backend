@@ -232,22 +232,23 @@ def read_nodes(work_dir, tmp_path, text, program=NODES):
 def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
     nodes = read_nodes(endings_dir, tmp_path, ATTRIBUTES)
     assert "concat[axis='0']" in nodes
-    assert "reduce[dims='0,1']" in nodes
+    # A reduce's dimensions, then its result type
+    assert "reduce[dims='0,1:bf16']" in nodes
 
 
 def test_dot_dimensions_are_read_by_name(endings_dir, tmp_path):
     line = 'ROOT %c = bf16[64,64] dot(%a, %a), rhs_contracting_dims={1}, lhs_contracting_dims={0}'
-    # Each input's batch list, left out, then its contracting list
-    assert "dot[dims=';0;;1']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
+    # Each input's batch list, left out, and its contracting list, then the type
+    assert "dot[dims=';0;;1:bf16']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
     line = 'ROOT %c = bf16[] dot(%a, %a), lhs_contracting_dims={1,0}, rhs_contracting_dims={0,1}'
     # The contracting pairs as written
-    assert "dot[dims=';1,0;;0,1']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
+    assert "dot[dims=';1,0;;0,1:bf16']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
     line = (
         'ROOT %c = bf16[64] dot(%a, %a), rhs_batch_dims={1}, lhs_batch_dims={0}, '
         'lhs_contracting_dims={1}, rhs_contracting_dims={0}'
     )
-    # Each input's batch list, then its contracting list
-    assert "dot[dims='0;1;1;0']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
+    # Each input's batch list, its contracting list, then the type
+    assert "dot[dims='0;1;1;0:bf16']" in read_nodes(endings_dir, tmp_path, kernel(A, line))
 
 
 @pytest.mark.parametrize(
