@@ -7,6 +7,8 @@ import re
 KEY = re.compile(r'\{\{(\w+)\}\}')
 # The formatters' line width, as rustfmt.toml and .clang-format set it
 LINE_WIDTH = 100
+# rustfmt's fn_call_width: the widest a call's arguments stay on one line
+CALL_WIDTH = 60
 
 
 def fits(text: str) -> bool:
@@ -51,9 +53,27 @@ class TemplateLoader:
         return self.render(template_file, **kwargs) + '\n'
 
     def render_fitting(self, template_file: str, **kwargs) -> str:
-        """Render a template, or its _wrapped twin where a line would not fit"""
+        """Render a template, else the first of its _wrapped and _vertical twins whose lines fit
+
+        The last twin where none fits.
+        """
+        stem = template_file.removesuffix('.txt')
+        twins = [f'{stem}_{twin}.txt' for twin in ('wrapped', 'vertical')]
+        twins = [twin for twin in twins if os.path.isfile(os.path.join(self.template_dir, twin))]
         text = self.render(template_file, **kwargs)
-        if fits(text):
+        for twin in twins:
+            if fits(text):
+                break
+            text = self.render(twin, **kwargs)
+        return text
+
+    def render_arm(self, template_file: str, **kwargs) -> str:
+        """Render a match arm, else its _wrapped twin where its first line leaves no column
+
+        rustfmt keeps that column for the comma ending the arm.
+        """
+        text = self.render(template_file, **kwargs)
+        if fits(text.split('\n')[0] + ','):
             return text
         return self.render(template_file.removesuffix('.txt') + '_wrapped.txt', **kwargs)
 

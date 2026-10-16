@@ -1,0 +1,4 @@
+      TensorOp::{{variant_name}}(_) => write!(
+        f,
+        "{{graph_name}}"
+      ),

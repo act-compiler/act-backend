@@ -1,0 +1,3 @@
+    TensorOp::{{variant_name}}{{pattern}} => {
+      {{buffer_assignment}}
+    }

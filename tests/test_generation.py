@@ -5,7 +5,16 @@ import shutil
 import subprocess
 
 import pytest
-from conftest import EXAMPLES_DIR, instruction_calls, run_backend
+from conftest import (
+    EXAMPLES_DIR,
+    add_moves,
+    add_on_d1,
+    generated_files,
+    instruction_calls,
+    long_names,
+    run_backend,
+    unformatted_rust,
+)
 from taidl import Accelerator
 
 import act_backend
@@ -257,3 +266,85 @@ def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
     # The link finds no model the last build left behind
     assert build.returncode != 0
     assert 'cost_static' in build.stderr
+
+
+def lines_of(path):
+    """A source's lines"""
+    with open(path) as f:
+        return f.read().split('\n')
+
+
+def test_long_names_are_laid_out_as_rustfmt_lays_them(tmp_path):
+    # Long attribute, instruction and data-model names, each prefixed
+    generate_backend(long_names(), str(tmp_path))
+    backend_dir = os.path.join(str(tmp_path), 'targets', 'LONG', 'backend')
+    assert unformatted_rust(backend_dir) == ''
+
+
+# The longest names each layout of their lines holds: an instruction's, a data model's, an attribute's
+INSTRUCTION_NAME_WIDTH = 100 - len('      TensorOp::Instr(data, _) => {')
+MODEL_NAME_WIDTH = 100 - len('      Buffer::Model => {')
+ATTRIBUTE_NAME_WIDTH = 100 - len('  let attr_ =')
+
+
+def named(letter, length):
+    """A name of a length, its letter then the length, so names of one letter differ"""
+    return (letter + str(length)).ljust(length, letter)[:length]
+
+
+def named_at_every_length():
+    """Instructions, data models and attributes, each name at every length the backend takes"""
+    acc = Accelerator('NAMED')
+    acc.add_data_model('d1', [512], [64], 'bf16')
+    add_moves(acc)
+    lines = ['%In0 = bf16[64,64] parameter(0)', 'ROOT %Out0 = bf16[64,64] exponential(%In0)']
+    for length in range(1, INSTRUCTION_NAME_WIDTH + 1):
+        add_on_d1(acc, named('p', length), ['64', '64'], lines)
+        # The same with an attribute, its metadata
+        lines_n = [line.replace('64,', '`@c.n`,') for line in lines]
+        add_on_d1(acc, named('q', length), ['@c.n', '@c.n'], lines_n, ['n'])
+    for length in range(1, MODEL_NAME_WIDTH + 1):
+        acc.add_data_model(named('m', length), [128], [64], 'bf16')
+    # The longest names of an instruction and a data model in one arm
+    acc.add_data_model('m' * MODEL_NAME_WIDTH, [128], [64], 'bf16')
+    instr = acc.add_instruction('i' * INSTRUCTION_NAME_WIDTH, [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['m' * MODEL_NAME_WIDTH, ['@a.addr_out'], ['64']]])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+    for length in range(1, ATTRIBUTE_NAME_WIDTH + 1):
+        attribute = named('n', length)
+        lines_a = [line.replace('64,', f'`@c.{attribute}`,') for line in lines]
+        add_on_d1(acc, f'a{length}', [f'@c.{attribute}'] * 2, lines_a, [attribute])
+    # Two attributes of the longest name on the longest instruction name
+    first, second = (f'@c.{letter * ATTRIBUTE_NAME_WIDTH}' for letter in 'fs')
+    lines_f = [
+        f'%In0 = bf16[`{first}`,64] parameter(0)',
+        f'%In1 = bf16[`{second}`,64] parameter(1)',
+        f'ROOT %Out0 = bf16[`{first} + {second}`,64] concatenate(%In0, %In1), dimensions={{0}}',
+    ]
+    sizes = [first, second, f'{first} + {second}']
+    add_on_d1(acc, 'x' * INSTRUCTION_NAME_WIDTH, sizes, lines_f, [first[3:], second[3:]])
+    return acc
+
+
+def test_names_of_every_length_are_laid_out_within_the_width(tmp_path, monkeypatch):
+    run = subprocess.run
+
+    # The sources alone, the build stopped
+    def stopped(command, **options):
+        if command[:2] == ['cargo', 'build']:
+            return subprocess.CompletedProcess(command, 1, stdout='')
+        return run(command, **options)
+
+    monkeypatch.setattr(subprocess, 'run', stopped)
+    with pytest.raises(RuntimeError):
+        generate_backend(named_at_every_length(), str(tmp_path))
+    monkeypatch.undo()
+    backend_dir = os.path.join(str(tmp_path), 'targets', 'NAMED', 'backend')
+    # Every line the generators write within the width, the generic sources' own aside
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    own = {line for path in generated_files(generic, '.rs') for line in lines_of(path)}
+    sources = generated_files(backend_dir, '.rs')
+    wide = [line for path in sources for line in lines_of(path) if len(line) > 100]
+    assert [line for line in wide if line not in own] == []
+    assert unformatted_rust(backend_dir) == ''

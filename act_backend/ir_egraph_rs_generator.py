@@ -6,7 +6,65 @@ from .instruction_info import (
     get_graph_name,
     get_rewrite_word,
 )
-from .template_loader import fill_placeholders, get_backend_template_loader
+from .template_loader import (
+    CALL_WIDTH,
+    LINE_WIDTH,
+    fill_placeholders,
+    fits,
+    get_backend_template_loader,
+)
+
+
+def built_node(variant_name, arguments):
+    """The e-node a from_op arm builds, an argument a line where rustfmt would break the call"""
+    callee = f'TensorOp::{variant_name}'
+    call = f'{callee}({", ".join(arguments)})'
+    # A nested call is held to the call width, unless its callee alone takes it
+    if len(call) <= CALL_WIDTH or len(callee) >= CALL_WIDTH and fits(f'        Ok({call})'):
+        return call
+    if len(callee) >= CALL_WIDTH and fits(f'          {call},'):
+        # The call on a line of its own
+        return f'\n          {call},\n        '
+    lines = ''.join(f'          {argument},\n' for argument in arguments)
+    if len(callee) >= CALL_WIDTH:
+        # On a line of its own, an argument a line
+        lines = lines.replace('\n', '\n  ')
+        return f'\n          {callee}(\n  {lines}        ),\n        '
+    return f'{callee}(\n{lines}        )'
+
+
+def from_op_arm(rewrite_word):
+    """The with-metadata from_op arm, its guard's chain kept clear of ` => {`"""
+    chain = f'        .is_some_and(|(word, _)| word == "{rewrite_word}")'
+    if len(chain) <= LINE_WIDTH - len(' => {'):
+        return 'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_with_metadata.txt'
+    return 'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_with_metadata_wrapped.txt'
+
+
+def set_metadata_arm(variant_name, templates):
+    """The set_metadata arm as rustfmt lays it out, each of its layouts tried until one fits"""
+    for arm in ('arm', 'arm_wrapped', 'arm_vertical', 'arm_chained', 'arm_called'):
+        text = templates.render(
+            f'egraph.rs.ISA_SET_METADATA_MATCH_ARMS.{arm}.txt', variant_name=variant_name
+        )
+        if fits(text):
+            break
+    return text
+
+
+def display_arm(info, templates):
+    """The Display arm of an instruction as rustfmt lays it out"""
+    graph_name = get_graph_name(info.name)
+    keys = {'variant_name': info.type_name, 'graph_name': graph_name}
+    arm = 'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_no_metadata'
+    arguments = f'f, "{graph_name}"'
+    if info.has_metadata:
+        arm = 'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_with_metadata'
+        arguments = f'f, "{graph_name}[rows=\'{{}}\']", data'
+    if len(arguments) <= CALL_WIDTH:
+        return templates.render_fitting(f'{arm}.txt', **keys)
+    # write!'s arguments too wide for a line go a line each
+    return templates.render_arm(f'{arm}_vertical.txt', **keys)
 
 
 def generate_instruction_variants(instructions_info: list[InstructionInfo], templates):
@@ -47,23 +105,19 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
 
         # Set metadata arm (only for instructions with metadata)
         if info.has_metadata:
-            set_metadata_arms.append(
-                templates.render_fitting(
-                    'egraph.rs.ISA_SET_METADATA_MATCH_ARMS.arm.txt', variant_name=variant_name
-                )
-            )
+            set_metadata_arms.append(set_metadata_arm(variant_name, templates))
 
         # Children arms
         data_pattern = '(_, ids)' if info.has_metadata else '(ids)'
         children_arms.append(
-            templates.render(
+            templates.render_fitting(
                 'egraph.rs.ISA_CHILDREN_MATCH_ARMS.arm.txt',
                 variant_name=variant_name,
                 data_pattern=data_pattern,
             )
         )
         children_mut_arms.append(
-            templates.render(
+            templates.render_fitting(
                 'egraph.rs.ISA_CHILDREN_MUT_MATCH_ARMS.arm.txt',
                 variant_name=variant_name,
                 data_pattern=data_pattern,
@@ -74,10 +128,10 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
         if info.has_metadata:
             from_op_arms.append(
                 templates.render(
-                    'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_with_metadata.txt',
+                    from_op_arm(rewrite_word),
                     rewrite_word=rewrite_word,
                     arity=str(info.arity),
-                    variant_name=variant_name,
+                    node=built_node(variant_name, ['data.to_string()', 'children']),
                 )
             )
         else:
@@ -86,27 +140,12 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
                     'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_no_metadata.txt',
                     rewrite_word=rewrite_word,
                     arity=str(info.arity),
-                    variant_name=variant_name,
+                    node=built_node(variant_name, ['children']),
                 )
             )
 
         # Display arms
-        if info.has_metadata:
-            display_arms.append(
-                templates.render(
-                    'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_with_metadata.txt',
-                    variant_name=variant_name,
-                    graph_name=get_graph_name(info.name),
-                )
-            )
-        else:
-            display_arms.append(
-                templates.render(
-                    'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_no_metadata.txt',
-                    variant_name=variant_name,
-                    graph_name=get_graph_name(info.name),
-                )
-            )
+        display_arms.append(display_arm(info, templates))
 
     return {
         'enum_variants': enum_variants,

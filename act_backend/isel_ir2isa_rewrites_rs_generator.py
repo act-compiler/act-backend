@@ -9,7 +9,7 @@ from taidl.antlr4 import IDLV2ExprParser
 from .expression_writer import source
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
 from .semantics_visitor import OperandVisitor
-from .template_loader import fill_placeholders, fits, get_backend_template_loader
+from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
 
 # The e-graph's element types, by their semantics word
 ELEMENT_TYPES = {
@@ -30,9 +30,6 @@ ELEMENT_TYPES = {
 
 # The operations whose payload holds their attributes' integers, in order
 COMPARED = {'broadcast', 'concatenate', 'dot', 'reduce_add', 'slice', 'transpose'}
-
-# rustfmt's fn_call_width: the widest a call's arguments stay on one line
-CALL_WIDTH = 60
 
 # Each matched value's shape and type, by its position
 LHS_METADATA = (

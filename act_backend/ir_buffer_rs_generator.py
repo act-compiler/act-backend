@@ -5,7 +5,7 @@ from .instruction_info import (
     extract_instruction_info,
     get_buffer_name,
 )
-from .template_loader import fill_placeholders, get_backend_template_loader
+from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
 
 
 def generate_buffer_variants(data_models, templates):
@@ -19,11 +19,13 @@ def generate_buffer_variants(data_models, templates):
             variants.append(
                 templates.render('buffer.rs.BUFFER_VARIANTS.variant.txt', buffer_name=buffer_name)
             )
-            display_arms.append(
-                templates.render(
-                    'buffer.rs.BUFFER_DISPLAY_MATCH_ARMS.arm.txt', buffer_name=buffer_name
-                )
-            )
+            # write!'s arguments too wide for a line go a line each
+            arm = 'buffer.rs.BUFFER_DISPLAY_MATCH_ARMS.arm.txt'
+            if len(f'f, "{buffer_name}"') > CALL_WIDTH:
+                arm = 'buffer.rs.BUFFER_DISPLAY_MATCH_ARMS.arm_vertical.txt'
+                display_arms.append(templates.render_arm(arm, buffer_name=buffer_name))
+            else:
+                display_arms.append(templates.render_fitting(arm, buffer_name=buffer_name))
 
     return variants, display_arms
 
@@ -35,14 +37,21 @@ def generate_buffer_assignment_arms(instructions_info: list[InstructionInfo], te
     for info in instructions_info:
         variant_name = info.type_name
         pattern = '(_, _)' if info.has_metadata else '(_)'
-        buffer_assignment_arms.append(
-            templates.render(
-                'buffer.rs.ISA_BUFFER_ASSIGNMENT_MATCH_ARMS.arm.txt',
+        arm = templates.render(
+            'buffer.rs.ISA_BUFFER_ASSIGNMENT_MATCH_ARMS.arm.txt',
+            variant_name=variant_name,
+            pattern=pattern,
+            buffer_assignment=info.buffer_assignment,
+        )
+        if not fits(arm):
+            # The assignment in a block, a level deeper
+            arm = templates.render(
+                'buffer.rs.ISA_BUFFER_ASSIGNMENT_MATCH_ARMS.arm_wrapped.txt',
                 variant_name=variant_name,
                 pattern=pattern,
-                buffer_assignment=info.buffer_assignment,
+                buffer_assignment=info.buffer_assignment.replace('\n', '\n  '),
             )
-        )
+        buffer_assignment_arms.append(arm)
 
     return buffer_assignment_arms
 

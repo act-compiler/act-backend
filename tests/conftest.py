@@ -83,23 +83,39 @@ def unfilled_sources(work_dir, example_dir):
 TREE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def unformatted_sources(backend_dir):
-    """Return what rustfmt and clang-format would change in a generated backend"""
-    sources = []
+def generated_files(backend_dir, suffixes):
+    """Return a generated backend's sources of the given suffixes"""
+    files = []
     for root, dirs, names in os.walk(backend_dir):
         # The build trees hold no generated source
         dirs[:] = [d for d in dirs if d not in ('target', 'build')]
-        sources += [os.path.join(root, name) for name in names]
-    rust = [path for path in sources if path.endswith('.rs')]
-    cpp = [path for path in sources if path.endswith(('.cc', '.h'))]
+        files += [os.path.join(root, name) for name in names if name.endswith(suffixes)]
     # A backend with no sources would pass unchecked
-    assert rust and cpp, f'no generated sources in {backend_dir}'
-    checks = [
-        ['rustfmt', '--check', '--config-path', TREE_DIR, '--config', 'skip_children=true', *rust],
-        ['clang-format', '--dry-run', '-Werror', f'--style=file:{TREE_DIR}/.clang-format', *cpp],
-    ]
-    runs = [subprocess.run(check, capture_output=True, text=True, check=False) for check in checks]
-    return ''.join(run.stdout + run.stderr for run in runs if run.returncode != 0)
+    assert files, f'no generated sources in {backend_dir}'
+    return files
+
+
+def complaints(check):
+    """Return what a formatter's check would change, nothing where it passes"""
+    run = subprocess.run(check, capture_output=True, text=True, check=False)
+    return '' if run.returncode == 0 else run.stdout + run.stderr
+
+
+def unformatted_rust(backend_dir):
+    """Return what rustfmt would change in a generated backend's Rust"""
+    rust = generated_files(backend_dir, '.rs')
+    return complaints(
+        ['rustfmt', '--check', '--config-path', TREE_DIR, '--config', 'skip_children=true', *rust]
+    )
+
+
+def unformatted_sources(backend_dir):
+    """Return what rustfmt and clang-format would change in a generated backend"""
+    cpp = generated_files(backend_dir, ('.cc', '.h'))
+    style = f'--style=file:{TREE_DIR}/.clang-format'
+    return unformatted_rust(backend_dir) + complaints(
+        ['clang-format', '--dry-run', '-Werror', style, *cpp]
+    )
 
 
 def compile_hlo(work_dir, example_dir):
