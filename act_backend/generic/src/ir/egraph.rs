@@ -108,6 +108,20 @@ impl TensorOp {
     TensorOp::payload_ints(enode)?.get(index).copied()
   }
 
+  // Whether a class holds a constant of a literal's value at its type
+  pub fn holds_constant(egraph: &EGraph<TensorOp, TensorInfo>, id: Id, literal: &str) -> bool {
+    let dtype = egraph[id].data.dtype;
+    let want = dtype.bits(literal);
+    // A constant's payload is value:dtype[shape]
+    want.is_some()
+      && egraph[id].nodes.iter().any(|node| match node {
+        TensorOp::OpConstant(payload) => payload
+          .rsplit_once(':')
+          .is_some_and(|(value, _)| dtype.bits(value) == want),
+        _ => false,
+      })
+  }
+
   pub fn is_detected_const(&self) -> bool {
     matches!(self, TensorOp::DetectedConst(_))
   }

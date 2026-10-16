@@ -85,11 +85,14 @@ class RustGeneratorVisitor(OperandVisitor):
         self.extract_comp_attrs_from_text(lhs_shape)
 
         operand_names = []
+        literals = []
         if ctx.operands():
             operands = self.visit(ctx.operands())
             for operand_text, operand_type in operands:
                 if operand_type == 'VALUE':
                     operand_names.append(operand_text)
+                else:
+                    literals.append(operand_text)
 
         assignment = {
             'lhs': lhs_name,
@@ -103,6 +106,7 @@ class RustGeneratorVisitor(OperandVisitor):
             'dims': lhs_dims,
             'trees': lhs_trees,
             'operands': operand_names,
+            'literals': literals,
         }
 
         self.variable_definitions[lhs_name] = len(self.assignments)
@@ -351,6 +355,21 @@ def generate_attr_checks(assignments, expressions, templates):
     return checks
 
 
+def generate_constant_checks(assignments, templates):
+    """The Rust that checks each constant's class holds the value its literal spells"""
+    checks = ''
+    for index, assignment in enumerate(assignments):
+        if assignment['op'] != 'constant':
+            continue
+        literal = assignment['literals'][0]
+        # The call's arguments a line each where too wide for one
+        check = 'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constant_check.txt'
+        if len(f'egraph, lhs_eclasses[{index}], "{literal}"') > CALL_WIDTH:
+            check = 'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constant_check_vertical.txt'
+        checks += templates.render_lines(check, index=str(index), literal=literal)
+    return checks
+
+
 def generate_precond_function(instruction_name, semantics_data, attributes, expressions, templates):
     assignments = semantics_data['assignments']
 
@@ -394,7 +413,7 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
         num_assignments=str(num_assignments),
         comp_attr_code=comp_attr_code,
         shape_checks=shape_checks_code,
-        attr_checks=attr_checks,
+        attr_checks=attr_checks + generate_constant_checks(assignments, templates),
     )
 
 

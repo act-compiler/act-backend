@@ -98,11 +98,11 @@ class RewriteRuleVisitor(OperandVisitor):
                     operand_patterns.append(pattern)
 
         rewrite_op_name, _ = OPERATIONS[op_name]
-        pattern = (
-            f'({rewrite_op_name} {" ".join(operand_patterns)})'
-            if operand_patterns
-            else f'({rewrite_op_name})'
-        )
+        if op_name == 'constant':
+            # A variable, its class checked for the value
+            pattern = self.get_next_variable()
+        else:
+            pattern = f'({rewrite_op_name} {" ".join(operand_patterns)})'
 
         self.variable_definitions[lhs_name] = pattern
 

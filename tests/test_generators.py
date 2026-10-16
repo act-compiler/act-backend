@@ -4,7 +4,7 @@ import re
 import subprocess
 
 import pytest
-from conftest import TREE_DIR
+from conftest import TREE_DIR, add_on_d1
 from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
@@ -201,6 +201,26 @@ ENTRY {{
     assert 'let value = attr_offset_rows + 16 + 0 * attr_offset_rows + 0;' in functions
     functions += '\n' + generate_ir2isa_rust_functions(named, templates)
     assert 'let attr_the_first_row_of_the_window_in_rows_x = value / 2;' in functions
+    assert rustfmt_complaints(functions, tmp_path) == ''
+
+
+def test_constant_literals_are_laid_out_as_rustfmt_lays_them(templates, tmp_path):
+    acc = Accelerator('LITERALS')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    # An instruction for each length of literal a check's line holds
+    for length in range(1, 100 - len('    "",') + 1):
+        literal = ('0.' + '1' * length)[:length] if length > 2 else '1' * length
+        lines = [
+            '%In0 = bf16[64,64] parameter(0)',
+            f'%c = bf16[] constant({literal})',
+            '%s = bf16[64,64] broadcast(%c), dimensions={}',
+            'ROOT %Out0 = bf16[64,64] add(%In0, %s)',
+        ]
+        add_on_d1(acc, f'offset_{length}', ['64', '64'], lines)
+    instructions = get_instruction_metadata(acc.instructions)
+    functions = '\n'.join(generate_ir2isa_rust_functions(i, templates) for i in instructions)
+    # Every line within the width, as rustfmt lays it out
+    assert max(len(line) for line in functions.split('\n')) <= 100
     assert rustfmt_complaints(functions, tmp_path) == ''
 
 

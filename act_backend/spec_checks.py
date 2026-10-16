@@ -1,5 +1,7 @@
 """What a backend cannot be generated for: each refused by name, before anything is written"""
 
+import re
+
 from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
@@ -64,6 +66,14 @@ class SemanticsChecker(OperandVisitor):
                     f'where the selector takes {count}'
                 )
             self.read.update(named)
+        # A constant is matched by its literal's value
+        if word == 'constant':
+            literal = operands[0][0]
+            if not reads_as(literal, element_type):
+                raise ValueError(
+                    f"{self.name}: its semantics gives the constant '{value}' the literal "
+                    f"'{literal}', which is not one {element_type} value"
+                )
         # A slice's payload holds each range's start and limit
         if word == 'slice':
             ranges = ctx.attributes().attribute(0).attribute_value().slice_list()
@@ -77,6 +87,22 @@ class SemanticsChecker(OperandVisitor):
         self.values.append(value)
         if ctx.ROOT():
             self.roots.append(value)
+
+
+def reads_as(literal, element_type):
+    """Whether a literal is one value of an element type, as the selector reads it"""
+    if element_type == 'pred':
+        return literal in ('true', 'false', '0', '1')
+    if element_type[0] in 'su':
+        # An integer in the type's range, signed only where the type is
+        sign = '-?' if element_type[0] == 's' else ''
+        if not re.fullmatch(rf'{sign}[0-9]+', literal):
+            return False
+        width = int(element_type[1:])
+        low = -(2 ** (width - 1)) if element_type[0] == 's' else 0
+        return low <= int(literal) < low + 2**width
+    # A number of any float type, rounded to it
+    return literal not in ('true', 'false') and not literal.startswith('`')
 
 
 # Each operator as the language reads it, `/` rounding down
