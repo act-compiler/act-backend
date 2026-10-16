@@ -289,6 +289,29 @@ ENTRY main {
 """
 
 
+def add_fill(acc):
+    """An instruction with no inputs that fills 32 rows of f32 on d1 with 0.5"""
+    instr = acc.add_instruction('fill', [], ['addr_out'])
+    instr.set_inputs([])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    ROOT %Out0 = f32[32,64] constant(0.5);
+}
+""")
+
+
+# A kernel that adds a constant of halves to its input
+FILLED = """HloModule filled, entry_computation_layout={(f32[32,64]{1,0})->f32[32,64]{1,0}}
+
+ENTRY main {
+  %x = f32[32,64] parameter(0)
+  %halves = f32[32,64] constant(0.5)
+  ROOT %y = f32[32,64] add(%x, %halves)
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -314,6 +337,7 @@ def work_dir(tmp_path_factory):
         add_true_constant(acc)
         add_offset(acc)
         add_rescale(acc)
+        add_fill(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -462,6 +486,15 @@ def test_semantics_constants_match_each_its_own_value(work_dir, tmp_path):
     # The kernel's ones and twos swapped
     assert run.returncode == 1
     assert run.stderr.startswith('Error: no assembly found:')
+
+
+def test_instruction_with_no_inputs_is_selected(work_dir, tmp_path):
+    calls = compiled_calls(work_dir, tmp_path, FILLED)
+    assert sorted(name for name, _ in calls) == ['add_f32', 'fill', 'load_f32', 'store_f32']
+    # The add reads the input and the halves fill wrote
+    written = {name: call['addr_out'] for name, call in calls}
+    added = dict(calls)['add_f32']
+    assert {added['addr_1'], added['addr_2']} == {written['load_f32'], written['fill']}
 
 
 # A kernel whose product takes the operands OPERANDS
