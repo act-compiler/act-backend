@@ -195,8 +195,9 @@ fn add_expr_to_egraph(
       tshape,
       ttile,
       source,
+      dimensions,
     } => {
-      add_broadcast(tsymbol, ttype, tshape, source, egraph, table)?;
+      add_broadcast(tsymbol, ttype, tshape, source, dimensions, egraph, table)?;
       (tsymbol, ttype, tshape, ttile)
     }
 

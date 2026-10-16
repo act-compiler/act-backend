@@ -184,6 +184,8 @@ pub fn parse_region(
     region_name_with_signature.to_string()
   };
   let mut instructions = Vec::new();
+  // Each name's declared shape
+  let mut shapes = std::collections::HashMap::new();
   let mut idx = start_idx + 1;
   let mut brace_count = 1; // The opening brace, found above
 
@@ -218,8 +220,9 @@ pub fn parse_region(
           parse_line(instruction_line)?
         {
           instructions.push(parse_hlo_expr(
-            &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, regions,
+            &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, regions, &shapes,
           )?);
+          shapes.insert(tsymbol, tshape);
         }
       }
     }
@@ -247,6 +250,8 @@ pub fn parse_hlo_module_with_regions(
 
   let mut regions = std::collections::HashMap::new();
   let mut entry_instructions = Vec::new();
+  // Each name's declared shape
+  let mut shapes = std::collections::HashMap::new();
   // The ENTRY's ROOT lines, by their place among its instructions
   let mut roots = vec![];
   let mut idx = 1;
@@ -278,8 +283,9 @@ pub fn parse_hlo_module_with_regions(
           parse_line(instruction_line)?
         {
           let expr = parse_hlo_expr(
-            &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, &regions,
+            &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, &regions, &shapes,
           )?;
+          shapes.insert(tsymbol, tshape);
           if is_root {
             roots.push(entry_instructions.len());
           }

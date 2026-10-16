@@ -22,6 +22,7 @@ pub enum HLOExpr {
     tshape: String,
     ttile: String,
     source: String,
+    dimensions: String,
   },
   Slice {
     tsymbol: String,
@@ -190,6 +191,7 @@ pub fn parse_hlo_expr(
   toperands: &str,
   trest: &str,
   regions: &std::collections::HashMap<String, HLORegion>,
+  shapes: &std::collections::HashMap<String, String>,
 ) -> Result<HLOExpr, String> {
   let attributes = read_attributes(trest);
 
@@ -224,14 +226,24 @@ pub fn parse_hlo_expr(
     }
 
     "broadcast" => {
-      // broadcast(Arg_0.6)
+      // broadcast(Arg_0.6), dimensions={0}
       let source = toperands.trim().to_string();
+
+      // The result dimension each source dimension lands on
+      let dim_str = match required(tsymbol, toperator, &attributes, "dimensions") {
+        // XLA-HLO reads a rank-0 source's missing map as {}
+        Err(_) if shapes.get(&source).is_some_and(|shape| shape == "[]") => "",
+        given => given?,
+      };
+      let dimensions = dimension_list(tsymbol, "dimensions", dim_str)?;
+
       HLOExpr::Broadcast {
         tsymbol: tsymbol.to_string(),
         ttype: ttype.to_string(),
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
+        dimensions: shape_text(&dimensions),
       }
     }
 

@@ -206,14 +206,16 @@ pub fn add_broadcast(
   ttype: &str,
   tshape: &str,
   source: &str,
+  dimensions: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
+  // The result shape, then the dimension map
   let node = egraph.add(TensorOp::OpBroadcast(
-    tshape.to_string(),
+    format!("{};{}", tshape, dimensions),
     [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
