@@ -484,6 +484,75 @@ def test_slice_or_concatenate_of_shapes_that_disagree_ends_in_no_assembly(
     assert run.stderr == f'Error: no assembly found: {reason}\n'
 
 
+# A kernel of one bf16 input and an f32 output
+WIDENED_HEADER = 'HloModule widened, entry_computation_layout={(bf16[64,64]{1,0})->f32[64,64]{1,0}}'
+
+
+@pytest.mark.parametrize(
+    'lines, reason',
+    [
+        (
+            ['ROOT %c = f32[64,64] broadcast(%a), dimensions={0,1}'],
+            '%c gives the element type f32 to broadcast, which keeps the element type bf16 of %a',
+        ),
+        (
+            ['%w = f32[64,64] convert(%a)', 'ROOT %c = f32[64,64] add(%w, %a)'],
+            '%c gives the element type f32 to add, which keeps the element type bf16 of %a',
+        ),
+        (
+            [
+                '%h = f32[32,64] slice(%a), slice={[0:32:1], [0:64:1]}',
+                'ROOT %c = f32[64,64] concatenate(%h, %h), dimensions={0}',
+            ],
+            '%h gives the element type f32 to slice, which keeps the element type bf16 of %a',
+        ),
+        (
+            [
+                '%h = bf16[32,64] slice(%a), slice={[0:32:1], [0:64:1]}',
+                'ROOT %c = f32[64,64] concatenate(%h, %h), dimensions={0}',
+            ],
+            '%c gives the element type f32 to concatenate, which keeps the element type bf16 of %h',
+        ),
+        (
+            ['ROOT %c = f32[64,64] reshape(%a)'],
+            '%c gives the element type f32 to reshape, which keeps the element type bf16 of %a',
+        ),
+        (
+            ['ROOT %c = f32[64,64] transpose(%a), dimensions={1,0}'],
+            '%c gives the element type f32 to transpose, which keeps the element type bf16 of %a',
+        ),
+        (
+            ['ROOT %c = f32[64,64] exponential(%a)'],
+            '%c gives the element type f32 to exponential, which keeps the element type bf16 of %a',
+        ),
+        (
+            [
+                ZERO,
+                '%r = f32[64] reduce(%a, %z), dimensions={1}, to_apply=%sum',
+                'ROOT %c = f32[64,64] broadcast(%r), dimensions={0}',
+            ],
+            '%r gives the element type f32 to reduce, which keeps the element type bf16 of %z',
+        ),
+    ],
+    ids=[
+        'broadcast',
+        'add',
+        'slice',
+        'concatenate',
+        'reshape',
+        'transpose',
+        'exponential',
+        'reduce',
+    ],
+)
+def test_operation_that_retypes_its_value_ends_in_no_assembly(backend, tmp_path, lines, reason):
+    text = kernel(A, *lines, header=WIDENED_HEADER, regions=region('sum', 'add', 'f32'))
+    run, output = compiled(backend, tmp_path, text)
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
+    assert not output.exists()
+
+
 # A sum of two 32-row matrices, then that sum doubled
 SUM_32 = (
     '%a = bf16[32,64] parameter(0)',
