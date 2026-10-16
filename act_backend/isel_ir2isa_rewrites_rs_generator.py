@@ -120,6 +120,17 @@ class RustGeneratorVisitor(OperandVisitor):
         return source(self.expressions[ctx.EXPRESSION()])
 
 
+def slice_ranges(ranges):
+    """Return each range of a slice list as its values: start, limit and any stride"""
+    groups = []
+    for child in ranges.getChildren():
+        if isinstance(child, TerminalNode) and child.getText() == '[':
+            groups.append([])
+        elif not isinstance(child, TerminalNode):
+            groups[-1].append(child)
+    return groups
+
+
 def attribute_factor(dimension, attribute):
     """Return the positive integer a dimension multiplies an attribute by, 1 where it stands alone
 

@@ -276,6 +276,15 @@ def test_attribute_held_by_no_dimension_refused(dimension, tmp_path):
     )
 
 
+def test_strided_slice_refused(tmp_path):
+    lines = [IN0, 'ROOT %Out0 = bf16[32,64] slice(%In0), slice={[0:64:2], [0:64]}']
+    message = refusal(with_semantics(lines, 1), tmp_path)
+    assert message == (
+        "gemm: its semantics slices '[0:64:2]' with the stride 2, "
+        'where the selector takes a stride of 1'
+    )
+
+
 def test_address_attribute_in_a_semantics_refused(tmp_path):
     lines = [IN0, IN1, f'ROOT %Out0 = bf16[`64 + @a.addr_out`,64] {DOT}']
     message = refusal(with_semantics(lines), tmp_path)

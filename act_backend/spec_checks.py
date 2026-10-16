@@ -8,6 +8,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     RustGeneratorVisitor,
     attribute_reading,
+    slice_ranges,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
@@ -62,6 +63,16 @@ class SemanticsChecker(OperandVisitor):
                     f'where the selector takes {count}'
                 )
             self.read.update(named)
+        # A slice's payload holds each range's start and limit
+        if word == 'slice':
+            ranges = ctx.attributes().attribute(0).attribute_value().slice_list()
+            for bounds in slice_ranges(ranges):
+                if len(bounds) == 3 and bounds[2].getText() != '1':
+                    written = ':'.join(bound.getText() for bound in bounds)
+                    raise ValueError(
+                        f"{self.name}: its semantics slices '[{written}]' with the stride "
+                        f'{bounds[2].getText()}, where the selector takes a stride of 1'
+                    )
         self.values.append(value)
         if ctx.ROOT():
             self.roots.append(value)
