@@ -23,3 +23,12 @@ include = ["act_backend*"]
 [tool.setuptools.package-data]
 "act_backend.templates" = ["*.txt"]
 "act_backend.generic" = ["**/*", ".gitignore"]
+
+[tool.ruff]
+line-length = 100
+# Python files alone, not markdown code blocks
+include = ["*.py"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "single"

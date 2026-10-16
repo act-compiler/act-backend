@@ -1,10 +1,10 @@
 """Tests of the installed package: what its wheel holds and what builds it."""
 
 import os
-import sys
 import shutil
-import tomllib
 import subprocess
+import sys
+import tomllib
 from importlib.metadata import distribution
 
 ROOT = os.path.dirname(os.path.dirname(__file__))

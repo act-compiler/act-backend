@@ -1,4 +1,5 @@
 import os
+
 from .instruction_info import get_buffer_name
 from .template_loader import fill_placeholders
 
@@ -6,9 +7,7 @@ from .template_loader import fill_placeholders
 def generate_globals_models(data_models):
     models = []
 
-    idx = 0
-    for data_model in data_models:
-        idx += 1
+    for idx, data_model in enumerate(data_models, 1):
         if data_model.var_name != 'd0':
             buffer_name = get_buffer_name(data_model.var_name)
 

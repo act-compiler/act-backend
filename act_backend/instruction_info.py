@@ -1,6 +1,5 @@
 """What several generators read off an instruction: its record and its names"""
 
-from typing import List
 from dataclasses import dataclass
 
 
@@ -29,7 +28,7 @@ def get_buffer_name(data_model_name: str) -> str:
     return 'HBM' if data_model_name == 'd0' else data_model_name.upper()
 
 
-def extract_instruction_info(instructions) -> List[InstructionInfo]:
+def extract_instruction_info(instructions) -> list[InstructionInfo]:
     info_list = []
 
     for instruction in instructions:

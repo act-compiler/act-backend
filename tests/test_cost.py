@@ -1,14 +1,14 @@
 """Tests of the cost model: the C function act_cost a backend is generated with."""
 
-import os
 import functools
+import os
 import subprocess
 
 import pytest
+from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 import act_backend
 from act_backend import generate_backend
-from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
 COST_DIR = os.path.join(os.path.dirname(__file__), 'cost')

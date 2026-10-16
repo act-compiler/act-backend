@@ -1,9 +1,10 @@
 import os
-from taidl.antlr4 import IDLV2Parser
-from .semantics_visitor import OperandVisitor
-from .instruction_info import get_kebab_name
-from .template_loader import fill_placeholders, get_backend_template_loader
 
+from taidl.antlr4 import IDLV2Parser
+
+from .instruction_info import get_kebab_name
+from .semantics_visitor import OperandVisitor
+from .template_loader import fill_placeholders, get_backend_template_loader
 
 # Each operation the e-graph has: the word a rule spells it with, and the values it takes
 OPERATIONS = {

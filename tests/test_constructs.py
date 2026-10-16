@@ -5,10 +5,10 @@ import re
 import subprocess
 
 import pytest
+from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 import act_backend
 from act_backend import generate_backend
-from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
 
@@ -216,7 +216,7 @@ def compiled_calls(work_dir, tmp_path, kernel):
     backend = os.path.join(work_dir, 'backends', 'QKV')
     log = str(tmp_path / 'log')
     arguments = ['--input', str(path), '--output', str(output), '--log', log]
-    run = subprocess.run([backend, *arguments], capture_output=True, text=True)
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
     return [
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))

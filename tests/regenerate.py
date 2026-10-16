@@ -4,23 +4,22 @@ Usage: python tests/regenerate.py <example_dir>, one example per process; tests/
 runs it for every example in the image the tests run in.
 """
 
-import os
-import sys
 import json
+import os
 import platform
+import sys
 import tempfile
 
 import jax
 import jaxlib
 import numpy as np
 import taidl_to
-
 from conftest import (
     PLATFORM,
-    generate_oracle_and_backend,
-    compile_hlo,
-    run_compiled_kernel,
     attention_reference,
+    compile_hlo,
+    generate_oracle_and_backend,
+    run_compiled_kernel,
 )
 
 if __name__ == '__main__':

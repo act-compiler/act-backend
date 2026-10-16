@@ -1,22 +1,22 @@
 """Shared test utilities for ACT-Backend tests"""
 
-import os
-import re
-import sys
-import json
-import shutil
-import subprocess
-import tempfile
 import importlib
 import importlib.util
 import itertools
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
 from collections import Counter
 
-import pytest
-import numpy as np
-import ml_dtypes
 import jax
 import jax.numpy as jnp
+import ml_dtypes
+import numpy as np
+import pytest
 from taidl import Accelerator
 
 
@@ -25,10 +25,9 @@ def pytest_configure(config):
 
 
 def pytest_runtest_makereport(item, call):
-    if 'incremental' in item.keywords:
-        if call.excinfo is not None:
-            parent = item.parent
-            parent.previousfailed = item
+    if 'incremental' in item.keywords and call.excinfo is not None:
+        parent = item.parent
+        parent.previousfailed = item
 
 
 def pytest_runtest_setup(item):
@@ -115,6 +114,7 @@ def run_backend(backend_bin, example_dir, out_dir, env=None):
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     return run, output_path
 

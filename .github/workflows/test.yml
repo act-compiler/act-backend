@@ -32,6 +32,9 @@ jobs:
             cd docker && ./build.sh --env
           fi
 
+      - name: Check the formatting and lint
+        run: ./docker/exec.sh "ruff format --check && ruff check && shfmt -d . && rustfmt --check --config-path . --config skip_children=true $(git ls-files '*.rs' | tr '\n' ' ') && clang-format --dry-run -Werror --style=file:.clang-format $(git ls-files '*.cc' '*.cpp' '*.h' '*.hpp' | tr '\n' ' ')"
+
       - name: Run tests
         run: ./tests/pytest.sh
 

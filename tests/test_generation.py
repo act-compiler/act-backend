@@ -6,11 +6,11 @@ import shutil
 import subprocess
 
 import pytest
+from conftest import EXAMPLES_DIR, instruction_calls, run_backend
 
 import act_backend
 from act_backend import generate_backend
 from act_backend.build_rs_generator import generate_build_rs_file
-from conftest import EXAMPLES_DIR, instruction_calls, run_backend
 
 QKV_DIR = os.path.join(EXAMPLES_DIR, 'QKV')
 
@@ -124,7 +124,11 @@ def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
         with open(manifest) as f:
             content = f.read()
         with open(manifest, 'w') as f:
-            f.write(re.sub(r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.M))
+            f.write(
+                re.sub(
+                    r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.MULTILINE
+                )
+            )
 
     monkeypatch.setattr(act_backend.generator, 'generate_build_rs_file', generate_stale)
     with pytest.raises(RuntimeError, match='--locked'):
@@ -154,7 +158,8 @@ def test_backend_finds_the_solver_by_itself(work_dir, tmp_path):
 def starts(backend):
     """Whether a backend starts with no library path in the environment"""
     env = {name: value for name, value in os.environ.items() if name != 'LD_LIBRARY_PATH'}
-    return subprocess.run([backend, '--help'], env=env, capture_output=True).returncode == 0
+    run = subprocess.run([backend, '--help'], env=env, capture_output=True, check=False)
+    return run.returncode == 0
 
 
 def test_solver_found_where_the_environment_says(accelerator, tmp_path, monkeypatch):
@@ -243,7 +248,11 @@ def test_rebuild_by_hand_drops_a_removed_default_model(work_dir):
     os.rename(source, source + '.moved')
     try:
         build = subprocess.run(
-            ['cargo', 'build', '--release', '--locked'], cwd=crate, capture_output=True, text=True
+            ['cargo', 'build', '--release', '--locked'],
+            cwd=crate,
+            capture_output=True,
+            text=True,
+            check=False,
         )
     finally:
         os.rename(source + '.moved', source)

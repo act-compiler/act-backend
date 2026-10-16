@@ -1,6 +1,7 @@
 """Generator for instructions.h - templates the generic file with instruction classes"""
 
 import os
+
 from .expression_writer import source
 from .instruction_info import to_camel_case
 from .template_loader import fill_placeholders, get_backend_template_loader

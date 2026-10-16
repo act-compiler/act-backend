@@ -4,10 +4,9 @@ import os
 import re
 
 import pytest
-from taidl import Accelerator
-
 import taidl.antlr4
 import taidl.operations
+from taidl import Accelerator
 
 import act_backend
 from act_backend import generate_backend, spec_checks
@@ -76,7 +75,7 @@ def grammar_words():
     """The operation words the installed grammar lexes"""
     with open(os.path.join(os.path.dirname(taidl.antlr4.__file__), 'IDLV2.g4')) as f:
         grammar = re.sub(r'//.*', '', f.read())
-    rule = re.search(r'^OPERATION\s*:(.*?);', grammar, re.M | re.S).group(1)
+    rule = re.search(r'^OPERATION\s*:(.*?);', grammar, re.MULTILINE | re.DOTALL).group(1)
     return re.findall(r"'(\w+)'", rule)
 
 
@@ -208,13 +207,13 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     egraph = read('src', 'ir', 'egraph.rs')
     assert set(re.findall(r'== "([a-z-]+)"', egraph)) == spec_checks.EGRAPH_WORDS
     variants = egraph[egraph.index('pub enum TensorOp') : egraph.index('impl TensorOp')]
-    variants = set(re.findall(r'^  (\w+)[(,]', variants, re.M))
+    variants = set(re.findall(r'^  (\w+)[(,]', variants, re.MULTILINE))
     assert variants | {'Self'} == spec_checks.EGRAPH_VARIANTS
 
     # Each buffer beside the data models'
     buffer = read('src', 'ir', 'buffer.rs')
     buffers = buffer[buffer.index('pub enum Buffer') : buffer.index('impl ')]
-    assert set(re.findall(r'^  (\w+),', buffers, re.M)) == spec_checks.BUFFERS
+    assert set(re.findall(r'^  (\w+),', buffers, re.MULTILINE)) == spec_checks.BUFFERS
 
     # Each type the allocator declares
     allocator = os.path.join('cpp', 'malloc')
@@ -223,7 +222,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
         for directory in ['include', 'src']
         for name in sorted(os.listdir(os.path.join(generic, allocator, directory)))
     ]
-    types = re.findall(r'^(?:class|struct) (\w+)|^using (\w+) =', '\n'.join(sources), re.M)
+    types = re.findall(r'^(?:class|struct) (\w+)|^using (\w+) =', '\n'.join(sources), re.MULTILINE)
     assert {a or b for a, b in types} == spec_checks.ALLOCATOR_TYPES
 
     # Each name the sources generated for load_rm spell, its own apart, with its macros' bodies
@@ -232,7 +231,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     own = {'LoadRm', 'n', 'n_str', 'addr_in', 'addr_out'}
     in_class = spelled(generate_instruction_class(load_rm, templates))
     macros = re.findall(
-        r'^#define (\w+)\(([^)]*)\) (.*)$', read(allocator, 'include', 'solver.h'), re.M
+        r'^#define (\w+)\(([^)]*)\) (.*)$', read(allocator, 'include', 'solver.h'), re.MULTILINE
     )
     for macro, parameters, body in macros:
         if macro in in_class:
@@ -393,13 +392,17 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
         ),
         (
             {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
-            "its operand on 'd1' has the address '@a.addr_1 * 2', "
-            'which is not one address attribute of the instruction',
+            (
+                "its operand on 'd1' has the address '@a.addr_1 * 2', "
+                'which is not one address attribute of the instruction'
+            ),
         ),
         (
             {'inputs': [['d1', ['0'], ['64']], SECOND]},
-            "its operand on 'd1' has the address '0', "
-            'which is not one address attribute of the instruction',
+            (
+                "its operand on 'd1' has the address '0', "
+                'which is not one address attribute of the instruction'
+            ),
         ),
     ],
 )
