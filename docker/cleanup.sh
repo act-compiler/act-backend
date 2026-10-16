@@ -23,6 +23,25 @@ case "${1:-}" in
     ;;
 esac
 
+usage() {
+  echo "Usage: $0 [--cpu|--cuda13] [-h|--help]"
+}
+
+# Past the image flag, only --help is read
+if [ $# -gt 0 ]; then
+  case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown arg: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 
@@ -31,12 +50,14 @@ if [ "$ARCH" = "x86_64" ]; then
 elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
   IMAGE_NAME="devanshdvj/act-env:${ACT_ENV_TAG}${VARIANT}-arm64"
 else
-  echo "Error: Unsupported architecture: $ARCH"
+  echo "Error: Unsupported architecture: $ARCH" >&2
   exit 1
 fi
 
 # collect candidate containers (all containers using the image)
-mapfile -t CONTAINERS < <(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}' | awk -v img="${IMAGE_NAME}" '$3 == img')
+LISTED=$(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}')
+# Not piped: a failed docker ps ends the script
+mapfile -t CONTAINERS < <(awk -v img="${IMAGE_NAME}" '$3 == img' <<<"${LISTED}")
 
 NUM_CONTAINERS=${#CONTAINERS[@]}
 if [ ${NUM_CONTAINERS} -eq 0 ]; then
@@ -56,7 +77,7 @@ for line in "${CONTAINERS[@]}"; do
   case "${RESP}" in
     y | Y)
       echo "Removing ${CNAME}..."
-      docker rm -f "${CID}" || { echo "Failed to remove ${CNAME}"; }
+      docker rm -f "${CID}"
       ;;
     *)
       echo "Keeping ${CNAME}."
