@@ -84,6 +84,29 @@ def unfilled_sources(work_dir):
     return unfilled
 
 
+# The tree whose formatter settings the examples are held to
+TREE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def unformatted_sources(backend_dir):
+    """Return what rustfmt and clang-format would change in a generated backend"""
+    sources = []
+    for root, dirs, names in os.walk(backend_dir):
+        # The build trees hold no generated source
+        dirs[:] = [d for d in dirs if d not in ('target', 'build')]
+        sources += [os.path.join(root, name) for name in names]
+    rust = [path for path in sources if path.endswith('.rs')]
+    cpp = [path for path in sources if path.endswith(('.cc', '.h'))]
+    # A backend with no sources would pass unchecked
+    assert rust and cpp, f'no generated sources in {backend_dir}'
+    checks = [
+        ['rustfmt', '--check', '--config-path', TREE_DIR, '--config', 'skip_children=true', *rust],
+        ['clang-format', '--dry-run', '-Werror', f'--style=file:{TREE_DIR}/.clang-format', *cpp],
+    ]
+    runs = [subprocess.run(check, capture_output=True, text=True, check=False) for check in checks]
+    return ''.join(run.stdout + run.stderr for run in runs if run.returncode != 0)
+
+
 def compile_hlo(work_dir, example_dir):
     """Run the backend binary on the HLO file to produce a compiled kernel"""
     backend_bin = os.path.join(work_dir, 'backends', 'QKV')
@@ -224,6 +247,11 @@ def work_dir(request):
     work_dir = tempfile.mkdtemp()
     try:
         generate_oracle_and_backend(request.module.QKV_DIR, work_dir)
+        # The generated backends held to the tree's formatters
+        targets = os.path.join(work_dir, 'targets')
+        for name in os.listdir(targets):
+            complaints = unformatted_sources(os.path.join(targets, name, 'backend'))
+            assert not complaints, complaints
         yield work_dir
     finally:
         shutil.rmtree(work_dir)

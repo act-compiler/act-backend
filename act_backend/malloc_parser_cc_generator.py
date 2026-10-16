@@ -12,14 +12,14 @@ def generate_parser_instruction(instruction, templates):
     if comp_attrs:
         # Currently assuming single attribute
         attr_name = comp_attrs[0]
-        return templates.render_lines(
+        return templates.render(
             'parser.cc.INSTRUCTION_CASES.case_with_attr.txt',
             op_name=op_name,
             ClassName=class_name,
             attr_name=attr_name,
         )
     else:
-        return templates.render_lines(
+        return templates.render(
             'parser.cc.INSTRUCTION_CASES.case_no_attr.txt', op_name=op_name, ClassName=class_name
         )
 
@@ -29,7 +29,8 @@ def generate_parser_instructions(instructions, templates):
     for instruction in instructions:
         cases.append(generate_parser_instruction(instruction, templates))
 
-    return ''.join(cases)
+    # Each case closes the one above it
+    return '\n'.join(cases)
 
 
 def generate_parser_file(act_dest_dir, instructions):

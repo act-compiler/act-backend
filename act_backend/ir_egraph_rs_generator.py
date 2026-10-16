@@ -82,7 +82,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
             )
         else:
             from_op_arms.append(
-                templates.render(
+                templates.render_fitting(
                     'egraph.rs.ISA_FROM_OP_MATCH_ARMS.arm_no_metadata.txt',
                     kebab_name=kebab_name,
                     arity=str(info.arity),

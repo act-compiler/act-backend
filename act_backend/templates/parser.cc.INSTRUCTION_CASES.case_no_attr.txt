@@ -1,5 +1,4 @@
-  else if (op_name == "{{op_name}}") {
+  } else if (op_name == "{{op_name}}") {
     // does not have any attributes
 
     return new {{ClassName}}(lhs_tensor, rhs_tensors);
-  }

@@ -266,8 +266,8 @@ Instruction *create_instruction(const ParsedLine &pl,
     }
 
     return new Concat(lhs_tensor, rhs_tensors, dimension);
+    // {{INSTRUCTION_CASES}}
   }
-  // {{INSTRUCTION_CASES}}
 
   return panic("unknown instruction: " + op_name);
 }
