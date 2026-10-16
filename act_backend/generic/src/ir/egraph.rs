@@ -64,6 +64,16 @@ impl TensorOp {
     let data = match enode {
       // A broadcast's map follows its shape
       Some(TensorOp::OpBroadcast(data, _)) => data.split_once(';')?.1,
+      // A dot's four lists, each after its length
+      Some(TensorOp::OpDot(data, _)) => {
+        let mut ints = vec![];
+        for list in data.split(';') {
+          let list = TensorOp::ints_of(list)?;
+          ints.push(list.len() as i32);
+          ints.extend(list);
+        }
+        return Some(ints);
+      }
       Some(
         TensorOp::OpConcat(data, _)
         | TensorOp::OpReduceSum(data, _)
@@ -72,6 +82,11 @@ impl TensorOp {
       ) => data.as_str(),
       _ => return None,
     };
+    TensorOp::ints_of(data)
+  }
+
+  // The integers of a payload's text, split at commas and colons
+  fn ints_of(data: &str) -> Option<Vec<i32>> {
     data
       .split([',', ':'])
       .filter(|field| !field.trim().is_empty())

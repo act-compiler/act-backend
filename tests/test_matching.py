@@ -276,7 +276,7 @@ def add_on_hbm(acc, name, sizes, lines, attributes=()):
 
 
 def hbm_only():
-    """No data model but the HBM: a product, a sum and a fill, each reading HBM bytes"""
+    """No data model but the HBM: products, a sum and a fill, each reading HBM bytes"""
     acc = Accelerator('HBM_ONLY')
     add_on_hbm(
         acc,
@@ -310,6 +310,43 @@ def hbm_only():
             'ROOT %Out0 = u8[`@c.n * 128`] reshape(%c)',
         ],
         ['n'],
+    )
+    # A product over the first two dimensions of each input
+    add_on_hbm(
+        acc,
+        'cdot',
+        ['8192', '8192', '8192'],
+        [
+            '%In0 = u8[8192] parameter(0)',
+            '%In1 = u8[8192] parameter(1)',
+            '%a = u8[8,8,64,2] reshape(%In0)',
+            '%b = u8[8,8,64,2] reshape(%In1)',
+            '%x = bf16[8,8,64] bitcast_convert(%a)',
+            '%y = bf16[8,8,64] bitcast_convert(%b)',
+            '%z = bf16[64,64] dot(%x, %y), lhs_contracting_dims={1,0}, rhs_contracting_dims={1,0}',
+            '%c = u8[64,64,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[8192] reshape(%c)',
+        ],
+    )
+    # A product whose result shape disagrees with its dimensions
+    add_on_hbm(
+        acc,
+        'skew',
+        ['8192', '8192', '2'],
+        [
+            '%In0 = u8[8192] parameter(0)',
+            '%In1 = u8[8192] parameter(1)',
+            '%a = u8[64,64,2] reshape(%In0)',
+            '%b = u8[64,64,2] reshape(%In1)',
+            '%x = bf16[64,64] bitcast_convert(%a)',
+            '%y = bf16[64,64] bitcast_convert(%b)',
+            (
+                '%z = bf16[1] dot(%x, %y), lhs_batch_dims={0}, lhs_contracting_dims={1}, '
+                'rhs_batch_dims={0}, rhs_contracting_dims={1}'
+            ),
+            '%c = u8[1,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[2] reshape(%c)',
+        ],
     )
     # One bf16 value spread over 64 by 64
     add_on_hbm(
@@ -350,6 +387,54 @@ def scalar():
     return acc
 
 
+def through_product():
+    """Moves of rows of 16 s8, a 16 by 16 product the only way from d1 to d2, and an add on d2"""
+    acc = Accelerator('THROUGH_PRODUCT')
+    acc.add_data_model('d1', [64], [16], 's8')
+    acc.add_data_model('d2', [64], [16], 's8')
+    instr = acc.add_instruction('load_s8', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 16']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[`@c.n * 16`] parameter(0);
+    %a = u8[`@c.n`,16] reshape(%In0);
+    ROOT %Out0 = s8[`@c.n`,16] bitcast_convert(%a);
+}
+""")
+    instr = acc.add_instruction('store_s8', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d2', ['@a.addr_in'], ['@c.n']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 16']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = s8[`@c.n`,16] parameter(0);
+    %a = u8[`@c.n`,16] bitcast_convert(%In0);
+    ROOT %Out0 = u8[`@c.n * 16`] reshape(%a);
+}
+""")
+    instr = acc.add_instruction('gemm16', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['16']], ['d1', ['@a.addr_2'], ['16']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['16']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = s8[16,16] parameter(0);
+    %In1 = s8[16,16] parameter(1);
+    ROOT %Out0 = s8[16,16] dot(%In0, %In1), lhs_contracting_dims={1}, rhs_contracting_dims={0};
+}
+""")
+    instr = acc.add_instruction('vadd16', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d2', ['@a.addr_1'], ['16']], ['d2', ['@a.addr_2'], ['16']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['16']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = s8[16,16] parameter(0);
+    %In1 = s8[16,16] parameter(1);
+    ROOT %Out0 = s8[16,16] add(%In0, %In1);
+}
+""")
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
     """Generate the spec's backend once, in a directory of its own"""
@@ -381,6 +466,14 @@ def scalar_dir(tmp_path_factory):
     generate_oracle(acc, work_dir)
     generate_backend(acc, work_dir)
     return work_dir
+
+
+@pytest.fixture(scope='module')
+def product_backend(tmp_path_factory):
+    """Generate the backend of the spec whose only way from d1 to d2 is a product; return its path"""
+    work_dir = str(tmp_path_factory.mktemp('through_product'))
+    generate_backend(through_product(), work_dir)
+    return os.path.join(work_dir, 'backends', 'THROUGH_PRODUCT')
 
 
 @pytest.fixture(scope='module')
@@ -612,6 +705,87 @@ def test_broadcast_of_rank_0_with_no_map_compiles_as_with_the_empty_map(hbm_back
         # The assembly, its header comments aside, which name the input file
         assemblies.append([line for line in text.splitlines() if not line.startswith('#')])
     assert assemblies[0] == assemblies[1]
+
+
+# A product over the first dimension of each input, each value in the HBM
+TURNED_PRODUCT = """HloModule turned_product, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  ROOT %p = bf16[64,64] dot(%a, %b), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+"""
+
+
+def contracted(lhs, rhs):
+    """A product of two 8 by 8 by 64 values over their first two dimensions, paired as given"""
+    return f"""HloModule contracted, entry_computation_layout={{(bf16[8,8,64]{{2,1,0}}, bf16[8,8,64]{{2,1,0}})->bf16[64,64]{{1,0}}}}
+
+ENTRY main {{
+  %x = bf16[8,8,64] parameter(0)
+  %y = bf16[8,8,64] parameter(1)
+  ROOT %z = bf16[64,64] dot(%x, %y), lhs_contracting_dims={{{lhs}}}, rhs_contracting_dims={{{rhs}}}
+}}
+"""
+
+
+def test_dot_is_selected_by_its_contracting_pairs(hbm_backend, tmp_path):
+    calls = selected(hbm_backend, tmp_path, contracted('1,0', '1,0'))
+    # The semantics pairs them as {1,0} with {1,0}
+    assert [name for name, _ in calls] == ['cdot']
+
+
+# A full contraction whose integers, in order, are skew's, in other lists
+LISTS_APART = """HloModule lists_apart, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[]}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  ROOT %p = bf16[] dot(%a, %b), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+}
+"""
+
+
+@pytest.mark.parametrize(
+    'kernel',
+    [TURNED_PRODUCT, contracted('0,1', '1,0'), LISTS_APART],
+    ids=['turned', 'crossed_pairs', 'lists_apart'],
+)
+def test_dot_whose_dimensions_no_instruction_spells_finds_no_assembly(
+    hbm_backend, tmp_path, kernel
+):
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(kernel)
+    output = tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([hbm_backend, *arguments], capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    assert run.stderr.endswith('and no candidate was extracted\n')
+    assert not output.exists()
+
+
+# A product of two s8 values over dimension 1 of each
+TURNED_SQUARE = """HloModule turned_square, entry_computation_layout={(s8[16,16]{1,0}, s8[16,16]{1,0})->s8[16,16]{1,0}}
+
+ENTRY main {
+  %a = s8[16,16] parameter(0)
+  %b = s8[16,16] parameter(1)
+  ROOT %p = s8[16,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+"""
+
+
+def test_dot_is_compared_as_matched_not_as_another_of_its_class(product_backend, tmp_path):
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(TURNED_SQUARE)
+    output = tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([product_backend, *arguments], capture_output=True, text=True, check=False)
+    # Its e-class also holds its product by the identity, which gemm16 spells
+    assert run.returncode == 1
+    assert run.stderr.endswith('and no candidate was extracted\n')
+    assert not output.exists()
 
 
 # The input added to itself and each sum: 26 sums
