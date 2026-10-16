@@ -157,23 +157,23 @@ pub fn add_parameter(
 
     let transpose_order = get_transpose_order_param(tshape.split(',').count() as i32);
     let node = egraph.add(TensorOp::OpTranspose(transpose_order.clone(), [node]));
+    // Each tile dimension beside its outer one
+    let transposed_str = apply_transpose_order(&tiled_shape, &transpose_order);
     egraph.set_analysis_data(
       node,
       TensorInfo {
-        shape: bitcvt_vec.clone(),
+        shape: shape_to_vec(&transposed_str)?,
         dtype,
         is_const: false,
       },
     );
 
-    let shape_with_size = byte_view(tshape, dtype_size);
-
-    let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [node]));
-    let reshape_vec = shape_to_vec(&shape_with_size)?;
+    // The tiles joined back into the shape
+    let node = egraph.add(TensorOp::OpReshape(tshape.to_string(), [node]));
     egraph.set_analysis_data(
       node,
       TensorInfo {
-        shape: reshape_vec.clone(),
+        shape: shape_to_vec(tshape)?,
         dtype,
         is_const: false,
       },
