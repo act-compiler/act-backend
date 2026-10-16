@@ -407,6 +407,27 @@ def scalar():
     return acc
 
 
+def doubling():
+    """Moves of s8 and s32 rows and a widening of the top rows added to itself"""
+    acc = Accelerator('DOUBLING')
+    acc.add_data_model('d1', [512], [64], 'bf16')
+    add_typed_moves(acc, 's8', 1)
+    add_typed_moves(acc, 's32', 4)
+    # The first 32 of 64 rows, widened and doubled
+    add_on_d1(
+        acc,
+        'double_top',
+        ['64', '32'],
+        [
+            '%In0 = s8[64,64] parameter(0)',
+            '%t = s8[32,64] slice(%In0), slice={[0:32], [0:64]}',
+            '%w = s32[32,64] convert(%t)',
+            'ROOT %Out0 = s32[32,64] add(%w, %w)',
+        ],
+    )
+    return acc
+
+
 def through_product():
     """Moves of rows of 16 s8, a 16 by 16 product the only way from d1 to d2, and an add on d2"""
     acc = Accelerator('THROUGH_PRODUCT')
@@ -502,6 +523,14 @@ def hbm_backend(tmp_path_factory):
     work_dir = str(tmp_path_factory.mktemp('hbm_only'))
     generate_backend(hbm_only(), work_dir)
     return os.path.join(work_dir, 'backends', 'HBM_ONLY')
+
+
+@pytest.fixture(scope='module')
+def doubling_backend(tmp_path_factory):
+    """Generate the backend of the spec that doubles a widening and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('doubling'))
+    generate_backend(doubling(), work_dir)
+    return os.path.join(work_dir, 'backends', 'DOUBLING')
 
 
 def selected(backend, tmp_path, kernel):
@@ -1166,3 +1195,22 @@ ENTRY main {
 def test_convert_pair_over_a_widened_value_is_dropped(backend, tmp_path):
     calls = selected(backend, tmp_path, WIDENED)
     assert [name for name, _ in calls] == ['load_s8', 'widen', 'store_s32']
+
+
+# The top rows widened before and after a slice, then added
+DOUBLED_TOP = """HloModule doubled_top, entry_computation_layout={(s8[64,64]{1,0})->s32[32,64]{1,0}}
+
+ENTRY main {
+  %x = s8[64,64] parameter(0)
+  %w = s32[64,64] convert(%x)
+  %a = s32[32,64] slice(%w), slice={[0:32], [0:64]}
+  %t = s8[32,64] slice(%x), slice={[0:32], [0:64]}
+  %b = s32[32,64] convert(%t)
+  ROOT %r = s32[32,64] add(%a, %b)
+}
+"""
+
+
+def test_convert_a_rewrite_builds_joins_the_kernel_convert(doubling_backend, tmp_path):
+    calls = selected(doubling_backend, tmp_path, DOUBLED_TOP)
+    assert [name for name, _ in calls] == ['load_s8', 'double_top', 'store_s32']

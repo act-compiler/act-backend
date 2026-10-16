@@ -461,7 +461,7 @@ pub fn add_convert(
   let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpConvert(
-    ttype.to_string(),
+    dtype.to_string(),
     [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);

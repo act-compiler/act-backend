@@ -199,7 +199,7 @@ pub fn metadata_1(
 
   let mut rhs_metadata = vec![None; 3];
   rhs_metadata[1] = Some(slice_data);
-  rhs_metadata[2] = Some(format!("{:?}", ty));
+  rhs_metadata[2] = Some(ty.to_string());
   rhs_metadata
 }
 
@@ -442,9 +442,9 @@ pub fn metadata_5(
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 3);
   let mut rhs_metadata = vec![None; 6];
-  rhs_metadata[1] = Some("I32".to_string());
-  rhs_metadata[3] = Some("I32".to_string());
-  rhs_metadata[5] = Some("I8".to_string());
+  rhs_metadata[1] = Some(Dtype::I32.to_string());
+  rhs_metadata[3] = Some(Dtype::I32.to_string());
+  rhs_metadata[5] = Some(Dtype::I8.to_string());
   rhs_metadata
 }
 
