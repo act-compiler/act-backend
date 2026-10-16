@@ -36,6 +36,14 @@ UNCOMPARED = {'broadcast', 'dot'}
 # rustfmt's fn_call_width: the widest a call's arguments stay on one line
 CALL_WIDTH = 60
 
+# Each matched value's shape and type, by its position
+LHS_METADATA = (
+    '  let lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
+    '    .iter()\n'
+    '    .map(|id| egraph[*id].data.clone())\n'
+    '    .collect();\n'
+)
+
 
 class RustGeneratorVisitor(OperandVisitor):
     def __init__(self, expressions):
@@ -185,17 +193,48 @@ def attribute_reading(assignments, attribute):
     return None
 
 
-def generate_comp_attr_extraction(assignments, attributes, checked):
-    """The Rust that reads each attribute, the precondition first checking its dimension exists"""
+def payload_reading(assignments, attribute, expressions):
+    """Return where a rewrite reads an attribute from a payload: a position, an index and the factor
+
+    The first compared value in pattern order that holds the attribute alone or times a positive
+    integer, or None where none does.
+    """
+    for position, assignment in enumerate(assignments):
+        if assignment['op'] not in COMPARED:
+            continue
+        for index, value in enumerate(compared_values(assignment)):
+            factor = attribute_factor(expressions.get(value.EXPRESSION()), attribute)
+            if factor:
+                return position, index, factor
+    return None
+
+
+def generate_comp_attr_extraction(assignments, attributes, checked, expressions):
+    """The Rust that reads each attribute, the precondition's first checking the shape holds it
+
+    An attribute no shape names is read from the payload of a matched e-node.
+    """
     code = ''
     for attribute in attributes:
+        name = get_attribute_name(attribute)
+        if attribute_reading(assignments, attribute) is None:
+            position, index, factor = payload_reading(assignments, attribute, expressions)
+            read = f'TensorOp::payload_int(&lhs_enodes[{position}], {index})'
+            division = f' / {factor}' if factor != 1 else ''
+            if not checked:
+                code += let_line(name, f'{read}.unwrap(){division}')
+                continue
+            # Read into `value`, so a long name never widens the let-else
+            code += f'  let Some(value) = {read} else {{\n    return false;\n  }};\n'
+            code += let_line(name, f'value{division}')
+            continue
         position, dimension, factor = attribute_reading(assignments, attribute)
         shape = f'lhs_metadata[{position}].shape'
         if checked and dimension:
             # A matched value may have fewer dimensions
             code += f'  if {shape}.len() <= {dimension} {{\n    return false;\n  }}\n'
         division = f' / {factor}' if factor != 1 else ''
-        code += f'  let {get_attribute_name(attribute)} = {shape}[{dimension}]{division};\n'
+        code += f'  let {name} = {shape}[{dimension}]{division};\n'
     return code
 
 
@@ -300,7 +339,7 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
     num_assignments = len(assignments)
 
     # Generate comp attribute extraction
-    comp_attr_code = generate_comp_attr_extraction(assignments, attributes, True)
+    comp_attr_code = generate_comp_attr_extraction(assignments, attributes, True, expressions)
 
     # Each copy of a value is its first occurrence's e-class
     shape_checks = [
@@ -341,14 +380,21 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
     )
 
 
-def generate_metadata_function(instruction_name, semantics_data, attributes, rhs_size, templates):
+def generate_metadata_function(
+    instruction_name, semantics_data, attributes, expressions, rhs_size, templates
+):
     assignments = semantics_data['assignments']
 
     num_assignments = len(assignments)
 
     if attributes:
         # The attributes' values, as the precondition reads them
-        comp_attr_extraction = generate_comp_attr_extraction(assignments, attributes, False)
+        shaped = [
+            attribute for attribute in attributes if attribute_reading(assignments, attribute)
+        ]
+        comp_attr_extraction = generate_comp_attr_extraction(
+            assignments, attributes, False, expressions
+        )
 
         # The attributes as one string, in declared order
         names = [get_attribute_name(attribute) for attribute in attributes]
@@ -361,9 +407,11 @@ def generate_metadata_function(instruction_name, semantics_data, attributes, rhs
         return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',
             instruction_name=instruction_name,
+            egraph='egraph' if shaped else '_',
+            enodes='_' if len(shaped) == len(attributes) else 'lhs_enodes',
             num_assignments=str(num_assignments),
             attributes=value,
-            comp_attr_extraction=comp_attr_extraction.strip(),
+            comp_attr_extraction=(LHS_METADATA if shaped else '') + comp_attr_extraction,
             rhs_size=str(rhs_size),
         )
     else:
@@ -375,20 +423,20 @@ def generate_metadata_function(instruction_name, semantics_data, attributes, rhs
         )
 
 
-def generate_set_shapes_function(instruction_name, semantics_data, attributes, rhs_size, templates):
+def generate_set_shapes_function(
+    instruction_name, semantics_data, attributes, expressions, rhs_size, templates
+):
     assignments = semantics_data['assignments']
     root_assignment = semantics_data['root_assignment']
 
     num_assignments = len(assignments)
 
-    # The attributes' values, as the precondition reads them
+    # The value of each attribute a shape holds, as the precondition reads it
+    shaped = [attribute for attribute in attributes if attribute_reading(assignments, attribute)]
     metadata_code = ''
-    if attributes:
-        metadata_code = (
-            '  let lhs_metadata: Vec<TensorInfo> = lhs_eclasses\n'
-            '    .iter()\n'
-            '    .map(|id| egraph[*id].data.clone())\n'
-            '    .collect();\n' + generate_comp_attr_extraction(assignments, attributes, False)
+    if shaped:
+        metadata_code = LHS_METADATA + generate_comp_attr_extraction(
+            assignments, shaped, False, expressions
         )
 
     # Generate shape setting
@@ -420,10 +468,20 @@ def generate_ir2isa_rust_functions(metadata, templates):
         metadata.name, semantics_data, attributes, metadata.expressions, templates
     )
     metadata_func = generate_metadata_function(
-        metadata.name, semantics_data, attributes, metadata.rhs_size, templates
+        metadata.name,
+        semantics_data,
+        attributes,
+        metadata.expressions,
+        metadata.rhs_size,
+        templates,
     )
     set_shapes = generate_set_shapes_function(
-        metadata.name, semantics_data, attributes, metadata.rhs_size, templates
+        metadata.name,
+        semantics_data,
+        attributes,
+        metadata.expressions,
+        metadata.rhs_size,
+        templates,
     )
 
     return f'{precond}\n{metadata_func}\n{set_shapes}'

@@ -169,6 +169,17 @@ def rustfmt_complaints(source, tmp_path):
 def test_wide_compared_values_are_laid_out_as_rustfmt_lays_them(templates, tmp_path):
     acc = Accelerator('WIDE')
     acc.add_data_model('d1', [512], [64], 'bf16')
+    # A long name, read from a payload over its factor
+    name = '@c.the_first_row_of_the_window_in_rows_x'
+    instr = acc.add_instruction('named', [name[3:]], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['16']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[16,64] slice(%In0), slice={{[`2 * {name}`:`2 * {name} + 16`], [0:64]}};
+}}
+""")
     instr = acc.add_instruction('far', ['offset_rows'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d1', ['@a.addr_in'], ['@c.offset_rows']]])
     instr.set_outputs([['d1', ['@a.addr_out'], ['16']]])
@@ -185,9 +196,11 @@ ENTRY {{
     ROOT %Out0 = bf16[16,64] slice(%In0), slice={{[`{wide}`:`{wider}`], [0:64]}};
 }}
 """)
-    (far,) = get_instruction_metadata(acc.instructions)
+    named, far = get_instruction_metadata(acc.instructions)
     functions = generate_ir2isa_rust_functions(far, templates)
     assert 'let value = attr_offset_rows + 16 + 0 * attr_offset_rows + 0;' in functions
+    functions += '\n' + generate_ir2isa_rust_functions(named, templates)
+    assert 'let attr_the_first_row_of_the_window_in_rows_x = value / 2;' in functions
     assert rustfmt_complaints(functions, tmp_path) == ''
 
 

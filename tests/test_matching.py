@@ -188,6 +188,17 @@ ENTRY {
         ],
         ['m', 'n'],
     )
+    # The 16 rows from row s, which no shape names
+    add_on_d1(
+        acc,
+        'window',
+        ['64', '16'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            'ROOT %Out0 = bf16[16,64] slice(%In0), slice={[`@c.s`:`@c.s + 16`], [0:64]}',
+        ],
+        ['s'],
+    )
     # A tile, m rows of n f32: loaded, exponentiated, stored
     instr = acc.add_instruction('load_tile', ['m', 'n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.m * @c.n * 4']]])
@@ -680,6 +691,22 @@ def test_slice_is_selected_by_its_ranges(backend, tmp_path):
     calls = selected(backend, tmp_path, BOTTOM)
     assert [name for name, _ in calls] == ['load_rm', 'bottom', 'store_rm']
     assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
+
+
+# The 16 rows from row 8 of 64
+WINDOW = """HloModule window, entry_computation_layout={(bf16[64,64]{1,0})->bf16[16,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  ROOT %y = bf16[16,64] slice(%x), slice={[8:24], [0:64]}
+}
+"""
+
+
+def test_attribute_no_shape_names_is_read_from_its_slice(backend, tmp_path):
+    calls = selected(backend, tmp_path, WINDOW)
+    assert [name for name, _ in calls] == ['load_rm', 'window', 'store_rm']
+    assert calls[1][1]['s'] == '8'
 
 
 # The middle 32 of 64 rows

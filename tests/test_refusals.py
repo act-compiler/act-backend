@@ -250,7 +250,7 @@ def test_instruction_with_no_inputs_refused(tmp_path):
 @pytest.mark.parametrize(
     'lines',
     [
-        # Named nowhere, only in a constant, only in an attribute
+        # Named nowhere, only in a constant, in an attribute but not alone
         [IN0, IN1, result(DOT)],
         [
             IN0,
@@ -263,13 +263,16 @@ def test_instruction_with_no_inputs_refused(tmp_path):
             IN0,
             IN1,
             '%a = bf16[64,64] add(%In0, %In1)',
-            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k`], [0:64]}',
+            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k + 32`], [0:64]}',
         ],
     ],
 )
 def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
     message = refusal(with_semantics(lines, attributes=['k']), tmp_path)
-    assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
+    assert message == (
+        "gemm: no shape of its semantics names the computational attribute 'k', "
+        "and no operation's attribute holds it alone or times a positive integer"
+    )
 
 
 @pytest.mark.parametrize('dimension', ['@c.k*(64+64)', '@c.k * @c.k', '@c.k + 1', '@c.k * 0'])
