@@ -1,6 +1,9 @@
 // A kernel line's name, type, shape, tile, operator, operands, rest
 pub type Line = (String, String, String, String, String, String, String);
 
+// A kernel line and whether it is marked ROOT
+pub type MarkedLine = (Line, bool);
+
 // A layout other than row-major {n-1,...,0}, as a reason
 pub(super) fn other_than_row_major(shape: &str, layout: &str) -> Option<String> {
   let rank = shape.split(',').filter(|d| !d.trim().is_empty()).count();
@@ -73,7 +76,7 @@ pub fn parse_type_shape(type_shape: &str) -> Result<(String, String, String), St
   Ok((ttype, tshape, ttile))
 }
 
-pub fn parse_line(line: &str) -> Result<Option<Line>, String> {
+pub fn parse_line(line: &str) -> Result<Option<MarkedLine>, String> {
   let line = line.trim();
 
   // 0. Ignore empty lines or comments
@@ -140,6 +143,7 @@ pub fn parse_line(line: &str) -> Result<Option<Line>, String> {
   let trest = after_type_shape[operands_end + 1..].trim().to_string();
 
   Ok(Some((
-    tsymbol, ttype, tshape, ttile, toperator, toperands, trest,
+    (tsymbol, ttype, tshape, ttile, toperator, toperands, trest),
+    is_root,
   )))
 }

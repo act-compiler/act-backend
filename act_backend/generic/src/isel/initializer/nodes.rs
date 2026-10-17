@@ -485,7 +485,7 @@ pub(super) fn add_root_operations(
   tshape: &str,
   ttile: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
-  table: &mut EggSymbolTable,
+  table: &EggSymbolTable,
   root: &mut Option<Id>,
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
@@ -518,7 +518,6 @@ pub(super) fn add_root_operations(
       },
     );
 
-    table.insert(tsymbol.to_string(), node);
     *root = Some(node);
   } else {
     let node = lookup(table, tsymbol)?;
@@ -574,7 +573,6 @@ pub(super) fn add_root_operations(
       },
     );
 
-    table.insert(tsymbol.to_string(), node);
     *root = Some(node);
   }
   Ok(())

@@ -58,17 +58,16 @@ pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(path: P) -> Result<ParsedModul
   let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
 
   // Parse the module with regions
-  let (header, entry_instructions) = parse_hlo_module_with_regions(&line_refs)?;
+  let (header, entry_instructions, root_index) = parse_hlo_module_with_regions(&line_refs)?;
   // Fill offsets from the header
   fill_offsets_from_header(&header, &mut offsets, &mut metadata)?;
 
   // Process entry instructions
   let mut root: Option<Id> = None;
-  let total_instructions = entry_instructions.len();
 
   for (i, expr) in entry_instructions.into_iter().enumerate() {
-    // The last instruction is typically the ROOT operation
-    let is_root = i == total_instructions - 1;
+    // The kernel computes the value its ROOT line marks
+    let is_root = i == root_index;
 
     add_expr_to_egraph(
       &expr,
@@ -296,7 +295,7 @@ fn add_expr_to_egraph(
     }
   };
 
-  // The last instruction is written back as bytes
+  // The root is written back as bytes
   if parsing_root {
     add_root_operations(tsymbol, ttype, tshape, ttile, egraph, table, root)?;
   }

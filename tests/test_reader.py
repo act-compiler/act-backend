@@ -4,7 +4,7 @@ import os
 import subprocess
 
 import pytest
-from conftest import compiled
+from conftest import compiled, instruction_calls
 
 # A one-input, one-output bf16 kernel around the given lines
 HEADER = 'HloModule bad, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}'
@@ -329,5 +329,36 @@ def test_slice_or_concatenate_of_shapes_that_disagree_ends_in_no_assembly(
     backend, tmp_path, line, reason
 ):
     run, _ = compiled(backend, tmp_path, kernel(A, line))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
+
+
+# A sum of two 32-row matrices, then that sum doubled
+SUM_32 = (
+    '%a = bf16[32,64] parameter(0)',
+    '%b = bf16[32,64] parameter(1)',
+    '%c = bf16[32,64] add(%a, %b)',
+    '%d = bf16[32,64] add(%c, %c)',
+)
+HEADER_32 = 'HloModule sum, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[32,64]{1,0}}'
+
+
+def test_kernel_is_compiled_for_the_value_its_root_marks(backend, tmp_path):
+    a, b, c, d = SUM_32
+    run, output = compiled(backend, tmp_path, kernel(a, b, f'ROOT {c}', d, header=HEADER_32))
+    assert run.returncode == 0, run.stderr
+    assert instruction_calls(output)['vadd_32'] == 1
+
+
+@pytest.mark.parametrize(
+    'roots, reason',
+    [
+        ((2, 3), "the kernel's ENTRY marks 2 lines ROOT, where the reader takes one"),
+    ],
+    ids=['two'],
+)
+def test_kernel_without_one_root_ends_in_no_assembly(backend, tmp_path, roots, reason):
+    lines = [f'ROOT {line}' if k in roots else line for k, line in enumerate(SUM_32)]
+    run, _ = compiled(backend, tmp_path, kernel(*lines, header=HEADER_32))
     assert run.returncode == 1
     assert run.stderr == f'Error: no assembly found: {reason}\n'
