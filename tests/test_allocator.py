@@ -116,3 +116,13 @@ def test_line_the_allocator_cannot_read_drops_the_candidate(
     assert run.returncode == 1
     assert run.stderr == f'the allocator cannot read the line `{line}`: {fault}\n'
     assert not assembly.exists()
+
+
+def test_tensor_defined_twice_drops_the_candidate(allocator, tmp_path):
+    line = "t2: Modeld1[-1] = bf16[32,64] instr_load_rm[rows='32'](t0)"
+    run, assembly = allocated(allocator, tmp_path, with_line(3, line))
+    assert run.returncode == 1
+    assert run.stderr == (
+        f'the allocator cannot read the line `{line}`: the tensor t2 is defined twice\n'
+    )
+    assert not assembly.exists()

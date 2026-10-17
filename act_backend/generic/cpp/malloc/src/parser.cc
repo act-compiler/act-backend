@@ -175,6 +175,10 @@ Instruction *create_instruction(const ParsedLine &pl,
   else
     return refuse("unknown storage: " + storage_name);
 
+  // A tensor is defined by one line
+  if (tensor_map.count(lhs))
+    return refuse("the tensor " + lhs + " is defined twice");
+
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
 
