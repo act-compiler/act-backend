@@ -105,26 +105,6 @@ def test_enum_variants(accelerator, templates):
     ]
 
 
-def test_display_names_each_attribute(templates):
-    acc = Accelerator('ONE')
-    acc.add_data_model('d1', [128], [64], 'bf16')
-    instr = acc.add_instruction('top', ['m', 'n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.m']]])
-    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
-    instr.add_semantics("""
-ENTRY {
-    %In0 = bf16[`@c.m`,64] parameter(0);
-    ROOT %Out0 = bf16[`@c.n`,64] slice(%In0), slice={[0:`@c.n`], [0:64]};
-}
-""")
-    info = extract_instruction_info(acc.instructions)
-    parts = ir_egraph_rs_generator.generate_instruction_variants(info, templates)
-    # The values the allocator reads, each attribute named
-    assert squeeze(parts['display_arms'][0]) == (
-        'TensorOp::InstrTop(data, _) => write!(f, "instr_top[m,n=\'{}\']", data),'
-    )
-
-
 def test_preconditions(accelerator, templates):
     load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))

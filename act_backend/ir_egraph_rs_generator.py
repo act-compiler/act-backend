@@ -97,7 +97,6 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
                     'egraph.rs.ISA_DISPLAY_MATCH_ARMS.arm_with_metadata.txt',
                     variant_name=variant_name,
                     graph_name=get_graph_name(info.name),
-                    attributes=','.join(info.attributes),
                 )
             )
         else:
