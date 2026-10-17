@@ -75,7 +75,7 @@ def test_model_exit_handler_runs(work_dir, tmp_path):
 def test_failing_model_ends_the_compile(work_dir, tmp_path):
     run, output_path = compile_attention(work_dir, tmp_path, 'fail')
     assert run.returncode == 1
-    assert 'Error: no assembly found: the cost model returned 3\n' in run.stderr
+    assert 'the cost model returned 3' in run.stderr
     assert not os.path.exists(output_path)
 
 

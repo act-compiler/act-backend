@@ -97,7 +97,15 @@ fn update_best(
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
-    Err(reason) => no_assembly(output_path, &format!("the cost model {}", reason)),
+    Err(reason) => {
+      eprintln!("Error: the cost model {} for {:?}", reason, asm_path);
+
+      // A failed compile leaves no output
+      if output_path.exists() {
+        std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+      }
+      process::exit(1);
+    }
   };
   let time = start.elapsed();
 
