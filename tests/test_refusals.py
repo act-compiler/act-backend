@@ -176,13 +176,9 @@ def test_operations_are_the_egraphs_own():
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
 
 
-def test_each_operation_with_attributes_is_compared_or_uncompared():
-    # Each operation taidl gives attributes is in one set
+def test_each_operation_with_attributes_is_compared():
     carrying = {word for word in OPERATIONS if taidl.operations.OPERATIONS[word][1]}
-    compared = isel_ir2isa_rewrites_rs_generator.COMPARED
-    uncompared = isel_ir2isa_rewrites_rs_generator.UNCOMPARED
-    assert carrying == compared | uncompared
-    assert not compared & uncompared
+    assert carrying == isel_ir2isa_rewrites_rs_generator.COMPARED
 
 
 @pytest.mark.parametrize('element_type', grammar_words('TYPE'))

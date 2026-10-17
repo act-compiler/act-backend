@@ -29,9 +29,7 @@ ELEMENT_TYPES = {
 }
 
 # The operations whose payload holds their attributes' integers, in order
-COMPARED = {'broadcast', 'concatenate', 'reduce_add', 'slice', 'transpose'}
-# The operations whose payload holds none of their attributes
-UNCOMPARED = {'dot'}
+COMPARED = {'broadcast', 'concatenate', 'dot', 'reduce_add', 'slice', 'transpose'}
 
 # rustfmt's fn_call_width: the widest a call's arguments stay on one line
 CALL_WIDTH = 60
@@ -202,8 +200,8 @@ def payload_reading(assignments, attribute, expressions):
     for position, assignment in enumerate(assignments):
         if assignment['op'] not in COMPARED:
             continue
-        for index, value in enumerate(compared_values(assignment)):
-            factor = attribute_factor(expressions.get(value.EXPRESSION()), attribute)
+        for index, value in enumerate(compared_values(assignment, expressions)):
+            factor = None if isinstance(value, int) else attribute_factor(value, attribute)
             if factor:
                 return position, index, factor
     return None
@@ -238,17 +236,30 @@ def generate_comp_attr_extraction(assignments, attributes, checked, expressions)
     return code
 
 
-def compared_values(assignment):
-    """Return the values a compared operation's attributes give, in its payload's order"""
-    values = []
+def compared_values(assignment, expressions):
+    """Return what a compared operation's payload holds, in order: integers and expression trees"""
+    lists = []
     for name in taidl.operations.OPERATIONS[assignment['op']][1]:
-        given = assignment['attributes'][name]
-        if given.slice_list():
+        given = assignment['attributes'].get(name)
+        if given is None:
+            # An optional list left out holds none
+            values = []
+        elif given.slice_list():
             # Each range's start and limit
-            values += [bound for bounds in slice_ranges(given.slice_list()) for bound in bounds[:2]]
+            values = [bound for bounds in slice_ranges(given.slice_list()) for bound in bounds[:2]]
         else:
-            values += given.brace_list().value()
-    return values
+            values = given.brace_list().value()
+        # Each an integer, or the tree of an expression over the attributes
+        lists.append(
+            [
+                expressions[value.EXPRESSION()] if value.EXPRESSION() else int(value.getText())
+                for value in values
+            ]
+        )
+    if assignment['op'] == 'dot':
+        # Each list after its length, so the four stay apart
+        return [value for values in lists for value in [len(values), *values]]
+    return [value for values in lists for value in values]
 
 
 def let_line(name, value):
@@ -294,12 +305,8 @@ def generate_attr_checks(assignments, expressions, templates):
     for index, assignment in enumerate(assignments):
         if assignment['op'] not in COMPARED:
             continue
-        values = compared_values(assignment)
-        # Each value an integer, or an expression over the attributes
-        ints = [
-            source(expressions[value.EXPRESSION()]) if value.EXPRESSION() else value.getText()
-            for value in values
-        ]
+        values = compared_values(assignment, expressions)
+        ints = [str(value) if isinstance(value, int) else source(value) for value in values]
         # A broadcast of one element matches whatever its map
         guard = ''
         if assignment['op'] == 'broadcast':
@@ -332,7 +339,7 @@ def generate_attr_checks(assignments, expressions, templates):
             )
             if not fits(check):
                 # A value too wide for its check, computed first
-                checks += value_lets('value', expressions[value.EXPRESSION()])
+                checks += value_lets('value', value)
                 check = templates.render_lines(
                     'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.attr_check_int.txt',
                     guard=guard,

@@ -38,7 +38,7 @@ def test_rewrite_rules(accelerator, templates):
     # The semantics as a pattern, `_?` for each carried attribute
     assert [squeeze(rule) for rule in rules] == [
         'instr_load-rm: (bitcvt (reshape_? ?a)) => (instr_load-rm_? ?a)',
-        'instr_gemm: (dot ?a ?b) => (instr_gemm ?a ?b)',
+        'instr_gemm: (dot_? ?a ?b) => (instr_gemm ?a ?b)',
     ]
 
 

@@ -41,6 +41,15 @@ pub enum HLOExpr {
     lhs: String,
     rhs: String,
   },
+  Dot {
+    tsymbol: String,
+    ttype: String,
+    tshape: String,
+    ttile: String,
+    lhs: String,
+    rhs: String,
+    dimensions: String,
+  },
   Concatenate {
     tsymbol: String,
     ttype: String,
@@ -158,6 +167,14 @@ fn required<'a>(
     .map(|(_, value)| value.trim_start_matches('{').trim_end_matches('}').trim())
     .ok_or_else(|| format!("{} gives {} no {} attribute", tsymbol, toperator, name))
 }
+
+// A dot's dimension lists, in its payload's order, and whether each is required
+const DOT_DIMENSIONS: [(&str, bool); 4] = [
+  ("lhs_batch_dims", false),
+  ("lhs_contracting_dims", true),
+  ("rhs_batch_dims", false),
+  ("rhs_contracting_dims", true),
+];
 
 // A list of dimensions, or why an entry is not one
 fn dimension_list(tsymbol: &str, name: &str, text: &str) -> Result<Vec<i32>, String> {
@@ -288,14 +305,41 @@ pub fn parse_hlo_expr(
       let lhs = operands[0].to_string();
       let rhs = operands[1].to_string();
 
-      HLOExpr::BinaryOp {
-        tsymbol: tsymbol.to_string(),
-        ttype: ttype.to_string(),
-        tshape: tshape.to_string(),
-        ttile: ttile.to_string(),
-        op_name: toperator.to_string(),
-        lhs,
-        rhs,
+      if toperator == "dot" {
+        // dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+        let mut lists = vec![];
+        for (name, needed) in DOT_DIMENSIONS {
+          // A batch list left out is empty
+          if !needed && !attributes.iter().any(|(given, _)| given == name) {
+            lists.push(vec![]);
+            continue;
+          }
+          let text = required(tsymbol, toperator, &attributes, name)?;
+          lists.push(dimension_list(tsymbol, name, text)?);
+        }
+        HLOExpr::Dot {
+          tsymbol: tsymbol.to_string(),
+          ttype: ttype.to_string(),
+          tshape: tshape.to_string(),
+          ttile: ttile.to_string(),
+          lhs,
+          rhs,
+          dimensions: lists
+            .iter()
+            .map(|list| shape_text(list))
+            .collect::<Vec<_>>()
+            .join(";"),
+        }
+      } else {
+        HLOExpr::BinaryOp {
+          tsymbol: tsymbol.to_string(),
+          ttype: ttype.to_string(),
+          tshape: tshape.to_string(),
+          ttile: ttile.to_string(),
+          op_name: toperator.to_string(),
+          lhs,
+          rhs,
+        }
       }
     }
 
@@ -420,19 +464,5 @@ pub fn parse_hlo_expr(
     }
   };
 
-  // A dot's batch dimensions, which the backend does not read
-  let unread: &[&str] = match toperator {
-    "dot" => &["lhs_batch_dims", "rhs_batch_dims"],
-    _ => &[],
-  };
-  if let Some((name, _)) = attributes
-    .iter()
-    .find(|(name, _)| unread.contains(&name.as_str()))
-  {
-    return Err(format!(
-      "{} gives {} the attribute {}, which the backend does not support",
-      tsymbol, toperator, name
-    ));
-  }
   Ok(expr)
 }

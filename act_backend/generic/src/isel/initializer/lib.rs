@@ -15,8 +15,9 @@ use crate::isel::initializer::line::parse_type_shape;
 use crate::isel::initializer::parser::{parse_hlo_module_with_regions, HloModuleHeader};
 
 use crate::isel::initializer::nodes::{
-  add_binary_op, add_broadcast, add_concatenate, add_constant, add_convert, add_exponential,
-  add_parameter, add_reduce, add_reshape, add_root_operations, add_slice, add_transpose,
+  add_binary_op, add_broadcast, add_concatenate, add_constant, add_convert, add_dot,
+  add_exponential, add_parameter, add_reduce, add_reshape, add_root_operations, add_slice,
+  add_transpose,
 };
 use crate::isel::initializer::shapes::declared_shape;
 
@@ -211,6 +212,19 @@ fn add_expr_to_egraph(
       rhs,
     } => {
       add_binary_op(tsymbol, ttype, tshape, op_name, lhs, rhs, egraph, table)?;
+      (tsymbol, ttype, tshape, ttile)
+    }
+
+    HLOExpr::Dot {
+      tsymbol,
+      ttype,
+      tshape,
+      ttile,
+      lhs,
+      rhs,
+      dimensions,
+    } => {
+      add_dot(tsymbol, ttype, tshape, lhs, rhs, dimensions, egraph, table)?;
       (tsymbol, ttype, tshape, ttile)
     }
 

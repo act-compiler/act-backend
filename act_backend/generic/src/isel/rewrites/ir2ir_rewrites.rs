@@ -60,7 +60,7 @@ pub fn precond_0(
 pub fn metadata_0(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &[Id],
-  _: &[Option<TensorOp>],
+  lhs_enodes: &[Option<TensorOp>],
 ) -> Vec<Option<String>> {
   assert_eq!(lhs_eclasses.len(), 5);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -68,12 +68,18 @@ pub fn metadata_0(
     .map(|id| egraph[*id].data.clone())
     .collect();
   let i = lhs_metadata[0].shape[0] / 16;
+  // Each half's dot keeps the matched dot's dimensions
+  let Some(TensorOp::OpDot(dimensions, _)) = &lhs_enodes[2] else {
+    unreachable!("rewrite 0 matches a dot");
+  };
 
   // Each half of the first dimension, as a slice
   let mut rhs_metadata = vec![None; 12];
   rhs_metadata[1] = Some(format!("{}:{}", 0, (i / 2) * 16));
+  rhs_metadata[3] = Some(dimensions.clone());
   rhs_metadata[5] = Some(format!("{}:{}", 0, (i / 2) * 16));
   rhs_metadata[7] = Some(format!("{}:{}", (i / 2) * 16, i * 16));
+  rhs_metadata[8] = Some(dimensions.clone());
   rhs_metadata[9] = Some(format!("{}:{}", (i / 2) * 16, i * 16));
   rhs_metadata[11] = Some("1".to_string());
   rhs_metadata
@@ -265,6 +271,8 @@ pub fn metadata_2(
 
   let mut rhs_metadata = vec![None; 3];
   rhs_metadata[1] = Some(metadata);
+  // The value's dimension 1 against the identity's dimension 0
+  rhs_metadata[2] = Some(";1;;0".to_string());
   rhs_metadata
 }
 

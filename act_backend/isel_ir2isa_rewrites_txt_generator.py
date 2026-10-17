@@ -17,7 +17,7 @@ OPERATIONS = {
     'convert': ('convert_?', 1),
     'copy': ('copy', 1),
     'divide': ('divide', 2),
-    'dot': ('dot', 2),
+    'dot': ('dot_?', 2),
     'exponential': ('exponential', 1),
     'or': ('or', 2),
     'reduce_add': ('reduce_?', 1),

@@ -98,7 +98,7 @@ fn op_repr_en(
     | TensorOp::OpConstant(_)
     | TensorOp::OpConvert(_, _)
     | TensorOp::OpDivide(_)
-    | TensorOp::OpDot(_)
+    | TensorOp::OpDot(_, _)
     | TensorOp::OpExp(_)
     | TensorOp::OpEye(_)
     | TensorOp::OpOr(_)
