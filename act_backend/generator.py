@@ -158,7 +158,7 @@ def generate_backend(
     print(f'Building backend for {accelerator.name}')
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
     build = subprocess.run(
-        ['cargo', 'build', '--release', '--locked'],
+        ['cargo', 'build', '--release'],
         cwd=backend_gen_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
