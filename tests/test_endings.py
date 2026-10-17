@@ -236,3 +236,20 @@ def test_output_the_backend_cannot_write_ends_the_compile_at_once(backend, tmp_p
     assert run.stderr.startswith("Error: cannot write the output '/proc/kernel.py': ")
     assert run.stderr.count('\n') == 1
     assert 'Starting Phase 1' not in run.stdout
+
+
+def test_missing_flag_is_a_usage_error(backend, tmp_path):
+    run = subprocess.run(
+        [backend, '--input', str(tmp_path / 'kernel.hlo')],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 1
+    assert run.stderr == 'Error: missing the required flag --output\n'
+
+
+def test_help_exits_0(backend):
+    run = subprocess.run([backend, '--help'], capture_output=True, text=True, check=False)
+    assert run.returncode == 0
+    assert run.stdout.startswith('Usage: ')
