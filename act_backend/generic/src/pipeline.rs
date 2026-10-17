@@ -200,10 +200,7 @@ impl Search {
           timestamp
         );
 
-        // The output takes its name once it is whole
-        let partial = partial_output(&self.output_path);
-        std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
-        std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
+        std::fs::copy(&path, &self.output_path).expect("Failed to copy best ASM to output path");
         report!(
           "Best ASM copied to output path: {}",
           self.output_path.display()
