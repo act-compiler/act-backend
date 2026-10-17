@@ -1,5 +1,6 @@
 """What several generators read off an instruction: its record and its names"""
 
+from collections import Counter
 from dataclasses import dataclass
 
 
@@ -17,15 +18,25 @@ class InstructionInfo:
         return bool(self.attributes)
 
 
-def to_camel_case(snake_str):
-    return ''.join(word.capitalize() for word in snake_str.split('_'))
+def to_camel_case(snake_str, digit_underscore=False):
+    words = snake_str.split('_')
+    # If asked, an underscore stays before a word that starts with a digit
+    return words[0].capitalize() + ''.join(
+        ('_' if digit_underscore and word[:1].isdigit() else '') + word.capitalize()
+        for word in words[1:]
+    )
 
 
 def get_type_names(instr_names):
-    """Each instruction's generated type: Instr and its camel case, numbered where two collide"""
+    """Each instruction's generated type: Instr and its camel case
+
+    Two names of one camel case each keep an underscore before a word that starts with a digit;
+    the later of two that still collide is numbered.
+    """
+    folds = Counter(to_camel_case(name) for name in instr_names)
     type_names = {}
     for name in instr_names:
-        base = f'Instr{to_camel_case(name)}'
+        base = f'Instr{to_camel_case(name, folds[to_camel_case(name)] > 1)}'
         type_name, number = base, 1
         while type_name in type_names.values():
             number += 1
