@@ -217,11 +217,9 @@ pub fn parse_region(
         if let Some(((tsymbol, ttype, tshape, ttile, toperator, toperands, trest), _)) =
           parse_line(instruction_line)?
         {
-          if let Some(expr) = parse_hlo_expr(
+          instructions.push(parse_hlo_expr(
             &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, regions,
-          )? {
-            instructions.push(expr);
-          }
+          )?);
         }
       }
     }
@@ -279,14 +277,13 @@ pub fn parse_hlo_module_with_regions(
         if let Some(((tsymbol, ttype, tshape, ttile, toperator, toperands, trest), is_root)) =
           parse_line(instruction_line)?
         {
-          if let Some(expr) = parse_hlo_expr(
+          let expr = parse_hlo_expr(
             &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, &regions,
-          )? {
-            if is_root {
-              roots.push(entry_instructions.len());
-            }
-            entry_instructions.push(expr);
+          )?;
+          if is_root {
+            roots.push(entry_instructions.len());
           }
+          entry_instructions.push(expr);
         }
         idx += 1;
       }

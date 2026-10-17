@@ -83,6 +83,13 @@ pub fn parse_line(line: &str) -> Result<Option<MarkedLine>, String> {
   if line.is_empty() || line.starts_with("//") {
     return Ok(None);
   }
+  // Why the reader cannot split a line
+  let unsplit = || {
+    format!(
+      "the reader cannot split the kernel's line '{}' into a name, a type and an operation",
+      line
+    )
+  };
 
   // 1. Split at '=' (exactly one)
   let mut parts = line.splitn(2, '=');
@@ -95,14 +102,14 @@ pub fn parse_line(line: &str) -> Result<Option<MarkedLine>, String> {
   }
 
   let Some(rest) = parts.next().map(str::trim) else {
-    return Ok(None);
+    return Err(unsplit());
   };
 
   // 2. rest: type, shape, operator(operands), then the rest
 
   // Find the first space to get type+shape
   let Some(first_space) = rest.find(' ') else {
-    return Ok(None);
+    return Err(unsplit());
   };
   let (type_shape, after_type_shape) = rest.split_at(first_space);
   let after_type_shape = after_type_shape.trim_start();
@@ -112,7 +119,7 @@ pub fn parse_line(line: &str) -> Result<Option<MarkedLine>, String> {
 
   // 4. Extract operator name before '('
   let Some(op_start) = after_type_shape.find('(') else {
-    return Ok(None);
+    return Err(unsplit());
   };
   let toperator = after_type_shape[..op_start].trim().to_string();
 
@@ -133,6 +140,10 @@ pub fn parse_line(line: &str) -> Result<Option<MarkedLine>, String> {
       }
       _ => {}
     }
+  }
+
+  if paren_count != 0 {
+    return Err(unsplit());
   }
 
   let toperands = after_type_shape[operands_start..operands_end]

@@ -168,14 +168,18 @@ pub fn parse_hlo_expr(
   toperands: &str,
   trest: &str,
   regions: &std::collections::HashMap<String, HLORegion>,
-) -> Result<Option<HLOExpr>, String> {
+) -> Result<HLOExpr, String> {
   let attributes = read_attributes(trest);
 
   let expr = match toperator {
     "parameter" => {
       // Parameter(0) -- parse the index from operands
       let Ok(tidx) = toperands.trim().parse::<u32>() else {
-        return Ok(None);
+        return Err(format!(
+          "{} reads parameter {}, which is not a parameter number",
+          tsymbol,
+          toperands.trim()
+        ));
       };
       HLOExpr::Parameter {
         tsymbol: tsymbol.to_string(),
@@ -394,5 +398,5 @@ pub fn parse_hlo_expr(
       tsymbol, toperator, name
     ));
   }
-  Ok(Some(expr))
+  Ok(expr)
 }
