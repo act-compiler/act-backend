@@ -1,4 +1,4 @@
-//! The e-graph nodes of each kernel line, by its operation
+// The e-graph nodes of each kernel line, by its operation
 
 use std::collections::HashSet;
 
@@ -43,7 +43,7 @@ fn lookup(table: &EggSymbolTable, symbol: &str) -> Result<Id, String> {
 }
 
 // Give a node its type, shape and kernel name
-pub(super) fn bind_node(
+pub fn bind_node(
   tsymbol: &str,
   node: Id,
   shape: Vec<i32>,
@@ -185,7 +185,7 @@ pub fn add_parameter(
   }
 }
 
-pub(super) fn add_constant(
+pub fn add_constant(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -201,7 +201,7 @@ pub(super) fn add_constant(
   Ok(())
 }
 
-pub(super) fn add_broadcast(
+pub fn add_broadcast(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -222,7 +222,7 @@ pub(super) fn add_broadcast(
 
 // One argument per field of the kernel's line
 #[allow(clippy::too_many_arguments)]
-pub(super) fn add_binary_op(
+pub fn add_binary_op(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -248,7 +248,7 @@ pub(super) fn add_binary_op(
   Ok(())
 }
 
-pub(super) fn add_slice(
+pub fn add_slice(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -328,7 +328,7 @@ pub(super) fn add_slice(
   Ok(())
 }
 
-pub(super) fn add_concatenate(
+pub fn add_concatenate(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -385,7 +385,7 @@ pub(super) fn add_concatenate(
   Ok(())
 }
 
-pub(super) fn add_reshape(
+pub fn add_reshape(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -404,7 +404,7 @@ pub(super) fn add_reshape(
   Ok(())
 }
 
-pub(super) fn add_transpose(
+pub fn add_transpose(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -424,7 +424,7 @@ pub(super) fn add_transpose(
   Ok(())
 }
 
-pub(super) fn add_convert(
+pub fn add_convert(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -443,7 +443,7 @@ pub(super) fn add_convert(
   Ok(())
 }
 
-pub(super) fn add_reduce(
+pub fn add_reduce(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -463,7 +463,7 @@ pub(super) fn add_reduce(
   Ok(())
 }
 
-pub(super) fn add_exponential(
+pub fn add_exponential(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
@@ -479,7 +479,7 @@ pub(super) fn add_exponential(
   Ok(())
 }
 
-pub(super) fn add_root_operations(
+pub fn add_root_operations(
   tsymbol: &str,
   ttype: &str,
   tshape: &str,
