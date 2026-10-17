@@ -88,6 +88,7 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
       tile, shape
     ));
   }
+  whole_tiles(&shape_vec, &tile_vec, shape, tile)?;
 
   let divided: Vec<String> = shape_vec
     .iter()
@@ -106,6 +107,17 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
   );
 
   Ok(result)
+}
+
+// Whether each dimension holds whole tiles, or why not
+fn whole_tiles(dims: &[i32], tiles: &[i32], shape: &str, tile: &str) -> Result<(), String> {
+  if dims.iter().zip(tiles).any(|(dim, size)| dim % size != 0) {
+    return Err(format!(
+      "the tile ({}) does not divide the shape [{}]",
+      tile, shape
+    ));
+  }
+  Ok(())
 }
 
 // One size of a tile, or why it is none
@@ -137,6 +149,7 @@ pub fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
       ttile, tshape
     ));
   }
+  whole_tiles(&dims, &tiles, tshape, ttile)?;
 
   let mut result = Vec::new();
   for (d, t) in dims.iter().zip(tiles.iter()) {
@@ -150,8 +163,8 @@ pub fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
 pub fn get_transpose_order_param(num_dims: i32) -> String {
   let mut order = Vec::with_capacity((num_dims * 2) as usize);
   for i in 0..num_dims {
-    order.push(i + 1); // outer dimension (1-based)
-    order.push(i + 1 + num_dims); // tile dimension (1-based + offset)
+    order.push(i); // outer dimension
+    order.push(i + num_dims); // its tile dimension
   }
 
   order
@@ -162,12 +175,13 @@ pub fn get_transpose_order_param(num_dims: i32) -> String {
 }
 
 pub fn get_transpose_order_result(n: i32) -> String {
-  let mut odds = (1..=2 * n).step_by(2).collect::<Vec<_>>();
-  let evens = (2..=2 * n).step_by(2).collect::<Vec<_>>();
+  // Outer dimensions first, then the tile dimensions
+  let mut outer = (0..2 * n).step_by(2).collect::<Vec<_>>();
+  let tiles = (1..2 * n).step_by(2).collect::<Vec<_>>();
 
-  odds.extend(evens);
+  outer.extend(tiles);
 
-  odds
+  outer
     .iter()
     .map(|x| x.to_string())
     .collect::<Vec<_>>()
@@ -181,6 +195,6 @@ pub fn apply_transpose_order(reshape_str: &str, order_str: &str) -> String {
     .map(|x| x.trim().parse::<usize>().unwrap())
     .collect();
 
-  let new_dims: Vec<&str> = order.iter().map(|&i| dims[i - 1]).collect();
+  let new_dims: Vec<&str> = order.iter().map(|&i| dims[i]).collect();
   new_dims.join(",")
 }

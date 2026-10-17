@@ -16,6 +16,8 @@ def region(name, operation):
 
 
 A = '%a = bf16[64,64] parameter(0)'
+# A kernel of one bf16[64,60] input and output
+TILED_HEADER = 'HloModule tiled, entry_computation_layout={(bf16[64,60]{1,0})->bf16[64,60]{1,0}}'
 ZERO = '%z = bf16[] constant(0)'
 
 
@@ -111,6 +113,24 @@ ZERO = '%z = bf16[] constant(0)'
             kernel('%a = bf16[64,64]{1,0:T(8)} parameter(0)', 'ROOT %c = bf16[64,64] add(%a, %a)'),
             'the tile (8) of the shape [64,64] does not give one size per dimension',
         ),
+        (
+            kernel(
+                '%a = bf16[64,60]{1,0:T(32,16)} parameter(0)',
+                'ROOT %c = bf16[64,60] add(%a, %a)',
+                header=TILED_HEADER,
+            ),
+            'the tile (32,16) does not divide the shape [64,60]',
+        ),
+        (
+            kernel(
+                '%a = bf16[64,64]{1,0:T(32,16)(2,1)} parameter(0)',
+                'ROOT %c = bf16[64,64] add(%a, %a)',
+            ),
+            (
+                'the layout {1,0:T(32,16)(2,1)} of the shape [64,64] gives a second tile, '
+                'which the backend does not support'
+            ),
+        ),
         ('', 'the kernel is empty'),
     ],
     ids=[
@@ -131,6 +151,8 @@ ZERO = '%z = bf16[] constant(0)'
         'parameter_root',
         'one_value',
         'tile',
+        'undivided_tile',
+        'second_tile',
         'empty',
     ],
 )
@@ -156,6 +178,20 @@ fn main() {
 }
 """
 
+# Each node with its class's type and shape
+TYPED_NODES = """use backend::isel;
+
+fn main() {
+  let kernel = std::env::args().nth(1).unwrap();
+  let (egraph, ..) = isel::initializer::parse_hlo_module_to_egraph(&kernel).unwrap();
+  for class in egraph.classes() {
+    for node in &class.nodes {
+      println!("{} {}{:?}", node, class.data.dtype, class.data.shape);
+    }
+  }
+}
+"""
+
 # A concatenate and a reduce, each with attributes and metadata
 ATTRIBUTES = kernel(
     '%a = bf16[32,64] parameter(0)',
@@ -168,12 +204,12 @@ ATTRIBUTES = kernel(
 )
 
 
-def read_nodes(work_dir, tmp_path, text):
-    """Read a kernel's text through the crate's library; return each node of its e-graph"""
+def read_nodes(work_dir, tmp_path, text, program=NODES):
+    """Read a kernel's text through the crate's library; return what the program prints of its e-graph"""
     crate = os.path.join(work_dir, 'targets', 'ENDINGS', 'backend')
     os.makedirs(os.path.join(crate, 'examples'), exist_ok=True)
     with open(os.path.join(crate, 'examples', 'nodes.rs'), 'w') as f:
-        f.write(NODES)
+        f.write(program)
     path = tmp_path / 'kernel.hlo'
     path.write_text(text)
     command = ['cargo', 'run', '--release', '--locked', '--example', 'nodes', str(path)]
@@ -248,6 +284,22 @@ def test_layout_that_gives_no_order_is_read(endings_dir, tmp_path):
     # A tile alone after the shape, which gives no order
     text = kernel('%a = bf16[64,64]{:T(32,64)} parameter(0)', 'ROOT %c = bf16[64,64] add(%a, %a)')
     assert "Var['%a']" in read_nodes(endings_dir, tmp_path, text)
+
+
+def test_tiled_layout_is_read_through_its_permuted_tiles(endings_dir, tmp_path):
+    # An input and a root each in tiles of 32 by 16
+    text = kernel(
+        '%a = bf16[64,64]{1,0:T(32,16)} parameter(0)',
+        'ROOT %c = bf16[64,64]{1,0:T(32,16)} add(%a, %a)',
+    )
+    nodes = read_nodes(endings_dir, tmp_path, text, TYPED_NODES)
+    # The input's tiles back into its shape
+    assert 'bitcvt bf16[2, 4, 32, 16]' in nodes
+    assert "transpose[perm='0,2,1,3'] bf16[2, 32, 4, 16]" in nodes
+    assert "reshape[shape='64,64'] bf16[64, 64]" in nodes
+    # The root's shape into its tiles
+    assert "reshape[shape='2,32,4,16'] bf16[2, 32, 4, 16]" in nodes
+    assert "transpose[perm='0,2,1,3'] bf16[2, 4, 32, 16]" in nodes
 
 
 # A kernel of one bf16 scalar input and output
