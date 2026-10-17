@@ -4,6 +4,11 @@ project(malloc LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# List all your source files
+set(SOURCE_FILES
+    src/main.cc
+)
+
 set(LIB_SOURCE_FILES
     src/act_malloc.cc
     src/constraint.cc
@@ -36,6 +41,11 @@ add_library(malloc_static STATIC ${LIB_SOURCE_FILES})
 target_link_libraries(malloc_static PUBLIC ortools::ortools)
 target_link_libraries(malloc_static PUBLIC nlohmann_json)
 target_include_directories(malloc_static PRIVATE include)
+
+# Also create an executable for debugging/testing
+add_executable(malloc ${SOURCE_FILES})
+target_link_libraries(malloc PRIVATE malloc_static)
+target_include_directories(malloc PRIVATE include)
 
 # The default cost model, where no other is named
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../cost/count.cc")

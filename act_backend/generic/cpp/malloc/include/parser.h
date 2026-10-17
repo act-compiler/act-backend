@@ -22,12 +22,15 @@ struct ParsedLine {
   std::vector<std::string> operand_names = {};
 };
 
-ParsedLine parse_line(const std::string &line);
+// A line's parts, or false and why names the part it lacks
+bool parse_line(const std::string &line, ParsedLine &pl, std::string &why);
 
+// A line's instruction, or none; a fault of the line sets why
 Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<std::string, Tensor *> &tensor_map,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
-                                std::unordered_map<Tensor *, std::string> &known_constants);
+                                std::unordered_map<Tensor *, std::string> &known_constants,
+                                std::string &why);
 
 } // namespace parser
 

@@ -40,8 +40,15 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
     if (line.empty() || line[0] == '#')
       continue;
 
-    Instruction *instr = parser::create_instruction(parser::parse_line(line), tensor_map,
-                                                    known_offsets, known_constants);
+    // A line the allocator cannot read drops the candidate
+    parser::ParsedLine pl;
+    std::string why;
+    Instruction *instr = nullptr;
+    if (parser::parse_line(line, pl, why))
+      instr = parser::create_instruction(pl, tensor_map, known_offsets, known_constants, why);
+    if (!why.empty())
+      return no_assembly(reason, reason_size,
+                         "the allocator cannot read the line `" + line + "`: " + why);
     if (instr)
       instructions.push_back(instr);
   }
@@ -117,6 +124,10 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
                          std::string("the allocator cannot read ") + metadata_path);
     }
     emitter::MetaData metadata(metadata_file, tensor_map, known_constants);
+    if (!metadata.why.empty()) {
+      solver.EndSearch();
+      return no_assembly(reason, reason_size, metadata.why);
+    }
 
     std::string why;
     if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {
