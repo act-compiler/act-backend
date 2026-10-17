@@ -18,6 +18,9 @@ std::string MetaDataInfo::str() const {
     if (i != shape.size() - 1)
       oss << ", ";
   }
+  // A tuple of one ends in a comma
+  if (shape.size() == 1)
+    oss << ",";
   oss << "), 'dtype': " << dtype;
   if (value != "")
     oss << ", 'value': " << value;
