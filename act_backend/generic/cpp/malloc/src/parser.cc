@@ -15,9 +15,12 @@ static int64 to_int(const std::string &token) {
   return value;
 }
 
-ParsedLine parse_line(const std::string &line) {
-  ParsedLine pl;
-
+bool parse_line(const std::string &line, ParsedLine &pl, std::string &why) {
+  // A part the line lacks, named in why
+  auto lacks = [&](const std::string &msg) {
+    why = msg;
+    return false;
+  };
   // trim whitespace from both ends of a string
   auto trim = [](std::string &s) {
     s.erase(0, s.find_first_not_of(" \t\r\n"));
@@ -26,6 +29,8 @@ ParsedLine parse_line(const std::string &line) {
 
   // lhs: rest, at the first ':'
   auto colon_pos = line.find(':');
+  if (colon_pos == std::string::npos)
+    return lacks("missing ':' separator");
 
   std::string lhs = line.substr(0, colon_pos);
   std::string rest = line.substr(colon_pos + 1);
@@ -36,6 +41,8 @@ ParsedLine parse_line(const std::string &line) {
 
   // left = right, at the first '='
   auto eq_pos = rest.find('=');
+  if (eq_pos == std::string::npos)
+    return lacks("missing '=' separator");
 
   std::string left = rest.substr(0, eq_pos);
   std::string right = rest.substr(eq_pos + 1);
@@ -45,6 +52,8 @@ ParsedLine parse_line(const std::string &line) {
   // left: storage[offset]
   auto br_open = left.find('[');
   auto br_close = left.find(']');
+  if (br_open == std::string::npos || br_close == std::string::npos || br_close < br_open)
+    return lacks("missing '[' or ']' for storage offset");
 
   std::string storage_name = left.substr(0, br_open);
   std::string addr_str = left.substr(br_open + 1, br_close - br_open - 1);
@@ -57,6 +66,8 @@ ParsedLine parse_line(const std::string &line) {
 
   // right: datatype[shape] <operation>, at the first space
   auto first_space = right.find(' ');
+  if (first_space == std::string::npos)
+    return lacks("missing type/shape before operation (no space found)");
 
   std::string type_shape = right.substr(0, first_space);
   std::string op_and_rest = right.substr(first_space + 1);
@@ -66,6 +77,8 @@ ParsedLine parse_line(const std::string &line) {
   // type_shape: dtype[shape]
   auto s_brkt = type_shape.find('[');
   auto e_brkt = type_shape.find(']');
+  if (s_brkt == std::string::npos || e_brkt == std::string::npos || e_brkt < s_brkt)
+    return lacks("missing '[' or ']' for type shape");
 
   std::string shape_str = type_shape.substr(s_brkt + 1, e_brkt - s_brkt - 1);
   trim(shape_str);
@@ -86,6 +99,8 @@ ParsedLine parse_line(const std::string &line) {
   // op_and_rest: op_name_attr(operands), at the last parentheses
   auto s_prn = op_and_rest.rfind('(');
   auto e_prn = op_and_rest.rfind(')');
+  if (s_prn == std::string::npos || e_prn == std::string::npos || e_prn <= s_prn)
+    return lacks("missing '(' or ')' for operands");
 
   std::string op_name_and_attr = op_and_rest.substr(0, s_prn);
   std::string operands_str = op_and_rest.substr(s_prn + 1, e_prn - s_prn - 1);
@@ -123,13 +138,20 @@ ParsedLine parse_line(const std::string &line) {
   pl.op_name = op_name;
   pl.op_attr = op_attr;
 
-  return pl;
+  return true;
 }
 
 Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<std::string, Tensor *> &tensor_map,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
-                                std::unordered_map<Tensor *, std::string> &known_constants) {
+                                std::unordered_map<Tensor *, std::string> &known_constants,
+                                std::string &why) {
+
+  // A fault of the line, named in why
+  auto refuse = [&](const std::string &msg) -> Instruction * {
+    why = msg;
+    return nullptr;
+  };
 
   // Panic with an error message
   auto panic = [&](const std::string &msg) -> Instruction * {
@@ -147,7 +169,11 @@ Instruction *create_instruction(const ParsedLine &pl,
   const std::vector<std::string> &operands_names = pl.operand_names;
 
   // Find storage pointer
-  Storage *storage = g_storage.at(storage_name);
+  Storage *storage = nullptr;
+  if (g_storage.find(storage_name) != g_storage.end())
+    storage = g_storage[storage_name];
+  else
+    return refuse("unknown storage: " + storage_name);
 
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
@@ -157,8 +183,10 @@ Instruction *create_instruction(const ParsedLine &pl,
 
   // if offset is known, insert into known_offsets
   if (offset != -1) {
-    assert(storage->get_name() == "HBM" && "only HBM storage supports fixed offset specification");
-    assert(offset >= 0 && "storage offset must be non-negative");
+    if (storage->get_name() != "HBM")
+      return refuse("only HBM storage supports fixed offset specification");
+    if (offset < 0)
+      return refuse("storage offset must be non-negative");
     known_offsets[lhs_tensor] = offset;
   }
 
@@ -179,8 +207,12 @@ Instruction *create_instruction(const ParsedLine &pl,
 
   // For instructions, lookup operand tensors
   std::vector<Tensor *> rhs_tensors;
-  for (auto &operand : operands_names)
-    rhs_tensors.push_back(tensor_map.at(operand));
+  for (auto &operand : operands_names) {
+    if (tensor_map.find(operand) == tensor_map.end()) {
+      return refuse("unknown operand: " + operand);
+    }
+    rhs_tensors.push_back(tensor_map[operand]);
+  }
 
   // Create instruction object based on op_name
   if (op_name == "slice") {
@@ -188,12 +220,16 @@ Instruction *create_instruction(const ParsedLine &pl,
     std::vector<std::pair<int64, int64>> slices;
     auto start = op_attr.find("'");
     auto end = op_attr.rfind("'");
+    if (start == std::string::npos || end == std::string::npos || end <= start)
+      return refuse("missing slices attribute");
     std::stringstream ss(op_attr.substr(start + 1, end - start - 1));
     std::string tok;
     // The first range, the buffer's access dimension
     if (std::getline(ss, tok, ',')) {
       if (!tok.empty()) {
         auto colon_pos = tok.find(':');
+        if (colon_pos == std::string::npos)
+          return refuse("missing ':' in slice specification");
         std::string start_str = tok.substr(0, colon_pos);
         std::string end_str = tok.substr(colon_pos + 1);
         slices.push_back({to_int(start_str), to_int(end_str)});
@@ -205,6 +241,8 @@ Instruction *create_instruction(const ParsedLine &pl,
     // The one attribute: dimension
     auto start = op_attr.find("'");
     auto end = op_attr.rfind("'");
+    if (start == std::string::npos || end == std::string::npos || end <= start)
+      return refuse("missing dimension attribute");
     int64 dimension = to_int(op_attr.substr(start + 1, end - start - 1));
 
     return new Concat(lhs_tensor, rhs_tensors, dimension);
