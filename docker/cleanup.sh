@@ -54,10 +54,8 @@ else
   exit 1
 fi
 
-# collect candidate containers (all containers using the image)
-LISTED=$(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}')
-# Not piped: a failed docker ps ends the script
-mapfile -t CONTAINERS < <(awk -v img="${IMAGE_NAME}" '$3 == img' <<<"${LISTED}")
+# Every container of the image
+mapfile -t CONTAINERS < <(docker ps -a --format '{{.ID}} {{.Names}} {{.Image}} {{.Status}}' | awk -v img="${IMAGE_NAME}" '$3 == img')
 
 NUM_CONTAINERS=${#CONTAINERS[@]}
 if [ ${NUM_CONTAINERS} -eq 0 ]; then
