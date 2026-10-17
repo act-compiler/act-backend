@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
-# On a GPU host, the cuda13 image and the GPU
+# A GPU host takes the cuda13 image and the GPU
 VARIANT=""
 GPU_FLAGS=()
 if nvidia-smi >/dev/null 2>&1 &&
@@ -12,7 +12,7 @@ if nvidia-smi >/dev/null 2>&1 &&
   VARIANT="-cuda13"
   GPU_FLAGS=(--gpus all)
 fi
-# --cpu or --cuda13 overrides the host's default
+# A leading --cpu or --cuda13 overrides the host's default
 case "${1:-}" in
   --cpu)
     VARIANT=""
@@ -40,7 +40,7 @@ HOST_MOUNT="$(pwd)/.."
 # One name per call: the trap removes this run's container
 CONTAINER_NAME="act-backend-exec-$$-${RANDOM}"
 
-# At exit, remove the container and restore the caller's ownership
+# At exit: remove the container, restore the caller's ownership
 restore_ownership() {
   local status=$?
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
@@ -52,13 +52,13 @@ trap restore_ownership EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Created in the foreground: a signal waits for the create
+# Created in the foreground: a signal waits for it
 docker create --rm --name "${CONTAINER_NAME}" --entrypoint bash \
   ${GPU_FLAGS[@]+"${GPU_FLAGS[@]}"} \
   -v "${HOST_MOUNT}:/workspace:rw" \
   -w /workspace \
   "${IMAGE_NAME}" \
   -ilc "$*" >/dev/null
-# Backgrounded, so a signal reaches the trap mid-run
+# In the background, so a signal reaches the trap
 docker start -a "${CONTAINER_NAME}" &
 wait $!

@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
-# On a GPU host, the cuda13 image and the GPU
+# A GPU host takes the cuda13 image and the GPU
 VARIANT=""
 GPU_FLAGS=()
 if nvidia-smi >/dev/null 2>&1 &&
@@ -133,7 +133,7 @@ if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ephemeral flow: without --persistent, a container removed on exit
+# Without --persistent, an ephemeral container
 if [ "${PERSISTENT}" -eq 0 ]; then
   echo "Launching ephemeral container (will be removed on exit) with name ${EPHEMERAL_NAME}."
   docker run -it --rm \
@@ -146,7 +146,7 @@ if [ "${PERSISTENT}" -eq 0 ]; then
   exit 0
 fi
 
-# Persistent flow: --persistent uses a persistent container
+# With --persistent, a persistent container
 if [ "${NO_DEFAULT}" -eq 0 ]; then
   # default behavior: use default name
   if docker ps -a --format '{{.Names}}' | grep -xq "${DEFAULT_PERSISTENT_NAME}"; then
