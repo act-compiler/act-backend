@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
-# On a GPU host, the cuda13 image and the GPU
+# A GPU host takes the cuda13 image and the GPU
 VARIANT=""
 GPU_FLAGS=()
 if nvidia-smi >/dev/null 2>&1 &&
@@ -14,16 +14,12 @@ if nvidia-smi >/dev/null 2>&1 &&
   GPU_FLAGS=(--gpus all)
 fi
 # --cpu or --cuda13 overrides the host's default
-case "${1:-}" in
-  --cpu)
-    VARIANT=""
-    shift
-    ;;
-  --cuda13)
-    VARIANT="-cuda13"
-    shift
-    ;;
-esac
+for arg in "$@"; do
+  case "$arg" in
+    --cpu) VARIANT="" ;;
+    --cuda13) VARIANT="-cuda13" ;;
+  esac
+done
 # The GPU is passed to the cuda13 image alone
 [ -n "${VARIANT}" ] || GPU_FLAGS=()
 
@@ -65,6 +61,7 @@ PERSISTENT=0
 NO_DEFAULT=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --cpu | --cuda13) shift ;;
     --persistent)
       PERSISTENT=1
       shift
@@ -136,7 +133,7 @@ if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Ephemeral flow: without --persistent, a container removed on exit
+# Without --persistent, an ephemeral container
 if [ "${PERSISTENT}" -eq 0 ]; then
   echo "Launching ephemeral container (will be removed on exit) with name ${EPHEMERAL_NAME}."
   docker run -it --rm \
@@ -149,12 +146,10 @@ if [ "${PERSISTENT}" -eq 0 ]; then
   exit 0
 fi
 
-# Persistent flow: --persistent uses a persistent container
+# With --persistent, a persistent container
 if [ "${NO_DEFAULT}" -eq 0 ]; then
   # default behavior: use default name
-  LISTED=$(docker ps -a --format '{{.Names}}')
-  # Not piped: a failed docker ps ends the script
-  if grep -xq "${DEFAULT_PERSISTENT_NAME}" <<<"${LISTED}"; then
+  if docker ps -a --format '{{.Names}}' | grep -xq "${DEFAULT_PERSISTENT_NAME}"; then
     attach_existing "${DEFAULT_PERSISTENT_NAME}"
     exit 0
   else
@@ -216,8 +211,7 @@ case "$CHOICE" in
       exit 1
     fi
     NAME="$(normalize_name "${NAME_IN}")"
-    LISTED=$(docker ps -a --format '{{.Names}}')
-    if grep -xq "${NAME}" <<<"${LISTED}"; then
+    if docker ps -a --format '{{.Names}}' | grep -xq "${NAME}"; then
       echo "Container ${NAME} already exists. Aborting." >&2
       exit 1
     fi

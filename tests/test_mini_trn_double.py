@@ -19,6 +19,9 @@ DATA_DIR = os.path.join(EXAMPLE_DIR, 'data')
 
 @pytest.mark.incremental
 class TestMiniTrnDouble:
+    def test_backend_binary_exists(self, work_dir):
+        assert os.path.exists(os.path.join(work_dir, 'backends', 'mini_trn_double'))
+
     def test_backend_sources_filled(self, work_dir):
         assert unfilled_sources(work_dir, EXAMPLE_DIR) == []
 
