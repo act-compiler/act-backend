@@ -273,3 +273,61 @@ def test_rank_0_input_is_read_as_one_element(endings_dir, tmp_path):
     # The input viewed from its two bytes as one element
     assert "reshape[shape='1,2']" in nodes
     assert not [node for node in nodes if '[]' in node]
+
+
+@pytest.mark.parametrize(
+    'line, reason',
+    [
+        (
+            'ROOT %s = bf16[32,64] slice(%a), slice={[0:64:2], [0:64:1]}',
+            '%s slices with the stride 2, where the backend supports only a stride of one',
+        ),
+        (
+            'ROOT %s = bf16[32,64] slice(%a), slice={[0:32:1], [7]}',
+            "%s slices with '[7]', which is not a [start:limit:stride] range",
+        ),
+    ],
+    ids=['stride', 'no_limit'],
+)
+def test_slice_the_reader_does_not_take_ends_in_no_assembly(backend, tmp_path, line, reason):
+    run, _ = compiled(backend, tmp_path, kernel(A, line))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
+
+
+@pytest.mark.parametrize(
+    'line, reason',
+    [
+        (
+            'ROOT %s = bf16[32,64] slice(%a), slice={[x:32:1], [0:64:1]}',
+            "%s slices with '[x:32:1]', which is not a [start:limit:stride] range",
+        ),
+        (
+            'ROOT %s = bf16[96,64] slice(%a), slice={[0:96:1], [0:64:1]}',
+            '%s slices [0:96:1] of a dimension of 64, where 0 <= start < limit <= 64',
+        ),
+        (
+            'ROOT %s = bf16[32] slice(%a), slice={[0:32:1]}',
+            '%s slices a value of rank 2 with bounds for rank 1',
+        ),
+        (
+            'ROOT %s = bf16[16,64] slice(%a), slice={[0:32:1], [0:64:1]}',
+            '%s gives the shape [16,64] to a slice of the shape [32,64]',
+        ),
+        (
+            'ROOT %c = bf16[64,128] concatenate(%a, %a), dimensions={2}',
+            '%c concatenates values of rank 2 along dimension 2',
+        ),
+        (
+            'ROOT %c = bf16[96,64] concatenate(%a, %a), dimensions={0}',
+            '%c concatenates [64,64] and [64,64] along dimension 0, which does not give its shape [96,64]',
+        ),
+    ],
+    ids=['bound_word', 'past_source', 'rank', 'result', 'dimension', 'joined'],
+)
+def test_slice_or_concatenate_of_shapes_that_disagree_ends_in_no_assembly(
+    backend, tmp_path, line, reason
+):
+    run, _ = compiled(backend, tmp_path, kernel(A, line))
+    assert run.returncode == 1
+    assert run.stderr == f'Error: no assembly found: {reason}\n'
