@@ -22,12 +22,13 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions);
 void def_use_constraints(const std::vector<Instruction *> &instructions);
 
 // CSP3: Is(x_i) = const
-void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets);
+bool initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets,
+                         std::string &why);
 
 // CSP4: NON_OVERLAP(h(0), h'(0))
-void overlap_constraints(const std::vector<Instruction *> &instructions,
+bool overlap_constraints(const std::vector<Instruction *> &instructions,
                          const std::unordered_map<std::string, Tensor *> &tensor_map,
-                         std::vector<IntVar *> &new_vars);
+                         std::vector<IntVar *> &new_vars, std::string &why);
 
 } // namespace constraint
 

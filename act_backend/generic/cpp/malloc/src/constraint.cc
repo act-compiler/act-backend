@@ -44,22 +44,30 @@ void def_use_constraints(const std::vector<Instruction *> &instructions) {
   }
 }
 
-void initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets) {
+bool initial_constraints(const std::unordered_map<Tensor *, int64> &known_offsets,
+                         std::string &why) {
   for (const auto &pair : known_offsets) {
     // Input & Output Tensor addresses: Is(x_i) = const
 
     Tensor *tensor = pair.first;
     int64 offset = pair.second;
     auto offsets = tensor->get_offsets();
-    assert(offsets.size() == 1); // Expected to be in "HBM"
+    // A fixed offset is one address, as in HBM
+    if (offsets.size() != 1) {
+      why = "the tensor " + tensor->get_name() + " has a fixed offset in " +
+            tensor->get_storage()->get_name() + ", which addresses " +
+            std::to_string(offsets.size()) + " dimensions";
+      return false;
+    }
 
     solver.AddConstraint(MAKE_EQUALITY(offsets[0], offset));
   }
+  return true;
 }
 
-void overlap_constraints(const std::vector<Instruction *> &instructions,
+bool overlap_constraints(const std::vector<Instruction *> &instructions,
                          const std::unordered_map<std::string, Tensor *> &tensor_map,
-                         std::vector<IntVar *> &new_vars) {
+                         std::vector<IntVar *> &new_vars, std::string &why) {
 
   // Compute live ranges for all tensors
   std::unordered_map<Tensor *, LiveRange> live_ranges;
@@ -81,10 +89,14 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
     auto offsets2 = t2->get_offsets();
     auto sizes2 = t2->get_sizes();
 
+    // Two tensors of one storage address its dimensions alike
     size_t dims = offsets1.size();
-    assert(dims == offsets2.size());
-    assert(dims == sizes1.size());
-    assert(dims == sizes2.size());
+    if (dims != offsets2.size() || dims != sizes1.size() || dims != sizes2.size()) {
+      why = "the tensors " + t1->get_name() + " and " + t2->get_name() + " of " +
+            t1->get_storage()->get_name() + " address " + std::to_string(dims) + " and " +
+            std::to_string(offsets2.size()) + " dimensions";
+      return false;
+    }
 
     // Non-overlapping constraint: (Ie(x1) <= Is(x2)) or (Ie(x2) <= Is(x1))
 
@@ -101,6 +113,7 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
       new_vars.push_back(b2);
     }
   }
+  return true;
 }
 
 } // namespace constraint

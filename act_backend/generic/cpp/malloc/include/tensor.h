@@ -25,9 +25,6 @@ public:
 
   Tensor(const std::string &name, Storage *storage, const std::vector<int64> &shape)
       : name(name), storage(storage) {
-
-    assert(shape.size() == storage->get_total_dims());
-
     sizes.reserve(storage->get_addressing_dims());
     offsets.reserve(storage->get_addressing_dims());
     for (size_t i = 0; i < storage->get_addressing_dims(); i++) {

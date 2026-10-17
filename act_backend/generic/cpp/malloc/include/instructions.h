@@ -82,25 +82,51 @@ private:
   }
 
 public:
+  // Whether y can be this slice of X, else why not
+  static bool check(Tensor *y, const std::vector<Tensor *> &X,
+                    const std::vector<std::pair<int64, int64>> &slices, std::string &why) {
+    std::string name = y->get_name();
+    if (X.size() != 1) {
+      why = "a slice takes one operand, and " + name + " has " + std::to_string(X.size());
+      return false;
+    }
+    if (X[0]->get_storage() != y->get_storage()) {
+      why = "the slice " + name + " lies in " + y->get_storage()->get_name() +
+            ", and its operand " + X[0]->get_name() + " in " + X[0]->get_storage()->get_name();
+      return false;
+    }
+    std::vector<int64> rhs_sizes = X[0]->get_sizes();
+    if (slices.size() != rhs_sizes.size()) {
+      why = "the slice " + name + " gives " + std::to_string(slices.size()) +
+            " ranges, where it takes " + std::to_string(rhs_sizes.size());
+      return false;
+    }
+    for (size_t i = 0; i < rhs_sizes.size(); i++) {
+      auto [start, limit] = slices[i];
+      std::string range = std::to_string(start) + ":" + std::to_string(limit);
+      if (start < 0 || limit > rhs_sizes[i] || start >= limit) {
+        why = "the slice " + name + " takes " + range + " of " + X[0]->get_name() + ", which has " +
+              std::to_string(rhs_sizes[i]);
+        return false;
+      }
+      if (y->get_sizes()[i] != limit - start) {
+        why = "the slice " + name + " has " + std::to_string(y->get_sizes()[i]) +
+              ", where its range " + range + " takes " + std::to_string(limit - start);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Built once check holds
   Slice(Tensor *y, std::vector<Tensor *> X, const std::vector<std::pair<int64, int64>> &slices)
       : Instruction("slice", y, X), slices(slices) {
     assert(y != nullptr);
-
-    assert(X.size() == 1);
-
     assert(X[0] != nullptr);
-    assert(X[0]->get_storage() == y->get_storage());
 
     rhs_sizes = X[0]->get_sizes();
     for (size_t i = 0; i < rhs_sizes.size(); i++) {
       rhs_addrs.push_back(MAKE_INT_VAR(INT64_MIN, INT64_MAX));
-    }
-
-    assert(slices.size() == y->get_sizes().size());
-    for (size_t i = 0; i < rhs_sizes.size(); i++) {
-      assert(slices[i].first >= 0 && slices[i].second <= rhs_sizes[i] &&
-             slices[i].first < slices[i].second);
-      assert(y->get_sizes()[i] == slices[i].second - slices[i].first);
     }
   }
 
@@ -187,33 +213,48 @@ private:
   }
 
 public:
+  // Whether y can be this concatenate of X, else why not
+  static bool check(Tensor *y, const std::vector<Tensor *> &X, int64 dimension, std::string &why) {
+    std::string name = y->get_name();
+    if (X.size() != 2) {
+      why = "a concatenate takes two operands, and " + name + " has " + std::to_string(X.size());
+      return false;
+    }
+    for (auto *x : X) {
+      if (x->get_storage() != y->get_storage()) {
+        why = "the concatenate " + name + " lies in " + y->get_storage()->get_name() +
+              ", and its operand " + x->get_name() + " in " + x->get_storage()->get_name();
+        return false;
+      }
+    }
+    // One storage, so one number of dimensions
+    std::vector<int64> sizes = y->get_sizes();
+    std::vector<int64> rhs1_sizes = X[0]->get_sizes();
+    std::vector<int64> rhs2_sizes = X[1]->get_sizes();
+    for (size_t i = 0; i < sizes.size(); i++) {
+      bool joined = i == (size_t)dimension;
+      if (joined ? sizes[i] != rhs1_sizes[i] + rhs2_sizes[i]
+                 : (sizes[i] != rhs1_sizes[i] || rhs1_sizes[i] != rhs2_sizes[i])) {
+        why = "the concatenate " + name + " has " + std::to_string(sizes[i]) + " along dimension " +
+              std::to_string(i) + ", where its operands give " + std::to_string(rhs1_sizes[i]) +
+              " and " + std::to_string(rhs2_sizes[i]);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Built once check holds
   Concat(Tensor *y, std::vector<Tensor *> X, int64 dimension)
       : Instruction("concat", y, X), dimension(dimension) {
     assert(y != nullptr);
-
-    assert(X.size() == 2);
-
     assert(X[0] != nullptr);
-    assert(X[0]->get_storage() == y->get_storage());
-
     assert(X[1] != nullptr);
-    assert(X[1]->get_storage() == y->get_storage());
 
     rhs1_sizes = X[0]->get_sizes();
     rhs2_sizes = X[1]->get_sizes();
     for (size_t i = 0; i < rhs1_sizes.size(); i++) {
       rhs1_addrs.push_back(MAKE_INT_VAR(INT64_MIN, INT64_MAX));
-    }
-
-    assert(rhs1_sizes.size() == y->get_sizes().size());
-    assert(rhs2_sizes.size() == y->get_sizes().size());
-    for (size_t i = 0; i < rhs1_sizes.size(); i++) {
-      if (i == (size_t)dimension) {
-        assert(y->get_sizes()[i] == rhs1_sizes[i] + rhs2_sizes[i]);
-      } else {
-        assert(y->get_sizes()[i] == rhs1_sizes[i]);
-        assert(rhs1_sizes[i] == rhs2_sizes[i]);
-      }
     }
   }
 

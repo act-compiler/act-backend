@@ -179,6 +179,12 @@ Instruction *create_instruction(const ParsedLine &pl,
   if (tensor_map.count(lhs))
     return refuse("the tensor " + lhs + " is defined twice");
 
+  // A shape of each of its storage's dimensions
+  if (shape_vec.size() != storage->get_total_dims())
+    return refuse("the tensor " + lhs + " has a shape of rank " + std::to_string(shape_vec.size()) +
+                  ", where its storage " + storage_name + " has rank " +
+                  std::to_string(storage->get_total_dims()));
+
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
 
@@ -240,6 +246,8 @@ Instruction *create_instruction(const ParsedLine &pl,
       }
     }
 
+    if (!Slice::check(lhs_tensor, rhs_tensors, slices, why))
+      return nullptr;
     return new Slice(lhs_tensor, rhs_tensors, slices);
   } else if (op_name == "concat") {
     // The one attribute: dimension
@@ -249,6 +257,8 @@ Instruction *create_instruction(const ParsedLine &pl,
       return refuse("missing dimension attribute");
     int64 dimension = to_int(op_attr.substr(start + 1, end - start - 1));
 
+    if (!Concat::check(lhs_tensor, rhs_tensors, dimension, why))
+      return nullptr;
     return new Concat(lhs_tensor, rhs_tensors, dimension);
     // {{INSTRUCTION_CASES}}
   }
