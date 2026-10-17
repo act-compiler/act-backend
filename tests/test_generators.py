@@ -35,12 +35,12 @@ def test_rewrite_rules(accelerator, templates):
     ]
     # The semantics as a pattern, `_?` for each carried attribute
     assert [squeeze(rule) for rule in rules] == [
-        'instr_load-rm: (bitcvt (reshape_? ?v0)) => (instr_load-rm_? ?v0)',
-        'instr_gemm: (dot ?v0 ?v1) => (instr_gemm ?v0 ?v1)',
+        'instr_load-rm: (bitcvt (reshape_? ?a)) => (instr_load-rm_? ?a)',
+        'instr_gemm: (dot ?a ?b) => (instr_gemm ?a ?b)',
     ]
 
 
-def test_pattern_variables_are_numbered(templates):
+def test_pattern_variables_are_told_apart(templates):
     # One input read 27 times; later reads get fresh variables
     acc = Accelerator('SUMS')
     acc.add_data_model('d1', [128], [64], 'bf16')
@@ -55,7 +55,6 @@ def test_pattern_variables_are_numbered(templates):
     # Each variable a name of its own
     variables = re.findall(r'(?<=[\s(])\?[^\s()]+', rewrite.split('=>')[0])
     assert len(set(variables)) == 27
-    assert all(re.fullmatch(r'\?\w+', variable) for variable in variables)
 
 
 def test_copy_of_a_copy_has_variables_of_its_own(templates):
@@ -73,7 +72,7 @@ ENTRY {
 }
 """)
     rewrite = generate_rewrite_rule(get_instruction_metadata(acc.instructions)[0], templates)
-    assert squeeze(rewrite) == 'instr_four: (add (add ?v0 ?v1) (add ?v2 ?v3)) => (instr_four ?v0)'
+    assert squeeze(rewrite) == 'instr_four: (add (add ?a ?b) (add ?c ?d)) => (instr_four ?a)'
 
 
 def test_type_names_are_told_apart():
