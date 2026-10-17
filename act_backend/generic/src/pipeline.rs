@@ -2,6 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::cmp::min;
 use std::collections::HashSet;
 use std::env;
+use std::ffi::{CString, OsString};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
@@ -22,7 +24,7 @@ fn print_help(program_name: String) {
   println!();
   println!("Description:");
   println!("  This program compiles an .hlo file into an assembly code.");
-  println!("  Candidate assembly codes are logged in the specified log directory.");
+  println!("  The candidates are kept in the log directory (see --log).");
   println!("  The final assembly code is chosen based on performance cost.");
   println!();
   println!("Options:");
@@ -32,7 +34,8 @@ fn print_help(program_name: String) {
   println!("  --output     Specify the output assembly file path");
   println!("               (required, will be created/overwritten)");
   println!("  --log        Specify the log directory");
-  println!("               (optional, defaults to /tmp/log if not provided)");
+  println!("               (optional, defaults to a new directory under the system's");
+  println!("               temporary directory)");
   println!();
 }
 
@@ -53,6 +56,17 @@ fn no_assembly(reason: &str) -> ! {
 // The output's name until it is whole
 fn partial_output(output_path: &Path) -> PathBuf {
   output_path.with_extension(format!("py.{}", process::id()))
+}
+
+// Make a unique directory from a template ending in XXXXXX
+fn make_unique_dir(template: &Path) -> std::io::Result<PathBuf> {
+  let mut name = CString::new(template.as_os_str().as_bytes())?.into_bytes_with_nul();
+  // mkdtemp fills the X's in place, mode 0700
+  if unsafe { libc::mkdtemp(name.as_mut_ptr().cast()) }.is_null() {
+    return Err(std::io::Error::last_os_error());
+  }
+  name.pop();
+  Ok(PathBuf::from(OsString::from_vec(name)))
 }
 
 // Report the search's elapsed time and when it stops
@@ -305,17 +319,35 @@ fn main() {
   println!("Output file: {}", output_path.display());
 
   // Process log directory
-  let log_dir_arg: String = if args.contains(&"--log".to_string()) {
+  let own_log = !args.contains(&"--log".to_string());
+  let mut log_dir = if own_log {
+    // A unique name, filled in when the directory is made
+    env::temp_dir().join("act-backend-XXXXXX")
+  } else {
     let log_index = args.iter().position(|x| x == "--log").unwrap() + 1;
     if log_index >= args.len() {
       eprintln!("Error: missing directory after --log");
       process::exit(1);
     }
-    args[log_index].clone()
-  } else {
-    "/tmp/log".to_string()
+    let log_dir = PathBuf::from(&args[log_index]);
+    // A passed directory is written into, nothing in it removed
+    if log_dir.exists() && !log_dir.is_dir() {
+      eprintln!(
+        "Error: the log directory '{}' is not a directory",
+        log_dir.display()
+      );
+      process::exit(1);
+    }
+    if let Err(error) = std::fs::create_dir_all(&log_dir) {
+      eprintln!(
+        "Error: cannot create the log directory '{}': {}",
+        log_dir.display(),
+        error
+      );
+      process::exit(1);
+    }
+    log_dir
   };
-  println!("Log directory: {}", log_dir_arg);
 
   // The output's directory is made once every flag is checked
   let output_dir = output_path.parent().unwrap();
@@ -351,12 +383,21 @@ fn main() {
     process::exit(1);
   }
 
-  let log_dir = std::path::PathBuf::from(log_dir_arg);
-  if log_dir.exists() {
-    std::fs::remove_dir_all(&log_dir).expect("Failed to remove existing log directory");
+  // The compile's own log directory, made under a unique name
+  if own_log {
+    match make_unique_dir(&log_dir) {
+      Ok(made) => log_dir = made,
+      Err(error) => {
+        eprintln!(
+          "Error: cannot create the log directory '{}': {}",
+          log_dir.display(),
+          error
+        );
+        process::exit(1);
+      }
+    }
   }
-  std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
-
+  println!("Log directory: {}", log_dir.display());
   println!("PII graphs dumped to: {}", log_dir.display());
   println!();
 
@@ -371,7 +412,7 @@ fn main() {
   println!("Starting Phase 1 Module 1: E-Graph Initializer...");
   println!();
 
-  let (init_egraph, hbm_offsets, root, inputs, metadata) =
+  let (init_egraph, hbm_offsets, root, inputs, mut metadata) =
     match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
       Ok(parsed) => parsed,
       Err(reason) => no_assembly(&reason),
@@ -383,6 +424,17 @@ fn main() {
   println!();
 
   let metadata_path = log_dir.join("metadata.json");
+  // The kernel's path as given, control characters escaped
+  metadata.input_file = hlo_path_arg
+    .chars()
+    .map(|c| {
+      if c.is_control() {
+        c.escape_default().to_string()
+      } else {
+        c.to_string()
+      }
+    })
+    .collect();
   metadata.save(&metadata_path);
 
   let search = Rc::new(Search {

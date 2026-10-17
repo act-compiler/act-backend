@@ -13,6 +13,8 @@ pub struct MetaDataInfo {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MetaData {
   pub module_name: String,
+  // The kernel's path, as the compile was given it
+  pub input_file: String,
   pub input: Vec<MetaDataInfo>,
   pub output: Vec<MetaDataInfo>,
 }
@@ -29,6 +31,7 @@ impl Default for MetaData {
   fn default() -> Self {
     MetaData {
       module_name: "xla_computation_unknown".to_string(),
+      input_file: String::new(),
       input: vec![],
       output: vec![],
     }

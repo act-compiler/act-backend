@@ -1,7 +1,11 @@
 """Tests of how a compile ends: what it says and the output it leaves."""
 
 import os
+import shutil
 import subprocess
+import tempfile
+import time
+from pathlib import Path
 
 import pytest
 from conftest import add_moves, add_on_d1, compiled, instruction_calls, kernel
@@ -221,3 +225,161 @@ def test_compile_at_the_iteration_limit_keeps_its_best_candidate(backend, tmp_pa
     # The slice moves down 39 passes, past the limit's 30
     assert 'the rewrites reached the iteration limit of 30' in run.stdout
     assert instruction_calls(output) == {'load_rm': 1, 'converts': 1, 'store_rm': 1}
+
+
+def test_assembly_header_names_the_kernel_path(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, ADD_32)
+    assert run.returncode == 0, run.stderr
+    assert f'# Input file: {tmp_path / "kernel.hlo"}\n' in output.read_text()
+
+
+def test_assembly_header_escapes_a_line_break_of_the_kernel_path(backend, tmp_path):
+    # A path holding a Python line between two line breaks
+    path = tmp_path / "k\nprint('run')\n#.hlo"
+    path.write_text(ADD_32)
+    output = tmp_path / 'kernel.py'
+    command = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([backend, *command], capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    header = output.read_text().splitlines()
+    assert header[0] == f"# Input file: {tmp_path}/k\\nprint('run')\\n#.hlo"
+    assert header[1] == '# Kernel name: add_32'
+
+
+def test_two_compiles_at_once_keep_their_log_directories(backend, tmp_path):
+    temporary = tmp_path / 'tmp'
+    temporary.mkdir()
+    env = dict(os.environ, TMPDIR=str(temporary))
+    runs = []
+    for name, text in [('chain', CHAIN), ('sum', ADD_32)]:
+        if runs:
+            # The second starts while the longer first still reads candidates
+            time.sleep(0.3)
+        (tmp_path / f'{name}.hlo').write_text(text)
+        command = [
+            backend,
+            '--input',
+            str(tmp_path / f'{name}.hlo'),
+            '--output',
+            str(tmp_path / f'{name}.py'),
+        ]
+        runs.append(
+            subprocess.Popen(
+                command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+            )
+        )
+    # The most directories held at once, until both compiles end
+    held = set()
+    while any(run.poll() is None for run in runs):
+        names = {path.name for path in temporary.iterdir()}
+        held = names if len(names) > len(held) else held
+        time.sleep(0.005)
+    for run in runs:
+        assert run.wait() == 0, run.stderr.read()
+    assert (tmp_path / 'chain.py').exists() and (tmp_path / 'sum.py').exists()
+    # Each compile made its own directory and left it
+    assert len(held) == 2 and all(name.startswith('act-backend-') for name in held)
+    assert {path.name for path in temporary.iterdir()} == held
+
+
+def test_progress_names_its_own_log_directory_as_made(backend, tmp_path):
+    temporary = tmp_path / 'tmp'
+    temporary.mkdir()
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    env = dict(os.environ, TMPDIR=str(temporary))
+    run = subprocess.run([backend, *command], env=env, capture_output=True, text=True, check=False)
+    assert run.returncode == 0, run.stderr
+    # The directory as made, its template's X's filled in
+    (line,) = [line for line in run.stdout.splitlines() if line.startswith('Log directory: ')]
+    made = Path(line.removeprefix('Log directory: '))
+    assert made.parent == temporary and made.name.startswith('act-backend-')
+    assert made.name != 'act-backend-XXXXXX'
+
+
+@pytest.fixture
+def shared(backend):
+    """A directory every user reaches, the backend copied into it"""
+    shared = Path(tempfile.mkdtemp())
+    shared.chmod(0o777)
+    shutil.copy(backend, shared)
+    yield shared
+    # Every entry opened again before the tree is removed
+    for path in shared.iterdir():
+        path.chmod(0o777)
+    shutil.rmtree(shared)
+
+
+def test_leftover_directory_of_another_user_is_left_alone(shared):
+    (shared / 'kernel.hlo').write_text(ADD_32)
+    temporary = shared / 'tmp'
+    temporary.mkdir()
+    # Sticky like /tmp: any user writes, removes only its own
+    temporary.chmod(0o1777)
+    # Another user's directory, which the compile leaves alone
+    held = temporary / 'act-backend-held' / 'held'
+    held.mkdir(parents=True)
+    (held / 'file').touch()
+    held.chmod(0o555)
+    # As uid 65534, since root passes every mode
+    user = ['setpriv', '--reuid=65534', '--regid=65534', '--clear-groups']
+    command = [*(user if os.geteuid() == 0 else []), str(shared / 'ENDINGS')]
+    arguments = ['--input', str(shared / 'kernel.hlo'), '--output', str(shared / 'kernel.py')]
+    env = dict(os.environ, TMPDIR=str(temporary))
+    run = subprocess.run(
+        [*command, *arguments], env=env, capture_output=True, text=True, check=False
+    )
+    # Opened again before the fixture removes the tree
+    held.chmod(0o755)
+    assert run.returncode == 0, run.stderr
+    assert (shared / 'kernel.py').exists()
+    # The leftover keeps its file, beside the compile's own directory
+    assert (held / 'file').exists()
+    assert held.parent in list(temporary.iterdir())
+    assert len(list(temporary.iterdir())) == 2
+
+
+def test_own_log_directory_the_backend_cannot_make_is_a_usage_error(backend, tmp_path):
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    # A missing temporary directory, where no directory can be made
+    env = dict(os.environ, TMPDIR=str(tmp_path / 'missing'))
+    run = subprocess.run([backend, *command], env=env, capture_output=True, text=True, check=False)
+    assert run.returncode == 1
+    template = tmp_path / 'missing' / 'act-backend-XXXXXX'
+    assert run.stderr.startswith(f"Error: cannot create the log directory '{template}': ")
+    assert run.stderr.count('\n') == 1
+
+
+def test_log_directory_that_holds_files_is_kept(backend, tmp_path):
+    log = tmp_path / 'log'
+    log.mkdir()
+    (log / 'notes.txt').write_text('a file of the user\n')
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    run = subprocess.run(
+        [backend, *command, '--log', str(log)], capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 0, run.stderr
+    assert (log / 'notes.txt').read_text() == 'a file of the user\n'
+
+
+def test_log_directory_that_is_a_file_is_a_usage_error(backend, tmp_path):
+    (tmp_path / 'log').write_text('a file of the user\n')
+    run, _ = compiled(backend, tmp_path, ADD_32)
+    assert run.returncode == 1
+    assert run.stderr == f"Error: the log directory '{tmp_path / 'log'}' is not a directory\n"
+
+
+def test_log_directory_the_backend_cannot_make_leaves_the_earlier_output(backend, tmp_path):
+    (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
+    (tmp_path / 'kernel.hlo').write_text(ADD_32)
+    # No user, root included, makes a directory in /proc
+    command = ['--input', str(tmp_path / 'kernel.hlo'), '--output', str(tmp_path / 'kernel.py')]
+    run = subprocess.run(
+        [backend, *command, '--log', '/proc/log'], capture_output=True, text=True, check=False
+    )
+    assert run.returncode == 1
+    assert run.stderr.startswith("Error: cannot create the log directory '/proc/log': ")
+    assert run.stderr.count('\n') == 1
+    assert (tmp_path / 'kernel.py').read_text() == '# an earlier compile\n'
