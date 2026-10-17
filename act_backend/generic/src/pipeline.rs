@@ -550,6 +550,15 @@ fn main() {
     }
   }
 
+  // The search ends here only once its time limit is reached
+  if start.elapsed() <= TIME_LIMIT {
+    eprintln!(
+      "Error: timeout() called at {:?} but overall time limit of {:?} not reached",
+      start.elapsed(),
+      TIME_LIMIT
+    );
+    process::exit(1);
+  }
   report!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
   report!();
   search.finish();
