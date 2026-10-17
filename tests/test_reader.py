@@ -258,6 +258,14 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
             '%c gives slice no slice attribute',
         ),
         (
+            'ROOT %c = bf16[64,64] broadcast(%a)',
+            '%c gives broadcast no dimensions attribute',
+        ),
+        (
+            'ROOT %c = bf16[64,64] broadcast(%a), dimensions={0,y}',
+            "%c gives 'y' in dimensions, which is not a dimension",
+        ),
+        (
             'ROOT %c = bf16[192,64] concatenate(%a, %a, %a), dimensions={0}',
             '%c concatenates 3 values, where a concatenate takes 2',
         ),
@@ -271,6 +279,8 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
         'no_dimensions',
         'transpose_not_a_number',
         'no_slice',
+        'no_map',
+        'map_not_a_number',
         'three_values',
         'unread_operation',
     ],

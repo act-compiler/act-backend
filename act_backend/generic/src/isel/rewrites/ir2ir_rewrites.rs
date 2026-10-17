@@ -578,7 +578,7 @@ pub fn set_shapes_7(
 pub fn precond_8(
   egraph: &EGraph<TensorOp, TensorInfo>,
   lhs_eclasses: &[Id],
-  _: &[Option<TensorOp>],
+  lhs_enodes: &[Option<TensorOp>],
 ) -> bool {
   assert_eq!(lhs_eclasses.len(), 2);
   let lhs_metadata: Vec<TensorInfo> = lhs_eclasses
@@ -595,7 +595,9 @@ pub fn precond_8(
     }
   }
 
-  true
+  // The identity map keeps each element in place
+  let identity: Vec<i32> = (0..lhs_metadata[0].shape.len() as i32).collect();
+  TensorOp::payload_is(&lhs_enodes[1], &identity)
 }
 
 pub fn metadata_8(
