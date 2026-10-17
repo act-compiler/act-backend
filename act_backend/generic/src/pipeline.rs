@@ -60,11 +60,6 @@ fn no_assembly(output_path: &Path, reason: &str) -> ! {
   process::exit(1);
 }
 
-// The output's name until it is whole
-fn partial_output(output_path: &Path) -> PathBuf {
-  output_path.with_extension(format!("py.{}", process::id()))
-}
-
 // Make a unique directory from a template ending in XXXXXX
 fn make_unique_dir(template: &Path) -> std::io::Result<PathBuf> {
   let mut name = CString::new(template.as_os_str().as_bytes())?.into_bytes_with_nul();
@@ -394,9 +389,21 @@ fn main() {
     process::exit(1);
   }
 
-  // The output's directory takes a file before the search starts
-  let partial = partial_output(&output_path);
-  if let Err(error) = std::fs::File::create(&partial).and_then(|_| std::fs::remove_file(&partial)) {
+  // The output opens for writing before the search starts, an earlier one unchanged
+  let earlier = output_path.exists();
+  let probe = std::fs::OpenOptions::new()
+    .append(true)
+    .create(true)
+    .open(&output_path)
+    .and_then(|_| {
+      // A file the probe made goes again
+      if earlier {
+        Ok(())
+      } else {
+        std::fs::remove_file(&output_path)
+      }
+    });
+  if let Err(error) = probe {
     eprintln!(
       "Error: cannot write the output '{}': {}",
       output_path.display(),
