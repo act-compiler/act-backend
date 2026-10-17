@@ -7,7 +7,7 @@ from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
 from act_backend.generator import get_instruction_metadata
-from act_backend.instruction_info import extract_instruction_info
+from act_backend.instruction_info import extract_instruction_info, get_type_names
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
 from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
@@ -35,8 +35,8 @@ def test_rewrite_rules(accelerator, templates):
     ]
     # The semantics as a pattern, `_?` for each carried attribute
     assert [squeeze(rule) for rule in rules] == [
-        'load-rm: (bitcvt (reshape_? ?v0)) => (load-rm_? ?v0)',
-        'gemm: (dot ?v0 ?v1) => (gemm ?v0 ?v1)',
+        'instr_load-rm: (bitcvt (reshape_? ?v0)) => (instr_load-rm_? ?v0)',
+        'instr_gemm: (dot ?v0 ?v1) => (instr_gemm ?v0 ?v1)',
     ]
 
 
@@ -73,15 +73,26 @@ ENTRY {
 }
 """)
     rewrite = generate_rewrite_rule(get_instruction_metadata(acc.instructions)[0], templates)
-    assert squeeze(rewrite) == 'four: (add (add ?v0 ?v1) (add ?v2 ?v3)) => (four ?v0)'
+    assert squeeze(rewrite) == 'instr_four: (add (add ?v0 ?v1) (add ?v2 ?v3)) => (instr_four ?v0)'
+
+
+def test_type_names_are_told_apart():
+    # Instr and the camel case, the later of two numbered
+    names = get_type_names(['load_2', 'load2', 'load22', 'Var'])
+    assert names == {
+        'load_2': 'InstrLoad2',
+        'load2': 'InstrLoad22',
+        'load22': 'InstrLoad222',
+        'Var': 'InstrVar',
+    }
 
 
 def test_buffer_assignments(accelerator):
     info = extract_instruction_info(accelerator.instructions)
     # The output's buffer first, then each input's, d0 as HBM
     assert [i.buffer_assignment for i in info] == [
-        'Some(vec![Buffer::D1, Buffer::HBM])',
-        'Some(vec![Buffer::D2, Buffer::D1, Buffer::D1])',
+        'Some(vec![Buffer::Modeld1, Buffer::HBM])',
+        'Some(vec![Buffer::Modeld2, Buffer::Modeld1, Buffer::Modeld1])',
     ]
 
 
@@ -90,8 +101,8 @@ def test_enum_variants(accelerator, templates):
     parts = ir_egraph_rs_generator.generate_instruction_variants(info, templates)
     # A computational attribute rides as a string beside the inputs
     assert [squeeze(variant) for variant in parts['enum_variants']] == [
-        'LoadRm(String, [Id; 1]),',
-        'Gemm([Id; 2]),',
+        'InstrLoadRm(String, [Id; 1]),',
+        'InstrGemm([Id; 2]),',
     ]
 
 
@@ -111,7 +122,7 @@ ENTRY {
     parts = ir_egraph_rs_generator.generate_instruction_variants(info, templates)
     # The values the allocator reads, each attribute named
     assert squeeze(parts['display_arms'][0]) == (
-        'TensorOp::Top(data, _) => write!(f, "top[m,n=\'{}\']", data),'
+        'TensorOp::InstrTop(data, _) => write!(f, "instr_top[m,n=\'{}\']", data),'
     )
 
 
@@ -119,10 +130,10 @@ def test_preconditions(accelerator, templates):
     load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
     # Read from the input's dimension, over its factor
-    assert 'let n = lhs_metadata[0].shape[0] / 128;' in functions
+    assert 'let attr_n = lhs_metadata[0].shape[0] / 128;' in functions
     # Each semantics value is held to its shape and type
     assert functions.count('if lhs_metadata[') == 3
-    shapes = [(0, 'n * 128', 'U8'), (1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]
+    shapes = [(0, 'attr_n * 128', 'U8'), (1, 'attr_n, 64, 2', 'U8'), (2, 'attr_n, 64', 'BF16')]
     for index, shape, dtype in shapes:
         value = f'TensorInfo {{ shape: vec![{shape}], dtype: Dtype::{dtype}, is_const: false, }}'
         assert f'if lhs_metadata[{index}] != ({value})' in functions
@@ -148,7 +159,7 @@ def test_attribute_read_through_its_factor(dimension):
         [f'%In0 = u8[`{dimension}`] parameter(0)', f'ROOT %Out0 = u8[`{dimension}`] copy(%In0)']
     )
     # The dimension over its factor, either side, through brackets
-    assert functions.count('let n = lhs_metadata[0].shape[0] / 128;') == 3
+    assert functions.count('let attr_n = lhs_metadata[0].shape[0] / 128;') == 3
 
 
 def test_attribute_read_from_a_second_dimension():
@@ -160,15 +171,19 @@ def test_attribute_read_from_a_second_dimension():
     )
     # The precondition first checks that the value has two dimensions
     guard = 'if lhs_metadata[0].shape.len() <= 1 { return false; }'
-    assert f'{guard} let n = lhs_metadata[0].shape[1];' in functions
-    assert functions.count('let n = lhs_metadata[0].shape[1];') == 3
+    assert f'{guard} let attr_n = lhs_metadata[0].shape[1];' in functions
+    assert functions.count('let attr_n = lhs_metadata[0].shape[1];') == 3
 
 
 def test_address_ranges(accelerator, templates):
-    load_rm = squeeze(generate_instruction_class(accelerator.instructions[0], templates))
+    load_rm = accelerator.instructions[0]
+    load_rm = squeeze(generate_instruction_class(load_rm, 'InstrLoadRm', templates))
     # Range 0 the output's, 1 the input's: address and size
-    assert 'get_h0() { return {{addr_out, MAKE_SUM(addr_out, n)}}; }' in load_rm
-    assert 'get_h1() { return {{addr_in, MAKE_SUM(addr_in, n * 128)}}; }' in load_rm
+    assert 'get_h0() { return {{attr_addr_out, MAKE_SUM(attr_addr_out, attr_n)}}; }' in load_rm
+    assert 'get_h1() { return {{attr_addr_in, MAKE_SUM(attr_addr_in, attr_n * 128)}}; }' in load_rm
+    # The assembly prints each attribute by the spec's name
+    assert 'n = " + std::to_string(attr_n)' in load_rm
+    assert 'addr_in = " + std::to_string(attr_addr_in->Value())' in load_rm
 
 
 def test_size_written_from_its_tree(templates):
@@ -177,18 +192,18 @@ def test_size_written_from_its_tree(templates):
     instr = acc.add_instruction('load', ['n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['(@c.n+1)*2-@c.n/2']]])
     instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
-    load = squeeze(generate_instruction_class(instr, templates))
-    # Operators spaced, the spec's brackets, attributes by name
-    assert 'MAKE_SUM(addr_in, (n + 1) * 2 - n / 2)' in load
-    assert 'MAKE_SUM(addr_out, 64)' in load
+    load = squeeze(generate_instruction_class(instr, 'InstrLoad', templates))
+    # Operators spaced, the spec's brackets, attributes by generated name
+    assert 'MAKE_SUM(attr_addr_in, (attr_n + 1) * 2 - attr_n / 2)' in load
+    assert 'MAKE_SUM(attr_addr_out, 64)' in load
 
 
 def test_storages(accelerator):
     models = generate_globals_models(accelerator.data_model)
     # Per data model but d0: access dimensions, then unit count
     assert [squeeze(model) for model in models] == [
-        '{"D1", new Storage("D1", {128}, 1)},',
-        '{"D2", new Storage("D2", {64}, 1)},',
+        '{"Modeld1", new Storage("Modeld1", {128}, 1)},',
+        '{"Modeld2", new Storage("Modeld2", {64}, 1)},',
     ]
 
 
@@ -196,37 +211,37 @@ def test_storage_with_no_access_dimension():
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [], [64], 'bf16')
     (model,) = generate_globals_models(acc.data_model)
-    assert squeeze(model) == '{"D1", new Storage("D1", {}, 1)},'
+    assert squeeze(model) == '{"Modeld1", new Storage("Modeld1", {}, 1)},'
 
 
 def test_rule_functions(accelerator):
     precond, metadata, set_shapes = generate_function_mappings(accelerator.instructions)
     # Rewrites in kebab-case, functions named after the instruction
     assert [squeeze(arm) for arm in precond] == [
-        '"load-rm" => precond_load_rm,',
-        '"gemm" => precond_gemm,',
+        '"instr_load-rm" => precond_load_rm,',
+        '"instr_gemm" => precond_gemm,',
     ]
     assert [squeeze(arm) for arm in metadata] == [
-        '"load-rm" => metadata_load_rm,',
-        '"gemm" => metadata_gemm,',
+        '"instr_load-rm" => metadata_load_rm,',
+        '"instr_gemm" => metadata_gemm,',
     ]
     assert [squeeze(arm) for arm in set_shapes] == [
-        '"load-rm" => set_shapes_load_rm,',
-        '"gemm" => set_shapes_gemm,',
+        '"instr_load-rm" => set_shapes_load_rm,',
+        '"instr_gemm" => set_shapes_gemm,',
     ]
 
 
 def test_buffer_names(accelerator, templates):
     # Every buffer but HBM, in the spec's order
-    assert generate_buffer_names(accelerator.data_model, templates) == '"D1", "D2"'
+    assert generate_buffer_names(accelerator.data_model, templates) == '"Modeld1", "Modeld2"'
 
 
 def test_parser_cases(accelerator, templates):
     cases = squeeze(generate_parser_instructions(accelerator.instructions, templates))
     # A case per instruction, in order, attributes to its class
-    assert re.findall(r'op_name == "(\w+)"', cases) == ['load_rm', 'gemm']
-    assert 'return new LoadRm(lhs_tensor, rhs_tensors, n);' in cases
-    assert 'return new Gemm(lhs_tensor, rhs_tensors);' in cases
+    assert re.findall(r'op_name == "(\w+)"', cases) == ['instr_load_rm', 'instr_gemm']
+    assert 'return new InstrLoadRm(lhs_tensor, rhs_tensors, attr_n);' in cases
+    assert 'return new InstrGemm(lhs_tensor, rhs_tensors);' in cases
 
 
 def test_fill_placeholders():

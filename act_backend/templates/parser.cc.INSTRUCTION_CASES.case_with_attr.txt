@@ -1,8 +1,8 @@
   } else if (op_name == "{{op_name}}") {
     // The values between the quotes, in declared order
-    auto start = attr_str.find("'");
-    auto end = attr_str.rfind("'");
-    std::stringstream values(attr_str.substr(start + 1, end - start - 1));
+    auto start = op_attr.find("'");
+    auto end = op_attr.rfind("'");
+    std::stringstream values(op_attr.substr(start + 1, end - start - 1));
     std::string value;
 {{attribute_parses}}
 

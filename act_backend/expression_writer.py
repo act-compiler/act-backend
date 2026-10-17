@@ -1,6 +1,8 @@
-"""Rust and C++ for a value taidl has parsed, each attribute by its own name"""
+"""Rust and C++ for a value taidl has parsed, each attribute by its generated name"""
 
 from taidl.antlr4 import IDLV2ExprVisitor
+
+from .instruction_info import get_attribute_name
 
 
 class ExpressionWriter(IDLV2ExprVisitor):
@@ -31,8 +33,8 @@ class ExpressionWriter(IDLV2ExprVisitor):
         if ctx.INT() is not None:
             return ctx.INT().getText()
         if ctx.reference() is not None:
-            # An attribute or state variable, its prefix dropped
-            return ctx.reference().getText()[3:]
+            # An attribute or state variable, by its generated name
+            return get_attribute_name(ctx.reference().getText()[3:])
         return f'({self.visit(ctx.expression())})'
 
 

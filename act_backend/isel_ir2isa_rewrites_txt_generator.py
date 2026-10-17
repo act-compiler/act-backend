@@ -3,7 +3,7 @@ import re
 
 from taidl.antlr4 import IDLV2Parser
 
-from .instruction_info import get_kebab_name
+from .instruction_info import get_rewrite_word
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
@@ -121,21 +121,21 @@ def generate_rewrite_rule(metadata, templates):
     visitor = RewriteRuleVisitor()
     lhs_pattern = visitor.visit(metadata.semantics_ast)
     parameter_vars = visitor.get_parameter_variables()
-    kebab_name = get_kebab_name(metadata.name)
+    rewrite_word = get_rewrite_word(metadata.name)
 
     # Generate RHS with or without _? suffix
     rhs = (
-        f'({kebab_name}_? {" ".join(parameter_vars)})'
+        f'({rewrite_word}_? {" ".join(parameter_vars)})'
         if metadata.attributes
-        else f'({kebab_name} {" ".join(parameter_vars)})'
+        else f'({rewrite_word} {" ".join(parameter_vars)})'
     )
 
     # Calculate padding to align the '=>' at column 20
-    padding = ' ' * (19 - len(kebab_name))
+    padding = ' ' * (19 - len(rewrite_word))
 
     return templates.render(
         'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
-        kebab_name=kebab_name,
+        rewrite_word=rewrite_word,
         padding=padding,
         lhs_pattern=lhs_pattern,
         rhs=rhs,

@@ -1,6 +1,6 @@
 import os
 
-from .instruction_info import get_kebab_name
+from .instruction_info import get_rewrite_word
 from .template_loader import fill_placeholders
 
 
@@ -10,11 +10,11 @@ def generate_function_mappings(instructions):
 
     for instruction in instructions:
         name = instruction.instruction
-        kebab_name = get_kebab_name(name)
+        rewrite_word = get_rewrite_word(name)
 
-        mappings['precond'].append(f'    "{kebab_name}" => precond_{name},')
-        mappings['metadata'].append(f'    "{kebab_name}" => metadata_{name},')
-        mappings['set_shapes'].append(f'    "{kebab_name}" => set_shapes_{name},')
+        mappings['precond'].append(f'    "{rewrite_word}" => precond_{name},')
+        mappings['metadata'].append(f'    "{rewrite_word}" => metadata_{name},')
+        mappings['set_shapes'].append(f'    "{rewrite_word}" => set_shapes_{name},')
 
     return mappings['precond'], mappings['metadata'], mappings['set_shapes']
 

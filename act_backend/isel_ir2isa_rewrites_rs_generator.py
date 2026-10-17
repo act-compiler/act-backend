@@ -5,6 +5,7 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 
 from .expression_writer import source
+from .instruction_info import get_attribute_name
 from .semantics_visitor import OperandVisitor
 from .template_loader import fill_placeholders, get_backend_template_loader
 
@@ -167,7 +168,7 @@ def generate_comp_attr_extraction(assignments, attributes, checked):
             # A matched value may have fewer dimensions
             code += f'  if {shape}.len() <= {dimension} {{\n    return false;\n  }}\n'
         division = f' / {factor}' if factor != 1 else ''
-        code += f'  let {attribute} = {shape}[{dimension}]{division};\n'
+        code += f'  let {get_attribute_name(attribute)} = {shape}[{dimension}]{division};\n'
     return code
 
 
@@ -223,11 +224,12 @@ def generate_metadata_function(instruction_name, semantics_data, attributes, rhs
         comp_attr_extraction = generate_comp_attr_extraction(assignments, attributes, False)
 
         # The attributes as one string, in declared order
-        if len(attributes) == 1:
-            value = f'{attributes[0]}.to_string()'
+        names = [get_attribute_name(attribute) for attribute in attributes]
+        if len(names) == 1:
+            value = f'{names[0]}.to_string()'
         else:
-            pieces = ','.join(['{}'] * len(attributes))
-            value = f'format!("{pieces}", {", ".join(attributes)})'
+            pieces = ','.join(['{}'] * len(names))
+            value = f'format!("{pieces}", {", ".join(names)})'
 
         return templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.metadata_with_attr.txt',

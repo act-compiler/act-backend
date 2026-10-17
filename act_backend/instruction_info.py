@@ -6,6 +6,7 @@ from dataclasses import dataclass
 @dataclass
 class InstructionInfo:
     name: str
+    type_name: str
     arity: int
     attributes: list[str]
     buffer_assignment: str
@@ -20,21 +21,46 @@ def to_camel_case(snake_str):
     return ''.join(word.capitalize() for word in snake_str.split('_'))
 
 
-def get_rust_variant_name(instr_name: str) -> str:
-    # A hyphen separates words like an underscore
-    return to_camel_case(instr_name.replace('-', '_'))
+def get_type_names(instr_names):
+    """Each instruction's generated type: Instr and its camel case, numbered where two collide"""
+    type_names = {}
+    for name in instr_names:
+        base = f'Instr{to_camel_case(name)}'
+        type_name, number = base, 1
+        while type_name in type_names.values():
+            number += 1
+            type_name = f'{base}{number}'
+        type_names[name] = type_name
+    return type_names
+
+
+def get_attribute_name(attribute: str) -> str:
+    # A prefix no name of the generated sources starts with
+    return f'attr_{attribute}'
 
 
 def get_kebab_name(instr_name: str) -> str:
     return instr_name.replace('_', '-')
 
 
+def get_rewrite_word(instr_name: str) -> str:
+    # The instruction's rewrite word, apart from every operator's
+    return f'instr_{get_kebab_name(instr_name)}'
+
+
+def get_graph_name(instr_name: str) -> str:
+    # The instruction as the allocator's selected graph names it
+    return f'instr_{instr_name}'
+
+
 def get_buffer_name(data_model_name: str) -> str:
-    return 'HBM' if data_model_name == 'd0' else data_model_name.upper()
+    # d0 is the backend's HBM, other data models prefixed
+    return 'HBM' if data_model_name == 'd0' else f'Model{data_model_name}'
 
 
 def extract_instruction_info(instructions) -> list[InstructionInfo]:
     info_list = []
+    type_names = get_type_names([instruction.instruction for instruction in instructions])
 
     for instruction in instructions:
         name = instruction.instruction
@@ -52,7 +78,9 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
         buffer_assignment = f'Some(vec![{", ".join(buffers)}])'
 
         info_list.append(
-            InstructionInfo(name, arity, list(instruction.comp_attr), buffer_assignment)
+            InstructionInfo(
+                name, type_names[name], arity, list(instruction.comp_attr), buffer_assignment
+            )
         )
 
     return info_list
