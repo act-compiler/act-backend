@@ -325,8 +325,15 @@ impl Analysis<TensorOp> for TensorInfo {
     }
   }
 
-  // A merged class is constant if either one is
+  // Only like classes join, constant if either one is
   fn merge(&mut self, a: &mut Self::Data, b: Self::Data) -> DidMerge {
+    // A set shape has at least one dimension
+    if !a.shape.is_empty() && !b.shape.is_empty() && *a != b {
+      panic!(
+        "internal error: a rewrite joins the values {}{:?} and {}{:?}",
+        a.dtype, a.shape, b.dtype, b.shape
+      );
+    }
     let x = a.is_const;
     a.is_const |= b.is_const;
     DidMerge(a.is_const != x, false)

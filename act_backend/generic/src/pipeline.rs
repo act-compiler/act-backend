@@ -10,7 +10,7 @@ use std::time::Instant;
 use egg::{Runner, StopReason};
 
 use backend::isel;
-use backend::{PROCESSED, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
+use backend::{SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
@@ -314,7 +314,6 @@ fn main() {
       .with_node_limit(5000)
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
-        PROCESSED.lock().unwrap().clear();
         // Extract after every iteration
         let extract_now = !runner.iterations.is_empty();
         if extract_now {

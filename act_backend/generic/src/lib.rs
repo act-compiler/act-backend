@@ -1,13 +1,4 @@
-use std::{
-  collections::HashSet,
-  sync::{LazyLock, Mutex},
-  time::Duration,
-};
-
-use egg::{Id, Subst, Symbol};
-
-pub static PROCESSED: LazyLock<Mutex<HashSet<(Symbol, Id, Subst)>>> =
-  LazyLock::new(|| Mutex::new(HashSet::new()));
+use std::time::Duration;
 
 // External Timeout
 pub const TIME_LIMIT: Duration = Duration::from_millis(10000);

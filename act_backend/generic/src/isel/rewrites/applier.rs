@@ -1,10 +1,10 @@
+use std::collections::HashSet;
+
 use egg::*;
 use itertools::Itertools;
 
 use crate::ir::egraph::*;
 use crate::isel::rewrites::{ir2ir_rewrites::*, ir2isa_rewrites::*};
-
-use crate::PROCESSED;
 
 pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
   let fields: Vec<&str> = rule.split(':').collect();
@@ -75,33 +75,42 @@ struct ApplyRewrite {
 }
 
 impl Applier<TensorOp, TensorInfo> for ApplyRewrite {
+  // One call per iteration, each class's substitution applied once
+  fn apply_matches(
+    &self,
+    egraph: &mut EGraph<TensorOp, TensorInfo>,
+    matches: &[SearchMatches<TensorOp>],
+    rewrite_name: Symbol,
+  ) -> Vec<Id> {
+    let mut applied = HashSet::new();
+    let mut ids = vec![];
+    for search_match in matches {
+      for subst in &search_match.substs {
+        if applied.insert((search_match.eclass, subst)) {
+          ids.extend(self.apply_one(egraph, search_match.eclass, subst, None, rewrite_name));
+        }
+      }
+    }
+    ids
+  }
+
   fn apply_one(
     &self,
     egraph: &mut EGraph<TensorOp, TensorInfo>,
     eclass: Id,
     subst: &Subst,
     _: Option<&PatternAst<TensorOp>>,
-    rule_name: Symbol,
+    _: Symbol,
   ) -> Vec<Id> {
     let mut ids = vec![];
-    if PROCESSED
-      .lock()
-      .unwrap()
-      .contains(&(rule_name, eclass, subst.clone()))
-    {
-      return ids;
-    }
     let lhs_matches = find_matches(
       egraph,
       eclass,
       self.lhs.ast.len() - 1,
       self.lhs.ast.len(),
       &self.lhs.ast,
+      subst,
     );
-    PROCESSED
-      .lock()
-      .unwrap()
-      .insert((rule_name, eclass, subst.clone()));
 
     for lhs_match in lhs_matches {
       let (lhs_eclasses, lhs_enodes): (Vec<_>, Vec<_>) = lhs_match.into_iter().unzip();
@@ -155,19 +164,21 @@ fn apply_pat(
   *rhs_eclasses.last().unwrap()
 }
 
-/// Each pattern match at eclass, its nodes in post-order
+/// Each match at eclass under subst, its nodes in post-order
 fn find_matches(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
   pat_idx: usize,
   limit: usize,
   pat: &[ENodeOrVar<TensorOp>],
+  subst: &Subst,
 ) -> Vec<Vec<(Id, Option<TensorOp>)>> {
   let mut matches = vec![];
   let pat_node = pat.get(pat_idx).unwrap();
   match pat_node {
-    ENodeOrVar::Var(_) => {
-      if limit > 0 {
+    ENodeOrVar::Var(var) => {
+      // The match the search found, and no other
+      if limit > 0 && egraph.find(subst[*var]) == egraph.find(eclass) {
         matches.push(vec![(eclass, None)]);
       }
     }
@@ -185,6 +196,7 @@ fn find_matches(
             e.children()[i].into(),
             limit - 1,
             pat,
+            subst,
           ));
         }
         if child_matches.iter().all(|x| !x.is_empty()) {
