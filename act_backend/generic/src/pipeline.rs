@@ -50,16 +50,14 @@ struct AsmCandidate {
   timestamp: Duration,
 }
 
-// No assembly: one stderr line and status 1
-fn no_assembly(reason: &str) -> ! {
+// No assembly: no output, one stderr line, status 1
+fn no_assembly(output_path: &Path, reason: &str) -> ! {
+  if output_path.exists() {
+    std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+  }
   report!("No output file created.");
   eprintln!("Error: no assembly found: {}", reason);
   process::exit(1);
-}
-
-// The output's name until it is whole
-fn partial_output(output_path: &Path) -> PathBuf {
-  output_path.with_extension(format!("py.{}", process::id()))
 }
 
 // Make a unique directory from a template ending in XXXXXX
@@ -82,14 +80,27 @@ fn report_elapsed(elapsed: Duration, stop: Duration) {
   );
 }
 
-fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Instant) -> bool {
+fn update_best(
+  best: &mut Option<AsmCandidate>,
+  asm_path: &PathBuf,
+  start: &Instant,
+  output_path: &Path,
+) -> bool {
   report_elapsed(start.elapsed(), TIME_LIMIT);
   report!("Starting Performance Cost Evaluation for {:?}", asm_path);
   report!();
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
-    Err(reason) => no_assembly(&format!("the cost model {}", reason)),
+    Err(reason) => {
+      eprintln!("Error: the cost model {} for {:?}", reason, asm_path);
+
+      // A failed compile leaves no output
+      if output_path.exists() {
+        std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+      }
+      process::exit(1);
+    }
   };
   let time = start.elapsed();
 
@@ -184,10 +195,7 @@ impl Search {
           timestamp
         );
 
-        // The output takes its name once it is whole
-        let partial = partial_output(&self.output_path);
-        std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
-        std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
+        std::fs::copy(&path, &self.output_path).expect("Failed to copy best ASM to output path");
         report!(
           "Best ASM copied to output path: {}",
           self.output_path.display()
@@ -208,7 +216,7 @@ impl Search {
           ),
           None => format!("the time limit of {:?} ran out", TIME_LIMIT),
         };
-        no_assembly(&format!("{}, and {}", ended, candidates));
+        no_assembly(&self.output_path, &format!("{}, and {}", ended, candidates));
       }
     }
     process::exit(0);
@@ -245,7 +253,12 @@ impl Search {
       match backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path) {
         // Check cost and update best if necessary
         Ok(()) => {
-          update_best(&mut self.best.borrow_mut(), &asm_path, &self.start);
+          update_best(
+            &mut self.best.borrow_mut(),
+            &asm_path,
+            &self.start,
+            &self.output_path,
+          );
         }
         Err(reason) => {
           println!("PII #{} dropped: {}", number, reason);
@@ -325,6 +338,13 @@ fn main() {
     process::exit(1);
   }
 
+  if output_path.exists() {
+    println!(
+      "Warning: Output file '{}' already exists and will be overwritten.",
+      output_path.display()
+    );
+  }
+
   report!("Output file: {}", output_path.display());
 
   // Process log directory
@@ -369,21 +389,21 @@ fn main() {
     process::exit(1);
   }
 
-  // An earlier compile's output goes before this one starts
-  if output_path.exists() {
-    if let Err(error) = std::fs::remove_file(&output_path) {
-      eprintln!(
-        "Error: cannot remove the earlier output '{}': {}",
-        output_path.display(),
-        error
-      );
-      process::exit(1);
-    }
-  }
-
-  // The output's directory takes a file before the search starts
-  let partial = partial_output(&output_path);
-  if let Err(error) = std::fs::File::create(&partial).and_then(|_| std::fs::remove_file(&partial)) {
+  // The output opens for writing before the search starts, an earlier one unchanged
+  let earlier = output_path.exists();
+  let probe = std::fs::OpenOptions::new()
+    .append(true)
+    .create(true)
+    .open(&output_path)
+    .and_then(|_| {
+      // A file the probe made goes again
+      if earlier {
+        Ok(())
+      } else {
+        std::fs::remove_file(&output_path)
+      }
+    });
+  if let Err(error) = probe {
     eprintln!(
       "Error: cannot write the output '{}': {}",
       output_path.display(),
@@ -424,7 +444,7 @@ fn main() {
   let (init_egraph, hbm_offsets, root, inputs, mut metadata) =
     match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
       Ok(parsed) => parsed,
-      Err(reason) => no_assembly(&reason),
+      Err(reason) => no_assembly(&output_path, &reason),
     };
 
   report!("HBM Offsets: {:?}", hbm_offsets);
@@ -530,6 +550,15 @@ fn main() {
     }
   }
 
+  // The search ends here only once its time limit is reached
+  if start.elapsed() <= TIME_LIMIT {
+    eprintln!(
+      "Error: timeout() called at {:?} but overall time limit of {:?} not reached",
+      start.elapsed(),
+      TIME_LIMIT
+    );
+    process::exit(1);
+  }
   report!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
   report!();
   search.finish();
