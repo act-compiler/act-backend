@@ -124,6 +124,10 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
                          std::string("the allocator cannot read ") + metadata_path);
     }
     emitter::MetaData metadata(metadata_file, tensor_map, known_constants);
+    if (!metadata.why.empty()) {
+      solver.EndSearch();
+      return no_assembly(reason, reason_size, metadata.why);
+    }
 
     std::string why;
     if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {

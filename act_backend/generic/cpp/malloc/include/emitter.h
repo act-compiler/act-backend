@@ -40,6 +40,8 @@ public:
   std::vector<MetaDataInfo> input_info;
   std::vector<MetaDataInfo> output_info;
   std::vector<MetaDataInfo> constant_info;
+  // Why the metadata cannot be read, empty where it can
+  std::string why;
 
   MetaData(std::ifstream &metadata_path,
            const std::unordered_map<std::string, Tensor *> &tensor_map,

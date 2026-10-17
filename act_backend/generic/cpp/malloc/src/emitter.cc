@@ -5,9 +5,27 @@
 namespace emitter {
 
 MetaDataInfo::MetaDataInfo(nlohmann::json &j) {
-  addr = j["addr"].get<int64>();
-  shape = j["shape"].get<std::vector<int64>>();
-  dtype = j["dtype"].get<std::string>();
+  addr = 0;
+  if (j.contains("addr") && j["addr"].is_number_integer())
+    addr = j["addr"].get<int64>();
+  else
+    throw std::runtime_error("addr is required in metadata.json");
+
+  shape.clear();
+  if (j.contains("shape") && j["shape"].is_array()) {
+    for (const auto &s : j["shape"]) {
+      if (s.is_number_integer())
+        shape.push_back(s.get<int64>());
+      else
+        throw std::runtime_error("shape must be an array of integers");
+    }
+  } else
+    throw std::runtime_error("shape is required in metadata.json");
+
+  if (j.contains("dtype") && j["dtype"].is_string())
+    dtype = j["dtype"].get<std::string>();
+  else
+    throw std::runtime_error("dtype is required in metadata.json");
 }
 
 std::string MetaDataInfo::str() const {
@@ -37,24 +55,41 @@ MetaData::MetaData(std::ifstream &metadata_path,
   metadata_path.seekg(0);
   try {
     metadata_path >> j;
-  } catch (const nlohmann::json::parse_error &e) {
-    // Every candidate reads this one file, so the compile ends
-    std::cerr << "Error: failed to parse metadata.json: " << e.what() << std::endl;
-    std::exit(1);
-  }
 
-  this->module_name = j["module_name"].get<std::string>();
-  this->input_file = j["input_file"].get<std::string>();
-  for (const auto &entry : j["input"]) {
-    input_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
-  }
-  for (const auto &entry : j["output"]) {
-    output_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
+    if (j.contains("module_name") && j["module_name"].is_string()) {
+      this->module_name = j["module_name"].get<std::string>();
+    } else
+      throw std::runtime_error("module_name is required in metadata.json");
+    this->input_file = j["input_file"].get<std::string>();
+
+    if (j.contains("input") && j["input"].is_array()) {
+      for (const auto &entry : j["input"]) {
+        input_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
+      }
+    } else
+      throw std::runtime_error("input is required in metadata.json");
+
+    if (j.contains("output") && j["output"].is_array()) {
+      if (j["output"].size() != 1)
+        throw std::runtime_error("supports only one output in metadata.json");
+
+      for (const auto &entry : j["output"]) {
+        output_info.emplace_back(MetaDataInfo(const_cast<nlohmann::json &>(entry)));
+      }
+    } else
+      throw std::runtime_error("output is required in metadata.json");
+  } catch (const std::exception &e) {
+    why = std::string("the allocator cannot parse metadata.json: ") + e.what();
+    return;
   }
 
   for (const auto &pair : tensor_map) {
     auto *tensor = pair.second;
     if (tensor->type == Tensor::CONSTANT) {
+      if (known_constants.find(tensor) == known_constants.end()) {
+        why = "the constant tensor " + tensor->get_name() + " has no known value";
+        return;
+      }
       if (known_constants.at(tensor) != "reshape[shape='256'](bitcvt(eye[ttype='16,16,I8']()))") {
         std::cerr << "Warning: only constant tensor with value reshape(eye) is "
                      "supported now, continue anyway."
@@ -89,10 +124,20 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   std::string path_str(outpath);
   size_t lslash = path_str.find_last_of('/');
   size_t fname_start = (lslash == std::string::npos) ? 0 : lslash + 1;
+  if (fname_start >= path_str.size()) {
+    why = std::string("the output path ") + outpath + " has no filename component";
+    return false;
+  }
+
   size_t ldot = path_str.find_last_of('.');
   size_t stem_end = path_str.size();
   if (ldot != std::string::npos && ldot > fname_start) {
     stem_end = ldot;
+  }
+
+  if (stem_end <= fname_start) {
+    why = std::string("the output path ") + outpath + " does not contain a valid filename stem";
+    return false;
   }
 
   std::string pii_number = path_str.substr(fname_start, stem_end - fname_start);

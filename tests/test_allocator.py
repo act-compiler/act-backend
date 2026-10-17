@@ -1,5 +1,6 @@
 """Tests of the allocator's checks: a candidate it cannot take is dropped with the reason."""
 
+import copy
 import json
 import os
 import subprocess
@@ -125,4 +126,40 @@ def test_tensor_defined_twice_drops_the_candidate(allocator, tmp_path):
     assert run.stderr == (
         f'the allocator cannot read the line `{line}`: the tensor t2 is defined twice\n'
     )
+    assert not assembly.exists()
+
+
+def metadata_with(change):
+    """The kernel's metadata, as a function of it changes it"""
+    metadata = copy.deepcopy(METADATA)
+    change(metadata)
+    return metadata
+
+
+# Each fault of the metadata, and what the allocator says of it
+FAULTY = {
+    'addr': (lambda m: m['input'][0].pop('addr'), 'addr is required in metadata.json'),
+    'shape': (lambda m: m['input'][0].pop('shape'), 'shape is required in metadata.json'),
+    'entry': (
+        lambda m: m['input'][0].update(shape=[32, '64']),
+        'shape must be an array of integers',
+    ),
+    'dtype': (lambda m: m['output'][0].pop('dtype'), 'dtype is required in metadata.json'),
+    'name': (lambda m: m.pop('module_name'), 'module_name is required in metadata.json'),
+    'input': (lambda m: m.pop('input'), 'input is required in metadata.json'),
+    'output': (lambda m: m.pop('output'), 'output is required in metadata.json'),
+    'outputs': (
+        lambda m: m['output'].append(m['output'][0]),
+        'supports only one output in metadata.json',
+    ),
+}
+
+
+@pytest.mark.parametrize('change, fault', FAULTY.values(), ids=FAULTY)
+def test_metadata_the_allocator_cannot_parse_drops_the_candidate(
+    allocator, tmp_path, change, fault
+):
+    run, assembly = allocated(allocator, tmp_path, CANDIDATE, metadata_with(change))
+    assert run.returncode == 1
+    assert run.stderr == f'the allocator cannot parse metadata.json: {fault}\n'
     assert not assembly.exists()

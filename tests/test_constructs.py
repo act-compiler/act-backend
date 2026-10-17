@@ -368,18 +368,20 @@ def test_binary_operation_of_other_than_two_operands_refused(work_dir, tmp_path,
     assert run.stderr == f'Error: no assembly found: {reason}\n'
 
 
-# A library caller handing the allocator one candidate's files
+# A library caller handing the allocator one candidate's files, and saying why it drops it
 ALLOCATE = """use std::path::Path;
 
 fn main() {
   let paths: Vec<String> = std::env::args().skip(1).collect();
   let path = |k: usize| Path::new(&paths[k]).to_path_buf();
-  let _ = backend::malloc::cpp_bridge(&path(0), &path(1), &path(2));
+  if let Err(reason) = backend::malloc::cpp_bridge(&path(0), &path(1), &path(2)) {
+    println!("dropped: {}", reason);
+  }
 }
 """
 
 
-def test_metadata_that_does_not_parse_ends_the_compile(work_dir, tmp_path):
+def test_metadata_that_does_not_parse_drops_the_candidate(work_dir, tmp_path):
     compiled_calls(work_dir, tmp_path, PRODUCT.replace('OPERANDS', '%a, %b'))
     # A candidate the allocator placed, beside a broken metadata.json
     candidates = sorted((tmp_path / 'log').glob('*.pii'))
@@ -392,12 +394,14 @@ def test_metadata_that_does_not_parse_ends_the_compile(work_dir, tmp_path):
         f.write(ALLOCATE)
     build = ['cargo', 'build', '--release', '--locked', '--example', 'allocate']
     subprocess.run(build, cwd=crate, check=True, capture_output=True)
-    paths = [str(pii), str(broken), str(tmp_path / 'kernel.py')]
+    assembly = tmp_path / 'allocated.py'
+    paths = [str(pii), str(broken), str(assembly)]
     command = ['cargo', 'run', '-q', '--release', '--locked', '--example', 'allocate', '--', *paths]
     run = subprocess.run(command, cwd=crate, capture_output=True, text=True, check=False)
-    assert run.returncode == 1
-    assert run.stderr.startswith('Error: failed to parse metadata.json: ')
-    assert run.stderr.count('\n') == 1
+    assert run.returncode == 0, run.stderr
+    assert run.stdout.startswith('dropped: the allocator cannot parse metadata.json: ')
+    assert run.stdout.count('\n') == 1
+    assert not assembly.exists()
 
 
 def test_data_model_with_no_access_dimension_is_a_storage(work_dir):
