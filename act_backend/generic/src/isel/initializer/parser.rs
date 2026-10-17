@@ -14,13 +14,20 @@ pub struct HloModuleHeader {
   pub output_type: String,
 }
 
-pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
+pub fn parse_hlo_module_header(line: &str) -> Result<HloModuleHeader, String> {
   let line = line.trim();
+  // Why the reader cannot split a header
+  let malformed = || {
+    format!(
+      "the kernel's first line '{}' is not an HloModule line with an entry_computation_layout",
+      line
+    )
+  };
 
   // Step 1: Extract module name and entry computation layout
   let prefix = "HloModule ";
   if !line.starts_with(prefix) {
-    return None;
+    return Err(malformed());
   }
   let rest = &line[prefix.len()..];
 
@@ -29,7 +36,7 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
 
   // Find entry_computation_layout parameter
   let layout_start = "entry_computation_layout={";
-  let start_pos = rest.find(layout_start)?;
+  let start_pos = rest.find(layout_start).ok_or_else(malformed)?;
   let layout_part = &rest[start_pos + layout_start.len()..];
 
   // Find matching closing brace
@@ -50,7 +57,7 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
   }
 
   if brace_count != 0 {
-    return None;
+    return Err(malformed());
   }
 
   let entry_layout = &layout_part[..layout_end];
@@ -84,21 +91,15 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
         &normalized_layout[actual_arrow_pos + 2..] // Skip the "->"
       );
     } else {
-      panic!(
-        "Expected format: (input_types) -> output_type. Found: {}",
-        layout_no_spaces
-      );
+      return Err(malformed());
     }
   } else {
-    panic!(
-      "Expected format: (input_types) -> output_type. Found: {}",
-      layout_no_spaces
-    );
+    return Err(malformed());
   }
 
   let io_parts: Vec<&str> = normalized_layout.split('|').collect();
   if io_parts.len() != 2 {
-    return None;
+    return Err(malformed());
   }
 
   // Extract inputs and output
@@ -144,7 +145,7 @@ pub fn parse_hlo_module_header(line: &str) -> Option<HloModuleHeader> {
     split_top_level_commas(inputs_str)
   };
 
-  Some(HloModuleHeader {
+  Ok(HloModuleHeader {
     module_name,
     input_types,
     output_type: output_type.to_string(),
@@ -155,15 +156,17 @@ pub fn parse_region(
   lines: &[&str],
   start_idx: usize,
   regions: &std::collections::HashMap<String, HLORegion>,
-) -> Option<(HLORegion, usize)> {
+) -> Result<Option<(HLORegion, usize)>, String> {
   if start_idx >= lines.len() {
-    return None;
+    return Ok(None);
   }
 
   let first_line = lines[start_idx].trim();
 
   // A region opens with its name and a brace
-  let brace_pos = first_line.find('{')?;
+  let Some(brace_pos) = first_line.find('{') else {
+    return Ok(None);
+  };
 
   let region_name_with_signature = first_line[..brace_pos].trim();
 
@@ -205,11 +208,11 @@ pub fn parse_region(
 
       if !instruction_line.is_empty() {
         if let Some((tsymbol, ttype, tshape, ttile, toperator, toperands, trest)) =
-          parse_line(instruction_line)
+          parse_line(instruction_line)?
         {
           if let Some(expr) = parse_hlo_expr(
             &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, regions,
-          ) {
+          )? {
             instructions.push(expr);
           }
         }
@@ -219,18 +222,20 @@ pub fn parse_region(
     idx += 1;
   }
 
-  Some((
+  Ok(Some((
     HLORegion {
       name: region_name,
       instructions,
     },
     idx,
-  ))
+  )))
 }
 
-pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader, Vec<HLOExpr>)> {
+pub fn parse_hlo_module_with_regions(
+  lines: &[&str],
+) -> Result<(HloModuleHeader, Vec<HLOExpr>), String> {
   if lines.is_empty() {
-    return None;
+    return Err("the kernel is empty".to_string());
   }
   // Parse the module header from the first line
   let header = parse_hlo_module_header(lines[0])?;
@@ -263,11 +268,11 @@ pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader,
         }
 
         if let Some((tsymbol, ttype, tshape, ttile, toperator, toperands, trest)) =
-          parse_line(instruction_line)
+          parse_line(instruction_line)?
         {
           if let Some(expr) = parse_hlo_expr(
             &tsymbol, &ttype, &tshape, &ttile, &toperator, &toperands, &trest, &regions,
-          ) {
+          )? {
             entry_instructions.push(expr);
           }
         }
@@ -275,7 +280,7 @@ pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader,
       }
     } else if line.contains('{') {
       // This is a region definition
-      if let Some((region, new_idx)) = parse_region(lines, idx, &regions) {
+      if let Some((region, new_idx)) = parse_region(lines, idx, &regions)? {
         regions.insert(region.name.clone(), region);
         idx = new_idx;
       } else {
@@ -286,5 +291,5 @@ pub fn parse_hlo_module_with_regions(lines: &[&str]) -> Option<(HloModuleHeader,
     }
   }
 
-  Some((header, entry_instructions))
+  Ok((header, entry_instructions))
 }

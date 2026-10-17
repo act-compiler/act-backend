@@ -21,14 +21,25 @@ macro_rules! binary_op_match {
             $(
                 $key => {
                     $egraph.add($variant([
-                        *$table.get($lhs).unwrap(),
-                        *$table.get($rhs).unwrap(),
+                        lookup($table, $lhs)?,
+                        lookup($table, $rhs)?,
                     ]))
                 }
             )*
-            _ => panic!("Unsupported op."),
+            // The parser builds a binary operation for these words alone
+            other => unreachable!("binary operation {}", other),
         }
     };
+}
+
+// A kernel name's e-class, or why none is defined
+fn lookup(table: &EggSymbolTable, symbol: &str) -> Result<Id, String> {
+  table.get(symbol).copied().ok_or_else(|| {
+    format!(
+      "the kernel reads {}, which no earlier line of it defines",
+      symbol
+    )
+  })
 }
 
 // Give a node its type, shape and kernel name
@@ -60,11 +71,11 @@ pub fn add_parameter(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   inputs: &mut HashSet<Id>,
   table: &mut EggSymbolTable,
-) -> Id {
-  let dtype: Dtype = ttype.into();
+) -> Result<Id, String> {
+  let dtype = Dtype::try_from(ttype)?;
   let dtype_size = dtype.size_in_bytes();
 
-  let bytes = get_bytes(tshape, dtype_size);
+  let bytes = get_bytes(tshape, dtype_size)?;
   if ttile.is_empty() {
     // no tile supplied case
     let var_node = egraph.add(TensorOp::Var(tsymbol.to_string()));
@@ -83,7 +94,7 @@ pub fn add_parameter(
     }
 
     let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [var_node]));
-    let reshape_vec = shape_to_vec(&shape_with_size);
+    let reshape_vec = shape_to_vec(&shape_with_size)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -94,7 +105,7 @@ pub fn add_parameter(
     );
 
     let node = egraph.add(TensorOp::OpBitcvt([node]));
-    let bitcvt_vec = shape_to_vec(tshape);
+    let bitcvt_vec = shape_to_vec(tshape)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -106,7 +117,7 @@ pub fn add_parameter(
 
     table.insert(tsymbol.to_string(), node);
     inputs.insert(var_node);
-    var_node
+    Ok(var_node)
   } else {
     let var_node = egraph.add(TensorOp::Var(tsymbol.to_string()));
     egraph.set_analysis_data(
@@ -118,7 +129,7 @@ pub fn add_parameter(
       },
     );
 
-    let tiled_shape = get_tiled_shape(tshape, ttile);
+    let tiled_shape = get_tiled_shape(tshape, ttile)?;
 
     let mut shape_with_size = tiled_shape.to_string();
     if dtype_size != 1 {
@@ -126,7 +137,7 @@ pub fn add_parameter(
     }
 
     let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [var_node]));
-    let reshape_vec = shape_to_vec(&shape_with_size);
+    let reshape_vec = shape_to_vec(&shape_with_size)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -137,7 +148,7 @@ pub fn add_parameter(
     );
 
     let node = egraph.add(TensorOp::OpBitcvt([node]));
-    let bitcvt_vec = shape_to_vec(&tiled_shape);
+    let bitcvt_vec = shape_to_vec(&tiled_shape)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -164,7 +175,7 @@ pub fn add_parameter(
     }
 
     let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [node]));
-    let reshape_vec = shape_to_vec(&shape_with_size);
+    let reshape_vec = shape_to_vec(&shape_with_size)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -176,7 +187,7 @@ pub fn add_parameter(
 
     table.insert(tsymbol.to_string(), node);
     inputs.insert(var_node);
-    var_node
+    Ok(var_node)
   }
 }
 
@@ -187,12 +198,13 @@ pub(super) fn add_constant(
   value: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpConstant(value.to_string()));
   bind_node(tsymbol, node, shape, dtype, true, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_broadcast(
@@ -202,15 +214,16 @@ pub(super) fn add_broadcast(
   source: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpBroadcast(
     tshape.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 // One argument per field of the kernel's line
@@ -224,9 +237,9 @@ pub(super) fn add_binary_op(
   rhs: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = binary_op_match!(op_name, lhs, rhs, table, egraph, {
       "add" => TensorOp::OpAdd,
@@ -238,6 +251,7 @@ pub(super) fn add_binary_op(
       "divide" => TensorOp::OpDivide
   });
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_slice(
@@ -248,9 +262,9 @@ pub(super) fn add_slice(
   slices: &[String],
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let slice_str = slices
     .iter()
@@ -269,9 +283,10 @@ pub(super) fn add_slice(
 
   let node = egraph.add(TensorOp::OpSlice(
     slice_str.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_concatenate(
@@ -282,10 +297,17 @@ pub(super) fn add_concatenate(
   dimensions: &[u32],
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
+  if inputs.len() < 2 {
+    return Err(format!(
+      "{} concatenates {} value, where a concatenate takes 2",
+      tsymbol,
+      inputs.len()
+    ));
+  }
   let dim_str = dimensions
     .iter()
     .map(|d| d.to_string())
@@ -293,12 +315,10 @@ pub(super) fn add_concatenate(
     .join(",");
   let node = egraph.add(TensorOp::OpConcat(
     dim_str.clone(),
-    [
-      *table.get(&inputs[0]).unwrap(),
-      *table.get(&inputs[1]).unwrap(),
-    ],
+    [lookup(table, &inputs[0])?, lookup(table, &inputs[1])?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_reshape(
@@ -308,15 +328,16 @@ pub(super) fn add_reshape(
   source: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpReshape(
     tshape.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_transpose(
@@ -327,15 +348,16 @@ pub(super) fn add_transpose(
   dimensions: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpTranspose(
     dimensions.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_convert(
@@ -345,15 +367,16 @@ pub(super) fn add_convert(
   source: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpConvert(
     ttype.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_reduce(
@@ -364,15 +387,16 @@ pub(super) fn add_reduce(
   dimensions: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
   let node = egraph.add(TensorOp::OpReduceSum(
     dimensions.to_string(),
-    [*table.get(source).unwrap()],
+    [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_exponential(
@@ -382,12 +406,13 @@ pub(super) fn add_exponential(
   source: &str,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
-) {
-  let dtype: Dtype = ttype.into();
-  let shape = shape_to_vec(tshape);
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
+  let shape = shape_to_vec(tshape)?;
 
-  let node = egraph.add(TensorOp::OpExp([*table.get(source).unwrap()]));
+  let node = egraph.add(TensorOp::OpExp([lookup(table, source)?]));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  Ok(())
 }
 
 pub(super) fn add_root_operations(
@@ -398,10 +423,10 @@ pub(super) fn add_root_operations(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   table: &mut EggSymbolTable,
   root: &mut Option<Id>,
-) {
-  let dtype: Dtype = ttype.into();
+) -> Result<(), String> {
+  let dtype = Dtype::try_from(ttype)?;
   let dtype_size = dtype.size_in_bytes();
-  let bytes = get_bytes(tshape, dtype_size);
+  let bytes = get_bytes(tshape, dtype_size)?;
 
   if ttile.is_empty() {
     let mut shape_with_size = tshape.to_string();
@@ -409,10 +434,10 @@ pub(super) fn add_root_operations(
       shape_with_size += &format!(",{}", dtype_size);
     }
 
-    let node = table.get(tsymbol);
+    let node = lookup(table, tsymbol)?;
 
-    let node = egraph.add(TensorOp::OpBitcvt([*node.unwrap()]));
-    let bitcvt_vec = shape_to_vec(&shape_with_size);
+    let node = egraph.add(TensorOp::OpBitcvt([node]));
+    let bitcvt_vec = shape_to_vec(&shape_with_size)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -435,11 +460,11 @@ pub(super) fn add_root_operations(
     table.insert(tsymbol.to_string(), node);
     *root = Some(node);
   } else {
-    let node = table.get(tsymbol);
-    let tiled_shape = get_result_shape(tshape, ttile);
+    let node = lookup(table, tsymbol)?;
+    let tiled_shape = get_result_shape(tshape, ttile)?;
 
-    let node = egraph.add(TensorOp::OpReshape(tiled_shape.clone(), [*node.unwrap()]));
-    let reshape_vec = shape_to_vec(&tiled_shape);
+    let node = egraph.add(TensorOp::OpReshape(tiled_shape.clone(), [node]));
+    let reshape_vec = shape_to_vec(&tiled_shape)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -456,7 +481,7 @@ pub(super) fn add_root_operations(
     egraph.set_analysis_data(
       node,
       TensorInfo {
-        shape: shape_to_vec(&transposed_reshape_str),
+        shape: shape_to_vec(&transposed_reshape_str)?,
         dtype,
         is_const: false,
       },
@@ -468,7 +493,7 @@ pub(super) fn add_root_operations(
     }
 
     let node = egraph.add(TensorOp::OpBitcvt([node]));
-    let bitcvt_vec = shape_to_vec(&shape_with_size);
+    let bitcvt_vec = shape_to_vec(&shape_with_size)?;
     egraph.set_analysis_data(
       node,
       TensorInfo {
@@ -491,4 +516,5 @@ pub(super) fn add_root_operations(
     table.insert(tsymbol.to_string(), node);
     *root = Some(node);
   }
+  Ok(())
 }

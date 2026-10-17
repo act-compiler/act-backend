@@ -1,42 +1,63 @@
-pub(super) fn shape_to_vec(shape_str: &str) -> Vec<i32> {
+pub(super) fn shape_to_vec(shape_str: &str) -> Result<Vec<i32>, String> {
   let cleaned = shape_str.trim();
 
   if cleaned.is_empty() || cleaned == "[]" {
-    return vec![1];
+    return Ok(vec![1]);
   }
 
   let trimmed = cleaned.trim_matches(|c| c == '[' || c == ']');
 
   if trimmed.trim().is_empty() {
-    return vec![1];
+    return Ok(vec![1]);
   }
 
   trimmed
     .split(',')
     .filter(|s| !s.trim().is_empty())
-    .map(|x| x.trim().parse::<i32>().expect("Invalid shape dimension"))
+    .map(|x| dimension(x, shape_str))
     .collect()
 }
 
-pub(super) fn get_bytes(shape: &str, dtype: i32) -> i32 {
-  let mut bytes = 1;
-  shape_to_vec(shape).iter().for_each(|dim| bytes *= dim);
-  bytes * dtype
+// One dimension of a shape, or why it is none
+fn dimension(text: &str, shape: &str) -> Result<i32, String> {
+  text.trim().parse::<i32>().map_err(|_| {
+    format!(
+      "the shape [{}] holds '{}', which is not a dimension",
+      shape.trim_matches(|c| c == '[' || c == ']'),
+      text.trim()
+    )
+  })
 }
 
-pub(super) fn get_tiled_shape(shape: &str, tile: &str) -> String {
-  let shape_vec: Vec<u32> = shape
-    .split(',')
-    .map(|s| s.trim().parse().expect("Invalid shape number"))
-    .collect();
+pub(super) fn get_bytes(shape: &str, dtype: i32) -> Result<i32, String> {
+  let mut bytes = 1;
+  shape_to_vec(shape)?.iter().for_each(|dim| bytes *= dim);
+  Ok(bytes * dtype)
+}
 
-  let tile_vec: Vec<u32> = tile
+pub(super) fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
+  let shape_vec = shape
     .split(',')
-    .map(|s| s.trim().parse().expect("Invalid tile number"))
-    .collect();
+    .map(|s| dimension(s, shape))
+    .collect::<Result<Vec<i32>, String>>()?;
+  // A tiled shape's dimensions are never negative
+  if let Some(dim) = shape_vec.iter().find(|dim| **dim < 0) {
+    return Err(format!(
+      "the shape [{}] holds '{}', which is not a dimension",
+      shape, dim
+    ));
+  }
+
+  let tile_vec = tile
+    .split(',')
+    .map(|s| tile_size(s, shape, tile))
+    .collect::<Result<Vec<i32>, String>>()?;
 
   if shape_vec.len() != tile_vec.len() {
-    panic!("Shape and tile must have the same number of dimensions");
+    return Err(format!(
+      "the tile ({}) of the shape [{}] does not give one size per dimension",
+      tile, shape
+    ));
   }
 
   let divided: Vec<String> = shape_vec
@@ -55,20 +76,38 @@ pub(super) fn get_tiled_shape(shape: &str, tile: &str) -> String {
       .join(","),
   );
 
-  result
+  Ok(result)
 }
 
-pub(super) fn get_result_shape(tshape: &str, ttile: &str) -> String {
-  let dims: Vec<i32> = tshape
-    .split(',')
-    .map(|x| x.trim().parse::<i32>().unwrap())
-    .collect();
-  let tiles: Vec<i32> = ttile
-    .split(',')
-    .map(|x| x.trim().parse::<i32>().unwrap())
-    .collect();
+// One size of a tile, or why it is none
+fn tile_size(text: &str, shape: &str, tile: &str) -> Result<i32, String> {
+  match text.trim().parse::<i32>() {
+    Ok(size) if size > 0 => Ok(size),
+    _ => Err(format!(
+      "the tile ({}) of the shape [{}] holds '{}', which is not a size",
+      tile,
+      shape,
+      text.trim()
+    )),
+  }
+}
 
-  assert_eq!(dims.len(), tiles.len(), "Shape and tile length mismatch");
+pub(super) fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
+  let dims = tshape
+    .split(',')
+    .map(|x| dimension(x, tshape))
+    .collect::<Result<Vec<i32>, String>>()?;
+  let tiles = ttile
+    .split(',')
+    .map(|x| tile_size(x, tshape, ttile))
+    .collect::<Result<Vec<i32>, String>>()?;
+
+  if dims.len() != tiles.len() {
+    return Err(format!(
+      "the tile ({}) of the shape [{}] does not give one size per dimension",
+      ttile, tshape
+    ));
+  }
 
   let mut result = Vec::new();
   for (d, t) in dims.iter().zip(tiles.iter()) {
@@ -76,7 +115,7 @@ pub(super) fn get_result_shape(tshape: &str, ttile: &str) -> String {
     result.push(t.to_string());
   }
 
-  result.join(",")
+  Ok(result.join(","))
 }
 
 pub(super) fn get_transpose_order_param(num_dims: i32) -> String {

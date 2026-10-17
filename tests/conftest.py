@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 from taidl import Accelerator
 
+from act_backend import generate_backend
+
 
 def pytest_configure(config):
     config.addinivalue_line('markers', 'incremental: skip remaining tests after first failure')
@@ -236,6 +238,55 @@ def add_on_d1(acc, name, sizes, lines, attributes=()):
     instr.set_inputs([['d1', [f'@a.{address}'], [size]] for address, size in zip(addresses, sizes)])
     instr.set_outputs([['d1', ['@a.addr_out'], [sizes[-1]]]])
     instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+
+
+def endings():
+    """A buffer of 100 rows, its moves, and the instructions the ending tests compile"""
+    acc = Accelerator('ENDINGS')
+    acc.add_data_model('d1', [100], [64], 'bf16')
+    add_moves(acc)
+    # The add of 32-row regions, which the buffer holds
+    add_on_d1(
+        acc,
+        'vadd_32',
+        ['32', '32', '32'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%In1 = bf16[32,64] parameter(1)',
+            'ROOT %Out0 = bf16[32,64] add(%In0, %In1)',
+        ],
+    )
+    # Its two inputs alone hold more rows than the buffer
+    add_on_d1(
+        acc,
+        'vadd',
+        ['64', '64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%In1 = bf16[64,64] parameter(1)',
+            'ROOT %Out0 = bf16[64,64] add(%In0, %In1)',
+        ],
+    )
+    return acc
+
+
+@pytest.fixture(scope='session')
+def backend(tmp_path_factory):
+    """Generate the endings spec's backend once and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('endings'))
+    generate_backend(endings(), work_dir)
+    return os.path.join(work_dir, 'backends', 'ENDINGS')
+
+
+def compiled(backend, tmp_path, kernel, output=None):
+    """Compile a kernel's text; return the run and the output's path"""
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(kernel)
+    output = output or tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    return subprocess.run(
+        [backend, *arguments], capture_output=True, text=True, check=False
+    ), output
 
 
 @pytest.fixture(scope='module')

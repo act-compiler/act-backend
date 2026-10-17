@@ -55,9 +55,11 @@ impl std::fmt::Display for Dtype {
   }
 }
 
-impl From<&str> for Dtype {
-  fn from(s: &str) -> Self {
-    match s {
+impl TryFrom<&str> for Dtype {
+  type Error = String;
+
+  fn try_from(s: &str) -> Result<Self, String> {
+    Ok(match s {
       "pred" => Dtype::Pred,
       "u8" => Dtype::U8,
       "s8" => Dtype::I8,
@@ -71,8 +73,13 @@ impl From<&str> for Dtype {
       "f32" => Dtype::FP32,
       "f64" => Dtype::FP64,
       "bf16" => Dtype::BF16,
-      _ => panic!("Unknown dtype: {}", s),
-    }
+      _ => {
+        return Err(format!(
+          "the element type '{}' is not one the backend supports",
+          s
+        ))
+      }
+    })
   }
 }
 

@@ -1,43 +1,13 @@
-"""Tests of how a compile ends: what it says and the output it leaves, a spec made for them."""
+"""Tests of how a compile ends: what it says and the output it leaves."""
 
 import os
 import subprocess
 
 import pytest
-from conftest import add_moves, add_on_d1
+from conftest import add_moves, add_on_d1, compiled
 from taidl import Accelerator
 
 from act_backend import generate_backend
-
-
-def endings():
-    """A buffer of 100 rows, its moves, and an add of two of its regions of 64 rows"""
-    acc = Accelerator('ENDINGS')
-    acc.add_data_model('d1', [100], [64], 'bf16')
-    add_moves(acc)
-    # The add of 32-row regions, which the buffer holds
-    add_on_d1(
-        acc,
-        'vadd_32',
-        ['32', '32', '32'],
-        [
-            '%In0 = bf16[32,64] parameter(0)',
-            '%In1 = bf16[32,64] parameter(1)',
-            'ROOT %Out0 = bf16[32,64] add(%In0, %In1)',
-        ],
-    )
-    # Its two inputs alone hold more rows than the buffer
-    add_on_d1(
-        acc,
-        'vadd',
-        ['64', '64', '64'],
-        [
-            '%In0 = bf16[64,64] parameter(0)',
-            '%In1 = bf16[64,64] parameter(1)',
-            'ROOT %Out0 = bf16[64,64] add(%In0, %In1)',
-        ],
-    )
-    return acc
 
 
 def seven():
@@ -61,30 +31,11 @@ def seven():
 
 
 @pytest.fixture(scope='module')
-def backend(tmp_path_factory):
-    """Generate the spec's backend once and return the binary's path"""
-    work_dir = str(tmp_path_factory.mktemp('endings'))
-    generate_backend(endings(), work_dir)
-    return os.path.join(work_dir, 'backends', 'ENDINGS')
-
-
-@pytest.fixture(scope='module')
 def seven_backend(tmp_path_factory):
     """Generate the seven spec's backend once and return the binary's path"""
     work_dir = str(tmp_path_factory.mktemp('seven'))
     generate_backend(seven(), work_dir)
     return os.path.join(work_dir, 'backends', 'SEVEN')
-
-
-def compiled(backend, tmp_path, kernel, output=None):
-    """Compile a kernel's text; return the run and the output's path"""
-    path = tmp_path / 'kernel.hlo'
-    path.write_text(kernel)
-    output = output or tmp_path / 'kernel.py'
-    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
-    return subprocess.run(
-        [backend, *arguments], capture_output=True, text=True, check=False
-    ), output
 
 
 # The sum of two matrices of 32 rows
