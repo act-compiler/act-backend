@@ -8,6 +8,9 @@
 
 #include "act_malloc.h"
 
+// The solver's time for one candidate
+static const int64 SOLVER_TIME_LIMIT_MS = 500;
+
 // Hand the caller why a candidate gives no assembly
 static int no_assembly(char *reason, size_t reason_size, const std::string &why) {
   snprintf(reason, reason_size, "%s", why.c_str());
@@ -96,7 +99,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
                        operations_research::Solver::ASSIGN_MIN_VALUE);
 
   // A 0.5 s time limit against long hangs
-  auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(500));
+  auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(SOLVER_TIME_LIMIT_MS));
   solver.NewSearch(decision_builder, time_limit);
   if (solver.NextSolution()) {
     std::cout << "Found a solution!" << std::endl;
@@ -127,7 +130,13 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
 
     std::cout << "No ASM candidate generated." << std::endl << std::endl;
 
+    // Whether the solver's time limit stopped the search
+    bool timed_out = time_limit->crossed();
     solver.EndSearch();
+    if (timed_out)
+      return no_assembly(reason, reason_size,
+                         "the solver found no placement within its time limit of " +
+                             std::to_string(SOLVER_TIME_LIMIT_MS) + "ms");
     return no_assembly(reason, reason_size, "the solver found no placement of its tensors");
   }
 }

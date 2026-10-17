@@ -12,7 +12,7 @@ use egg::{EGraph, Id, Runner, StopReason};
 
 use backend::ir::egraph::{TensorInfo, TensorOp};
 use backend::isel;
-use backend::{SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
+use backend::{ITERATION_LIMIT, NODE_LIMIT, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
@@ -117,12 +117,19 @@ struct Search {
   best: RefCell<Option<AsmCandidate>>,
   candidates: Cell<usize>,
   first_drop: RefCell<Option<String>>,
+  rewrites: RefCell<Option<String>>,
 }
 
 impl Search {
-  // Stop once no candidate has improved for long enough
+  // End the compile once its time limit runs out
   fn check_termination(&self) {
     let current_time = self.start.elapsed();
+    if current_time > TIME_LIMIT {
+      println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
+      println!();
+      self.finish();
+    }
+    // Stop once no candidate has improved for long enough
     match self.best.borrow().clone() {
       Some(AsmCandidate { timestamp, .. }) => {
         if current_time > timestamp * SATURATION_FACTOR {
@@ -172,10 +179,15 @@ impl Search {
           Some(reason) => format!("every candidate was dropped, the first because {}", reason),
           None => "no candidate was extracted".to_string(),
         };
-        no_assembly(&format!(
-          "the time limit of {:?} ran out, and {}",
-          TIME_LIMIT, candidates
-        ));
+        // What ended the search
+        let ended = match &*self.rewrites.borrow() {
+          Some(rewrites) => format!(
+            "{} and the time limit of {:?} ran out",
+            rewrites, TIME_LIMIT
+          ),
+          None => format!("the time limit of {:?} ran out", TIME_LIMIT),
+        };
+        no_assembly(&format!("{}, and {}", ended, candidates));
       }
     }
     process::exit(0);
@@ -375,6 +387,7 @@ fn main() {
     best: RefCell::new(None),
     candidates: Cell::new(0),
     first_drop: RefCell::new(None),
+    rewrites: RefCell::new(None),
   });
 
   let rules = isel::rewrites::get_rewrites();
@@ -385,7 +398,8 @@ fn main() {
 
     Runner::default()
       .with_egraph(init_egraph)
-      .with_node_limit(5000)
+      .with_node_limit(NODE_LIMIT)
+      .with_iter_limit(ITERATION_LIMIT)
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
         // Extract after every iteration
@@ -415,10 +429,19 @@ fn main() {
       println!();
     }
     StopReason::NodeLimit(_) | StopReason::Saturated => {
+      // What ended the rewrites, which the no-assembly line names
+      let rewrites = match runner.stop_reason {
+        Some(StopReason::NodeLimit(_)) => {
+          format!("the rewrites reached the node limit of {}", NODE_LIMIT)
+        }
+        _ => "the rewrites saturated".to_string(),
+      };
       println!(
-        "Info: Reached node limit or saturated. Running extraction until time limit is hit."
+        "Info: {}. Running extraction until time limit is hit.",
+        rewrites
       );
       println!();
+      *search.rewrites.borrow_mut() = Some(rewrites);
 
       let mut limit: usize = SLOW_LIMIT_START;
       while start.elapsed() < TIME_LIMIT {

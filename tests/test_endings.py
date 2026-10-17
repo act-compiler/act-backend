@@ -40,12 +40,40 @@ def endings():
     return acc
 
 
+def seven():
+    """A buffer of 100 rows, its moves, and a sum of seven of its regions of 16 rows"""
+    acc = Accelerator('SEVEN')
+    acc.add_data_model('d1', [100], [64], 'bf16')
+    add_moves(acc)
+    # Its seven 16-row inputs alone outgrow the buffer
+    add_on_d1(
+        acc,
+        'sum_7',
+        ['16'] * 8,
+        [
+            *[f'%In{k} = bf16[16,64] parameter({k})' for k in range(7)],
+            '%s1 = bf16[16,64] add(%In0, %In1)',
+            *[f'%s{k} = bf16[16,64] add(%s{k - 1}, %In{k})' for k in range(2, 6)],
+            'ROOT %Out0 = bf16[16,64] add(%s5, %In6)',
+        ],
+    )
+    return acc
+
+
 @pytest.fixture(scope='module')
 def backend(tmp_path_factory):
     """Generate the spec's backend once and return the binary's path"""
     work_dir = str(tmp_path_factory.mktemp('endings'))
     generate_backend(endings(), work_dir)
     return os.path.join(work_dir, 'backends', 'ENDINGS')
+
+
+@pytest.fixture(scope='module')
+def seven_backend(tmp_path_factory):
+    """Generate the seven spec's backend once and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('seven'))
+    generate_backend(seven(), work_dir)
+    return os.path.join(work_dir, 'backends', 'SEVEN')
 
 
 def compiled(backend, tmp_path, kernel, output=None):
@@ -80,6 +108,29 @@ ENTRY main {
 """
 
 
+# A sum of seven 16-row matrices, which only sum_7 computes
+SEVEN = (
+    'HloModule seven, entry_computation_layout={('
+    + ', '.join(['bf16[16,64]{1,0}'] * 7)
+    + ')->bf16[16,64]{1,0}}\n\nENTRY main {\n'
+    + ''.join(f'  %i{k} = bf16[16,64] parameter({k})\n' for k in range(7))
+    + '  %s1 = bf16[16,64] add(%i0, %i1)\n'
+    + ''.join(f'  %s{k} = bf16[16,64] add(%s{k - 1}, %i{k})\n' for k in range(2, 6))
+    + '  ROOT %s6 = bf16[16,64] add(%s5, %i6)\n}\n'
+)
+
+# s32 product and sum, which IR rewrite 0 keeps halving
+HALVES = """HloModule halves, entry_computation_layout={(s32[65536,16]{1,0}, s32[16,16]{1,0}, s32[65536,16]{1,0})->s32[65536,16]{1,0}}
+
+ENTRY main {
+  %a = s32[65536,16] parameter(0)
+  %b = s32[16,16] parameter(1)
+  %d = s32[65536,16] parameter(2)
+  %p = s32[65536,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %s = s32[65536,16] add(%p, %d)
+}
+"""
+
 # A sum of an input and an undefined value
 UNDEFINED = """HloModule undefined, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
 
@@ -108,8 +159,9 @@ def test_no_assembly_ends_in_one_line_and_status_1(backend, tmp_path):
     run, output = compiled(backend, tmp_path, ADD)
     assert run.returncode == 1
     assert run.stderr == (
-        'Error: no assembly found: the time limit of 10s ran out, and every candidate was '
-        'dropped, the first because the solver found no placement of its tensors\n'
+        'Error: no assembly found: the rewrites saturated and the time limit of 1s ran out, and '
+        'every candidate was dropped, the first because the solver found no placement of its '
+        'tensors\n'
     )
     assert not output.exists()
 
@@ -118,7 +170,29 @@ def test_no_assembly_says_no_candidate_was_extracted(backend, tmp_path):
     run, output = compiled(backend, tmp_path, EXPONENTIAL)
     assert run.returncode == 1
     assert run.stderr == (
-        'Error: no assembly found: the time limit of 10s ran out, and no candidate was extracted\n'
+        'Error: no assembly found: the rewrites saturated and the time limit of 1s ran out, and '
+        'no candidate was extracted\n'
+    )
+    assert not output.exists()
+
+
+def test_no_assembly_names_the_node_limit(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, HALVES)
+    assert run.returncode == 1
+    assert run.stderr == (
+        'Error: no assembly found: the rewrites reached the node limit of 10000 and the time '
+        'limit of 1s ran out, and no candidate was extracted\n'
+    )
+    assert not output.exists()
+
+
+def test_solver_that_runs_out_of_its_time_limit_says_so(seven_backend, tmp_path):
+    run, output = compiled(seven_backend, tmp_path, SEVEN)
+    assert run.returncode == 1
+    # Seven 16-row regions in 100 rows outlast the solver's time limit
+    assert run.stderr == (
+        'Error: no assembly found: the time limit of 1s ran out, and every candidate was dropped, '
+        'the first because the solver found no placement within its time limit of 500ms\n'
     )
     assert not output.exists()
 
