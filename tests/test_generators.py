@@ -95,11 +95,31 @@ def test_enum_variants(accelerator, templates):
     ]
 
 
+def test_display_names_each_attribute(templates):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    instr = acc.add_instruction('top', ['m', 'n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.m']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[`@c.m`,64] parameter(0);
+    ROOT %Out0 = bf16[`@c.n`,64] slice(%In0), slice={[0:`@c.n`], [0:64]};
+}
+""")
+    info = extract_instruction_info(acc.instructions)
+    parts = ir_egraph_rs_generator.generate_instruction_variants(info, templates)
+    # The values the allocator reads, each attribute named
+    assert squeeze(parts['display_arms'][0]) == (
+        'TensorOp::Top(data, _) => write!(f, "top[m,n=\'{}\']", data),'
+    )
+
+
 def test_preconditions(accelerator, templates):
     load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
-    # The attribute is read from the root's first dimension
-    assert 'let n = lhs_metadata[2].shape[0];' in functions
+    # Read from the input's dimension, over its factor
+    assert 'let n = lhs_metadata[0].shape[0] / 128;' in functions
     # Each semantics value is held to its shape and type
     assert functions.count('if lhs_metadata[') == 3
     shapes = [(0, 'n * 128', 'U8'), (1, 'n, 64, 2', 'U8'), (2, 'n, 64', 'BF16')]
@@ -110,23 +130,38 @@ def test_preconditions(accelerator, templates):
     assert 'shape[0]' not in generate_ir2isa_rust_functions(gemm, templates)
 
 
-def test_attribute_read_through_its_factor(templates):
+def with_one_attribute(lines):
+    """The rewrite functions of an instruction on d1 with the attribute n and the given semantics"""
     acc = Accelerator('ONE')
     acc.add_data_model('d1', [128], [64], 'bf16')
-    instr = acc.add_instruction('store', ['n'], ['addr_in', 'addr_out'])
+    instr = acc.add_instruction('one', ['n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
-    instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 128']]])
-    instr.add_semantics("""
-ENTRY {
-    %In0 = bf16[`@c.n`,64] parameter(0);
-    %a = u8[`@c.n`,64,2] bitcast_convert(%In0);
-    ROOT %Out0 = u8[`@c.n * (128)`] reshape(%a);
-}
-""")
-    (store,) = get_instruction_metadata(acc.instructions)
-    # The first dimension over its factor, through a bracket
-    functions = squeeze(generate_ir2isa_rust_functions(store, templates))
-    assert 'let n = lhs_metadata[2].shape[0] / 128;' in functions
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+    (one,) = get_instruction_metadata(acc.instructions)
+    return squeeze(generate_ir2isa_rust_functions(one, get_backend_template_loader()))
+
+
+@pytest.mark.parametrize('dimension', ['@c.n * (128)', '128 * @c.n', '(@c.n) * 128'])
+def test_attribute_read_through_its_factor(dimension):
+    functions = with_one_attribute(
+        [f'%In0 = u8[`{dimension}`] parameter(0)', f'ROOT %Out0 = u8[`{dimension}`] copy(%In0)']
+    )
+    # The dimension over its factor, either side, through brackets
+    assert functions.count('let n = lhs_metadata[0].shape[0] / 128;') == 3
+
+
+def test_attribute_read_from_a_second_dimension():
+    functions = with_one_attribute(
+        [
+            '%In0 = bf16[64,`@c.n`] parameter(0)',
+            'ROOT %Out0 = bf16[64,`@c.n`] exponential(%In0)',
+        ]
+    )
+    # The precondition first checks that the value has two dimensions
+    guard = 'if lhs_metadata[0].shape.len() <= 1 { return false; }'
+    assert f'{guard} let n = lhs_metadata[0].shape[1];' in functions
+    assert functions.count('let n = lhs_metadata[0].shape[1];') == 3
 
 
 def test_address_ranges(accelerator, templates):

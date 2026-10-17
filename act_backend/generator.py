@@ -34,7 +34,7 @@ class InstructionMetadata:
     name: str
     semantics_ast: object
     expressions: dict
-    has_comp_attrs: bool
+    attributes: list[str]
     rhs_size: int
 
 
@@ -46,7 +46,7 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
             name=instruction.instruction,
             semantics_ast=instruction.instr_semantics_ast,
             expressions=instruction.instr_expression_asts,
-            has_comp_attrs=len(instruction.comp_attr) > 0,
+            attributes=list(instruction.comp_attr),
             rhs_size=len(instruction.instr_inputs) + 1,
         )
         metadata_list.append(metadata)

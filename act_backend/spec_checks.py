@@ -10,7 +10,7 @@ from .instruction_info import get_buffer_name, get_kebab_name, to_camel_case
 from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     RustGeneratorVisitor,
-    attribute_factor,
+    attribute_reading,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS, RewriteRuleVisitor, repeated_leaf
 from .semantics_visitor import OperandVisitor
@@ -264,6 +264,8 @@ COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'rhs_tensors',
     'start',
     'to_int',
+    'value',
+    'values',
     'Dtype',
     'EGraph',
     'Id',
@@ -343,10 +345,8 @@ def check_attribute_names(instruction):
                     f"{what} '{attribute}' is a {languages} keyword, "
                     'which the generated code cannot spell'
                 )
-            # The parser's case reads a computational attribute through <name>_str
-            spelled = {attribute, f'{attribute}_str'} if kind == 'computational' else {attribute}
             if (
-                spelled & held
+                attribute in held
                 or RANGE_METHOD.fullmatch(attribute)
                 or attribute == to_camel_case(name)
             ):
@@ -519,22 +519,17 @@ def check_semantics(instructions):
         # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
         lines = visitor.visit(instruction.instr_semantics_ast)
-        root = lines['root_assignment']
         for attribute in instruction.comp_attr:
             if attribute not in lines['comp_attributes']:
                 raise ValueError(
                     f'{name}: no shape of its semantics names the computational attribute '
                     f"'{attribute}'"
                 )
-            # Its value comes from the result's first dimension naming it
-            if root['first'] is None or attribute_factor(root['first'], attribute):
-                continue
-            references = Trees.findAllTokenNodes(root['first'], IDLV2ExprParser.COMPUTATIONAL)
-            if f'@c.{attribute}' in [reference.getText() for reference in references]:
-                dimension = root['shape'].split(',')[0].strip('`').strip()
+            # Some dimension holds it alone or times a positive integer
+            if attribute_reading(lines['assignments'], attribute) is None:
                 raise ValueError(
-                    f"{name}: its result's first dimension '{dimension}' is not the computational "
-                    f"attribute '{attribute}' alone or times a positive integer"
+                    f'{name}: no dimension of its semantics holds the computational attribute '
+                    f"'{attribute}' alone or times a positive integer"
                 )
         # Every variable is fresh, so only a constant repeats
         if repeated_leaf(RewriteRuleVisitor().visit(instruction.instr_semantics_ast)):

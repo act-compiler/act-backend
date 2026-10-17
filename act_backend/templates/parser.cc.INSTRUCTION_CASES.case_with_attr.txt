@@ -1,7 +1,9 @@
   } else if (op_name == "{{op_name}}") {
-    // The one attribute: {{attr_name}}
+    // The values between the quotes, in declared order
     auto start = attr_str.find("'");
     auto end = attr_str.rfind("'");
-    int64 {{attr_name}} = to_int(attr_str.substr(start + 1, end - start - 1));
+    std::stringstream values(attr_str.substr(start + 1, end - start - 1));
+    std::string value;
+{{attribute_parses}}
 
-    return new {{ClassName}}(lhs_tensor, rhs_tensors, {{attr_name}});
+    return new {{ClassName}}(lhs_tensor, rhs_tensors, {{attributes}});

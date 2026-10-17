@@ -11,6 +11,6 @@ pub fn metadata_{{instruction_name}}(
   {{comp_attr_extraction}}
 
   let mut rhs_metadata = vec![None; {{rhs_size}}];
-  *rhs_metadata.last_mut().unwrap() = Some({{comp_attr}}.to_string());
+  *rhs_metadata.last_mut().unwrap() = Some({{attributes}});
   rhs_metadata
 }

@@ -160,10 +160,6 @@ def test_instruction_names_that_fold_to_one_refused(tmp_path):
             "computational attribute 'start' is a name the backend already holds",
         ),
         (
-            {'attribute': 'attr'},
-            "computational attribute 'attr' is a name the backend already holds",
-        ),
-        (
             {'attribute': 'Load'},
             "computational attribute 'Load' is a name the backend already holds",
         ),
@@ -231,7 +227,7 @@ def test_reserved_names_are_the_skeletons_own(accelerator):
     # Names load_rm's sources spell, macro bodies too, its own apart
     templates = get_backend_template_loader()
     load_rm = accelerator.instructions[0]
-    own = {'LoadRm', 'n', 'n_str', 'addr_in', 'addr_out'}
+    own = {'LoadRm', 'n', 'addr_in', 'addr_out'}
     in_class = spelled(generate_instruction_class(load_rm, templates))
     macros = re.findall(
         r'^#define (\w+)\(([^)]*)\) (.*)$', read(allocator, 'include', 'solver.h'), re.MULTILINE
@@ -404,18 +400,16 @@ def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
     assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
 
 
-@pytest.mark.parametrize(
-    'dimension', ['@c.k*(64+64)', '@c.k * @c.k', '2 * @c.k', '@c.k + 1', '@c.k * 0']
-)
-def test_first_dimension_that_hides_its_attribute_refused(dimension, tmp_path):
+@pytest.mark.parametrize('dimension', ['@c.k*(64+64)', '@c.k * @c.k', '@c.k + 1', '@c.k * 0'])
+def test_attribute_held_by_no_dimension_refused(dimension, tmp_path):
     lines = [
-        '%In0 = bf16[`@c.k`,64] parameter(0)',
+        f'%In0 = bf16[`{dimension}`,64] parameter(0)',
         f'ROOT %Out0 = bf16[`{dimension}`,64] copy(%In0)',
     ]
     message = refusal(with_semantics(lines, 1, attributes=['k']), tmp_path)
     assert message == (
-        f"gemm: its result's first dimension '{dimension}' is not the computational "
-        "attribute 'k' alone or times a positive integer"
+        "gemm: no dimension of its semantics holds the computational attribute 'k' "
+        'alone or times a positive integer'
     )
 
 
