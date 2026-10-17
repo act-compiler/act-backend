@@ -50,8 +50,11 @@ struct AsmCandidate {
   timestamp: Duration,
 }
 
-// No assembly: one stderr line and status 1
-fn no_assembly(reason: &str) -> ! {
+// No assembly: no output, one stderr line, status 1
+fn no_assembly(output_path: &Path, reason: &str) -> ! {
+  if output_path.exists() {
+    std::fs::remove_file(output_path).expect("Failed to remove existing output file");
+  }
   report!("No output file created.");
   eprintln!("Error: no assembly found: {}", reason);
   process::exit(1);
@@ -82,14 +85,19 @@ fn report_elapsed(elapsed: Duration, stop: Duration) {
   );
 }
 
-fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Instant) -> bool {
+fn update_best(
+  best: &mut Option<AsmCandidate>,
+  asm_path: &PathBuf,
+  start: &Instant,
+  output_path: &Path,
+) -> bool {
   report_elapsed(start.elapsed(), TIME_LIMIT);
   report!("Starting Performance Cost Evaluation for {:?}", asm_path);
   report!();
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
-    Err(reason) => no_assembly(&format!("the cost model {}", reason)),
+    Err(reason) => no_assembly(output_path, &format!("the cost model {}", reason)),
   };
   let time = start.elapsed();
 
@@ -208,7 +216,7 @@ impl Search {
           ),
           None => format!("the time limit of {:?} ran out", TIME_LIMIT),
         };
-        no_assembly(&format!("{}, and {}", ended, candidates));
+        no_assembly(&self.output_path, &format!("{}, and {}", ended, candidates));
       }
     }
     process::exit(0);
@@ -245,7 +253,12 @@ impl Search {
       match backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path) {
         // Check cost and update best if necessary
         Ok(()) => {
-          update_best(&mut self.best.borrow_mut(), &asm_path, &self.start);
+          update_best(
+            &mut self.best.borrow_mut(),
+            &asm_path,
+            &self.start,
+            &self.output_path,
+          );
         }
         Err(reason) => {
           println!("PII #{} dropped: {}", number, reason);
@@ -325,6 +338,13 @@ fn main() {
     process::exit(1);
   }
 
+  if output_path.exists() {
+    println!(
+      "Warning: Output file '{}' already exists and will be overwritten.",
+      output_path.display()
+    );
+  }
+
   report!("Output file: {}", output_path.display());
 
   // Process log directory
@@ -367,18 +387,6 @@ fn main() {
       error
     );
     process::exit(1);
-  }
-
-  // An earlier compile's output goes before this one starts
-  if output_path.exists() {
-    if let Err(error) = std::fs::remove_file(&output_path) {
-      eprintln!(
-        "Error: cannot remove the earlier output '{}': {}",
-        output_path.display(),
-        error
-      );
-      process::exit(1);
-    }
   }
 
   // The output's directory takes a file before the search starts
@@ -424,7 +432,7 @@ fn main() {
   let (init_egraph, hbm_offsets, root, inputs, mut metadata) =
     match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
       Ok(parsed) => parsed,
-      Err(reason) => no_assembly(&reason),
+      Err(reason) => no_assembly(&output_path, &reason),
     };
 
   report!("HBM Offsets: {:?}", hbm_offsets);

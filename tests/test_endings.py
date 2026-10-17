@@ -159,6 +159,16 @@ def test_failed_compile_leaves_no_earlier_output(backend, tmp_path):
     assert not output.exists()
 
 
+def test_earlier_output_is_named_and_overwritten(backend, tmp_path):
+    (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
+    run, output = compiled(backend, tmp_path, ADD_32)
+    assert run.returncode == 0, run.stderr
+    assert run.stdout == (
+        f"Warning: Output file '{output}' already exists and will be overwritten.\n"
+    )
+    assert output.read_text() != '# an earlier compile\n'
+
+
 def test_usage_error_leaves_the_earlier_output(backend, tmp_path):
     (tmp_path / 'kernel.py').write_text('# an earlier compile\n')
     (tmp_path / 'kernel.hlo').write_text(UNDEFINED)
