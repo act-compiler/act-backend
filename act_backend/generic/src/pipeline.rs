@@ -43,14 +43,16 @@ struct AsmCandidate {
   timestamp: Duration,
 }
 
-// No assembly: no output, one stderr line, status 1
-fn no_assembly(output_path: &Path, reason: &str) -> ! {
-  if output_path.exists() {
-    std::fs::remove_file(output_path).expect("Failed to remove existing output file");
-  }
+// No assembly: one stderr line and status 1
+fn no_assembly(reason: &str) -> ! {
   println!("No output file created.");
   eprintln!("Error: no assembly found: {}", reason);
   process::exit(1);
+}
+
+// The output's name until it is whole
+fn partial_output(output_path: &Path) -> PathBuf {
+  output_path.with_extension(format!("py.{}", process::id()))
 }
 
 // Report the search's elapsed time and when it stops
@@ -61,19 +63,14 @@ fn report_elapsed(elapsed: Duration, stop: Duration) {
   );
 }
 
-fn update_best(
-  best: &mut Option<AsmCandidate>,
-  asm_path: &PathBuf,
-  start: &Instant,
-  output_path: &Path,
-) -> bool {
+fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Instant) -> bool {
   report_elapsed(start.elapsed(), TIME_LIMIT);
   println!("Starting Performance Cost Evaluation for {:?}", asm_path);
   println!();
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
-    Err(reason) => no_assembly(output_path, &format!("the cost model {}", reason)),
+    Err(reason) => no_assembly(&format!("the cost model {}", reason)),
   };
   let time = start.elapsed();
 
@@ -159,7 +156,10 @@ impl Search {
           path, cost, timestamp
         );
 
-        std::fs::copy(&path, &self.output_path).expect("Failed to copy best ASM to output path");
+        // The output takes its name once it is whole
+        let partial = partial_output(&self.output_path);
+        std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
+        std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
         println!(
           "Best ASM copied to output path: {}",
           self.output_path.display()
@@ -172,13 +172,10 @@ impl Search {
           Some(reason) => format!("every candidate was dropped, the first because {}", reason),
           None => "no candidate was extracted".to_string(),
         };
-        no_assembly(
-          &self.output_path,
-          &format!(
-            "the time limit of {:?} ran out, and {}",
-            TIME_LIMIT, candidates
-          ),
-        );
+        no_assembly(&format!(
+          "the time limit of {:?} ran out, and {}",
+          TIME_LIMIT, candidates
+        ));
       }
     }
     process::exit(0);
@@ -215,12 +212,7 @@ impl Search {
       match backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path) {
         // Check cost and update best if necessary
         Ok(()) => {
-          update_best(
-            &mut self.best.borrow_mut(),
-            &asm_path,
-            &self.start,
-            &self.output_path,
-          );
+          update_best(&mut self.best.borrow_mut(), &asm_path, &self.start);
         }
         Err(reason) => {
           println!("PII #{} dropped: {}", number, reason);
@@ -292,13 +284,6 @@ fn main() {
     process::exit(1);
   }
 
-  if output_path.exists() {
-    println!(
-      "Warning: Output file '{}' already exists and will be overwritten.",
-      output_path.display()
-    );
-  }
-
   println!("Output file: {}", output_path.display());
 
   // Process log directory
@@ -313,6 +298,40 @@ fn main() {
     "/tmp/log".to_string()
   };
   println!("Log directory: {}", log_dir_arg);
+
+  // The output's directory is made once every flag is checked
+  let output_dir = output_path.parent().unwrap();
+  if let Err(error) = std::fs::create_dir_all(output_dir) {
+    eprintln!(
+      "Error: cannot create the output's directory '{}': {}",
+      output_dir.display(),
+      error
+    );
+    process::exit(1);
+  }
+
+  // An earlier compile's output goes before this one starts
+  if output_path.exists() {
+    if let Err(error) = std::fs::remove_file(&output_path) {
+      eprintln!(
+        "Error: cannot remove the earlier output '{}': {}",
+        output_path.display(),
+        error
+      );
+      process::exit(1);
+    }
+  }
+
+  // The output's directory takes a file before the search starts
+  let partial = partial_output(&output_path);
+  if let Err(error) = std::fs::File::create(&partial).and_then(|_| std::fs::remove_file(&partial)) {
+    eprintln!(
+      "Error: cannot write the output '{}': {}",
+      output_path.display(),
+      error
+    );
+    process::exit(1);
+  }
 
   let log_dir = std::path::PathBuf::from(log_dir_arg);
   if log_dir.exists() {
