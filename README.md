@@ -45,7 +45,7 @@ generate_backend(acc)  # acc: a TAIDL Accelerator
 
 `generate_backend(acc)` writes the backend's crate into `targets/<name>/backend/` under the accelerator's `base_dir`, by default the directory of the file that creates the accelerator, builds it and copies the compiler to `backends/<name>`.
 A build that fails raises `RuntimeError` with the build's own output, and a generation that fails leaves no `backends/<name>` from an earlier one.
-A spec the generator refuses raises `ValueError`, which names what is refused, before anything is written, and leaves no `targets/<name>/backend/` from an earlier one.
+A spec the generator refuses raises `ValueError`, which names what is refused, before anything is written, and leaves no `targets/<name>/backend/` from an earlier generation.
 ACT-Backend pins TAIDL v2.13.
 An instruction with no semantics is left out of the backend.
 
@@ -100,4 +100,4 @@ It installs the package and what `tests/requirements.txt` names, pytest and TAID
 A compiled attention kernel equals its golden bit for bit and is held to its NumPy reference within two bf16 ulps of the largest magnitude in V; `tests/regenerate.sh` rewrites the goldens and records the oracle, jax, platform and machine they come from.
 `tests/lint.sh` generates each example's backend, runs `cargo clippy` over its crate with warnings denied and builds its allocator with `-Wall -Wextra -Werror`, then runs `cargo clippy` over a crate generated with a cost library; the CI runs it after the tests, and generating a backend never does.
 Ahead of the tests, the CI checks the formatting and lint against `pyproject.toml`, `.editorconfig`, `rustfmt.toml` and `.clang-format` with `./docker/exec.sh "ruff format --check && ruff check && shfmt -d . && rustfmt --check --config-path . --config skip_children=true $(git ls-files '*.rs' | tr '\n' ' ') && clang-format --dry-run -Werror --style=file:.clang-format $(git ls-files '*.cc' '*.cpp' '*.h' '*.hpp' | tr '\n' ' ')"`.
-`docker/exec.sh`, `docker/run.sh` and `docker/cleanup.sh` take `--cpu` and `--cuda13`, as in `docker/exec.sh --cpu "<cmd>"`, the flag overriding the host's pick, and a CPU image is passed no GPU.
+`docker/exec.sh`, `docker/run.sh` and `docker/cleanup.sh` take `--cpu` or `--cuda13` to choose the image, as in `docker/exec.sh --cpu "<cmd>"`; without either they run the cuda13 image on a GPU host and the CPU image elsewhere, and a CPU image is given no GPU.

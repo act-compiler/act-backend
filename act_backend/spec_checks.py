@@ -15,7 +15,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
-# The e-graph's operators, by their rule words
+# The e-graph's operators, by their rewrite words
 EGRAPH_WORDS = {
     'add',
     'bitcvt',
@@ -256,7 +256,7 @@ ADDRESS_ATTRIBUTE_NAMES = {
     'y',
 }
 
-# Plus the parser's and rules' names beside a computational one
+# Plus the parser's and rewrites' names beside a computational one
 COMPUTATIONAL_ATTRIBUTE_NAMES = ADDRESS_ATTRIBUTE_NAMES | {
     'attr_str',
     'end',
@@ -382,7 +382,7 @@ def check_names(instructions, data_models):
 
 
 def check_outputs(instructions):
-    """Refuse an instruction that does not have one output, which the allocator places"""
+    """Refuse an instruction with other than one output: the allocator places one"""
     for instruction in instructions:
         if len(instruction.instr_outputs) != 1:
             raise ValueError(
@@ -409,7 +409,7 @@ class SemanticsChecker(OperandVisitor):
         if element_type not in ELEMENT_TYPES:
             raise ValueError(
                 f"{self.name}: its semantics uses the element type '{element_type}', "
-                'which the selector does not have'
+                'which the selector does not support'
             )
         operands = self.visit(ctx.operands()) if ctx.operands() else []
         if word == 'parameter':
@@ -419,7 +419,7 @@ class SemanticsChecker(OperandVisitor):
             if word not in OPERATIONS:
                 raise ValueError(
                     f"{self.name}: its semantics uses the operation '{word}', "
-                    'which the selector does not have'
+                    'which the selector does not support'
                 )
             # The operator takes the operands that name a value
             named = [text for text, kind in operands if kind == 'VALUE']
@@ -427,7 +427,7 @@ class SemanticsChecker(OperandVisitor):
             if len(named) != count:
                 raise ValueError(
                     f"{self.name}: its semantics gives the operation '{word}' {len(named)} values, "
-                    f"where the selector's takes {count}"
+                    f'where the selector takes {count}'
                 )
             self.read.update(named)
         self.values.append(value)
@@ -608,7 +608,7 @@ def check_inplace(instructions):
             if marked:
                 raise ValueError(
                     f'{instruction.instruction}: its input {number} is marked in place, '
-                    'which the backend does not read'
+                    'which the backend does not support'
                 )
 
 
@@ -627,7 +627,7 @@ def check_constraints(instructions):
         origin = f'{marks[0]} gives it' if marks else 'it declares'
         raise ValueError(
             f"{instruction.instruction}: {origin} the constraint '{text}', "
-            'which the backend does not read'
+            'which the backend does not support'
         )
 
 

@@ -47,7 +47,7 @@ struct Extraction {
   parent: HashMap<usize, Option<usize>>,
 }
 
-/// Pre-order extraction: each extraction, a set of enodes
+/// Pre-order extraction: each extraction, a set of e-nodes
 fn get_extraction_trees(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -61,17 +61,17 @@ fn get_extraction_trees(
   }
 
   for en in &egraph[eclass].nodes {
-    // base case: input enode
+    // Base case: input e-node
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
       trees.push(vec![en.clone()]);
       break;
     }
-    // base case: detected constant enode
+    // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
       trees.push(vec![en.clone()]);
       break;
     }
-    // only consider instruction enodes
+    // Only consider instruction e-nodes
     if let Some(bufs) = get_bufs(en) {
       if bufs[0] != Buffer::ANY && bufs[0] != target_buf {
         continue;
