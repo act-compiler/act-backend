@@ -622,35 +622,31 @@ def test_library_matches_as_much_in_a_second_run(work_dir, tmp_path):
     assert second == first
 
 
-# A signed-byte sum, scalar and matrix constants written alike
-SAME_TEXT = """HloModule same_text, entry_computation_layout={(s8[16,16]{1,0})->s8[16,16]{1,0}}
-
-%reduce_add (x: s8[], y: s8[]) -> s8[] {
-  %x = s8[] parameter(0)
-  %y = s8[] parameter(1)
-  ROOT %sum = s8[] add(%x, %y)
-}
+# Two products of one pair typed apart, one broadcast onto itself
+TYPED_APART = """HloModule typed_apart, entry_computation_layout={(s8[16,16]{1,0}, s8[16,16]{1,0})->s32[16,16]{1,0}}
 
 ENTRY main {
-  %x = s8[16,16] parameter(0)
-  %one = s8[16,16] constant(1)
-  %a = s8[16,16] add(%one, %x)
-  %init = s8[] constant(1)
-  %r = s8[16] reduce(%a, %init), dimensions={1}, to_apply=%reduce_add
-  ROOT %b = s8[16,16] broadcast(%r), dimensions={0}
+  %a = s8[16,16] parameter(0)
+  %b = s8[16,16] parameter(1)
+  %wide = s32[16,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %narrow = s8[16,16] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %c = s32[16,16] broadcast(%wide), dimensions={0,1}
 }
 """
 
 
 def test_rewrite_that_joins_unlike_values_ends_the_compile(backend, tmp_path):
     path = tmp_path / 'kernel.hlo'
-    path.write_text(SAME_TEXT)
+    path.write_text(TYPED_APART)
     output = tmp_path / 'kernel.py'
     arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
-    # Both constants one scalar e-node, the sum widened over it
+    # Both products one e-node, the broadcast dropped onto it
     assert run.returncode != 0
-    assert 'internal error: a rewrite joins the values s8[16, 16] and s8[1]' in run.stderr
+    joined = re.findall(
+        r'internal error: a rewrite joins the values (\S+ \d+\]) and (\S+ \d+\])', run.stderr
+    )
+    assert [set(pair) for pair in joined] == [{'s32[16, 16]', 's8[16, 16]'}]
     assert not output.exists()
 
 
