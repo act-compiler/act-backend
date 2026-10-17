@@ -41,6 +41,32 @@ ENTRY {
 """)
 
 
+def add_typed_moves(acc, element_type, size):
+    """A load of rows of one element type into d1 and a store of them, each element size bytes"""
+    last = '' if size == 1 else f',{size}'
+    instr = acc.add_instruction(f'load_{element_type}', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], [f'@c.n * {64 * size}']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = u8[`@c.n * {64 * size}`] parameter(0);
+    %a = u8[`@c.n`,64{last}] reshape(%In0);
+    ROOT %Out0 = {element_type}[`@c.n`,64] bitcast_convert(%a);
+}}
+""")
+
+    instr = acc.add_instruction(f'store_{element_type}', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], [f'@c.n * {64 * size}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = {element_type}[`@c.n`,64] parameter(0);
+    %a = u8[`@c.n`,64{last}] bitcast_convert(%In0);
+    ROOT %Out0 = u8[`@c.n * {64 * size}`] reshape(%a);
+}}
+""")
+
+
 def add_on_d1(acc, name, sizes, lines, attributes=()):
     """An instruction from regions of d1 to a region of d1, the output's size last"""
     addresses = [f'addr_{number}' for number in range(1, len(sizes))]
@@ -216,6 +242,20 @@ ENTRY {
     ROOT %Out0 = u8[`@c.m * @c.n * 4`] reshape(%a);
 }
 """)
+    # Rows of s8 and of s32, narrowed and widened
+    add_typed_moves(acc, 's8', 1)
+    add_typed_moves(acc, 's32', 4)
+    for name, source, result in [('narrow', 's32', 's8'), ('widen', 's8', 's32')]:
+        add_on_d1(
+            acc,
+            name,
+            ['@c.n', '@c.n'],
+            [
+                f'%In0 = {source}[`@c.n`,64] parameter(0)',
+                f'ROOT %Out0 = {result}[`@c.n`,64] convert(%In0)',
+            ],
+            ['n'],
+        )
     return acc
 
 
@@ -651,3 +691,36 @@ def test_rank_1_input_is_simulated(spreading_dir, tmp_path):
     vector = jnp.arange(64, dtype=jnp.bfloat16) / 8
     output = simulated(spreading_dir, 'SPREADING', tmp_path / 'kernel.py', vector)
     assert np.array_equal(np.asarray(output), np.tile(np.asarray(vector), (64, 1)))
+
+
+# s32 rows narrowed to s8, widened back: low bytes kept
+WRAPPED = """HloModule wrapped, entry_computation_layout={(s32[32,64]{1,0})->s32[32,64]{1,0}}
+
+ENTRY main {
+  %x = s32[32,64] parameter(0)
+  %n = s8[32,64] convert(%x)
+  ROOT %w = s32[32,64] convert(%n)
+}
+"""
+
+
+def test_narrowing_convert_is_kept(backend, tmp_path):
+    calls = selected(backend, tmp_path, WRAPPED)
+    assert [name for name, _ in calls] == ['load_s32', 'narrow', 'widen', 'store_s32']
+
+
+# Rows of s8 widened, narrowed back and widened again
+WIDENED = """HloModule widened, entry_computation_layout={(s8[32,64]{1,0})->s32[32,64]{1,0}}
+
+ENTRY main {
+  %x = s8[32,64] parameter(0)
+  %w = s32[32,64] convert(%x)
+  %n = s8[32,64] convert(%w)
+  ROOT %v = s32[32,64] convert(%n)
+}
+"""
+
+
+def test_convert_pair_over_a_widened_value_is_dropped(backend, tmp_path):
+    calls = selected(backend, tmp_path, WIDENED)
+    assert [name for name, _ in calls] == ['load_s8', 'widen', 'store_s32']
