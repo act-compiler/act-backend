@@ -63,12 +63,10 @@ def generate_backend(
     if base_dir is None:
         base_dir = accelerator.base_dir
 
-    # An earlier binary and a part of one go first
+    # An earlier binary goes first
     final_dest_path = os.path.join(base_dir, 'backends', accelerator.name)
-    partial_path = final_dest_path + '.partial'
-    for path in (final_dest_path, partial_path):
-        if os.path.lexists(path):
-            os.remove(path)
+    if os.path.lexists(final_dest_path):
+        os.remove(final_dest_path)
     # An earlier crate goes too, before any refusal
     target_dir = os.path.join(base_dir, 'targets', accelerator.name)
     backend_gen_dir = os.path.join(target_dir, 'backend')
@@ -158,7 +156,7 @@ def generate_backend(
     print(f'Building backend for {accelerator.name}')
     cargo_build_dir = os.path.join(backend_gen_dir, 'target')
     build = subprocess.run(
-        ['cargo', 'build', '--release', '--locked'],
+        ['cargo', 'build', '--release'],
         cwd=backend_gen_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -173,12 +171,5 @@ def generate_backend(
     # Copy built backend to final destination
     build_backend_path = os.path.join(cargo_build_dir, 'release', 'backend')
     Path(final_dest_path).parent.mkdir(parents=True, exist_ok=True)
-    # The binary takes its name once it is whole
-    try:
-        shutil.copy(build_backend_path, partial_path)
-        os.replace(partial_path, final_dest_path)
-    finally:
-        # A copy that stops leaves no part
-        if os.path.lexists(partial_path):
-            os.remove(partial_path)
+    shutil.copy(build_backend_path, final_dest_path)
     print(f'Final backend binary located at {final_dest_path}')

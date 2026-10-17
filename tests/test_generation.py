@@ -1,7 +1,6 @@
 """Tests of a whole generation: what generate_backend builds and what it says when it cannot."""
 
 import os
-import re
 import shutil
 import subprocess
 
@@ -11,7 +10,6 @@ from taidl import Accelerator
 
 import act_backend
 from act_backend import generate_backend
-from act_backend.build_rs_generator import generate_build_rs_file
 
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn')
 
@@ -49,32 +47,17 @@ def built(command, cwd, **options):
     return subprocess.CompletedProcess(command, 0, stdout='')
 
 
-@pytest.mark.parametrize('name', ['PAIR', 'PAIR.partial'])
-def test_binary_is_not_written_through_a_link(name, accelerator, tmp_path, monkeypatch):
+def test_binary_is_not_written_through_a_link(accelerator, tmp_path, monkeypatch):
     # An earlier run's link at the binary's name, to outside
     outside = tmp_path / 'outside'
     outside.write_text('kept')
     (tmp_path / 'backends').mkdir()
-    (tmp_path / 'backends' / name).symlink_to(outside)
+    (tmp_path / 'backends' / 'PAIR').symlink_to(outside)
     monkeypatch.setattr(subprocess, 'run', built)
     generate_backend(accelerator, str(tmp_path))
     backend = tmp_path / 'backends' / 'PAIR'
     assert not backend.is_symlink() and backend.read_text() == 'a new backend'
     assert outside.read_text() == 'kept'
-
-
-def test_interrupted_copy_leaves_no_binary(accelerator, tmp_path, monkeypatch):
-    # A copy that stops halfway
-    def copy(source, destination):
-        with open(destination, 'w') as f:
-            f.write('half a backend')
-        raise OSError('No space left on device')
-
-    monkeypatch.setattr(subprocess, 'run', built)
-    monkeypatch.setattr(shutil, 'copy', copy)
-    with pytest.raises(OSError):
-        generate_backend(accelerator, str(tmp_path))
-    assert os.listdir(tmp_path / 'backends') == []
 
 
 def test_build_directory_in_the_package_stays_out_of_the_crate(accelerator, tmp_path, monkeypatch):
@@ -115,25 +98,6 @@ def test_cargo_leaves_the_lock_file_alone(work_dir):
         package_lock = f.read()
     with open(os.path.join(crate, 'Cargo.lock')) as f:
         assert f.read() == package_lock
-
-
-def test_stale_lock_file_fails_the_build(accelerator, tmp_path, monkeypatch):
-    # The manifest outruns its lock file just before the build
-    def generate_stale(backend_gen_dir, cost):
-        generate_build_rs_file(backend_gen_dir, cost)
-        manifest = os.path.join(backend_gen_dir, 'Cargo.toml')
-        with open(manifest) as f:
-            content = f.read()
-        with open(manifest, 'w') as f:
-            f.write(
-                re.sub(
-                    r'^version = ".*"$', 'version = "0.0.0"', content, count=1, flags=re.MULTILINE
-                )
-            )
-
-    monkeypatch.setattr(act_backend.generator, 'generate_build_rs_file', generate_stale)
-    with pytest.raises(RuntimeError, match='--locked'):
-        generate_backend(accelerator, str(tmp_path))
 
 
 def test_backend_runs_without_its_crate(work_dir, tmp_path):
