@@ -271,11 +271,16 @@ def endings():
 
 
 @pytest.fixture(scope='session')
-def backend(tmp_path_factory):
-    """Generate the endings spec's backend once and return the binary's path"""
+def endings_dir(tmp_path_factory):
+    """Generate the endings spec's backend once, in a directory of its own"""
     work_dir = str(tmp_path_factory.mktemp('endings'))
     generate_backend(endings(), work_dir)
-    return os.path.join(work_dir, 'backends', 'ENDINGS')
+    return work_dir
+
+
+@pytest.fixture(scope='session')
+def backend(endings_dir):
+    return os.path.join(endings_dir, 'backends', 'ENDINGS')
 
 
 def compiled(backend, tmp_path, kernel, output=None):

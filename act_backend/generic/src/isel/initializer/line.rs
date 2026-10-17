@@ -1,6 +1,27 @@
 // A kernel line's name, type, shape, tile, operator, operands, rest
 pub type Line = (String, String, String, String, String, String, String);
 
+// A layout other than row-major {n-1,...,0}, as a reason
+pub(super) fn other_than_row_major(shape: &str, layout: &str) -> Option<String> {
+  let rank = shape.split(',').filter(|d| !d.trim().is_empty()).count();
+  let order = layout.split(':').next().unwrap_or("").replace(' ', "");
+  // A layout with no order, as a tile alone, passes
+  if order.is_empty() {
+    return None;
+  }
+  let row_major = (0..rank)
+    .rev()
+    .map(|d| d.to_string())
+    .collect::<Vec<_>>()
+    .join(",");
+  (order != row_major).then(|| {
+    format!(
+      "the layout {{{}}} of the shape [{}] is not row-major, the only layout the backend supports",
+      layout, shape
+    )
+  })
+}
+
 pub fn parse_type_shape(type_shape: &str) -> Result<(String, String, String), String> {
   // Why the reader cannot split a type
   let malformed = || {
@@ -24,6 +45,10 @@ pub fn parse_type_shape(type_shape: &str) -> Result<(String, String, String), St
       if let Some(tile_start) = type_shape[bracket_end + 1..].find('{') {
         let tile_start = bracket_end + 1 + tile_start;
         let tile_str = &type_shape[tile_start..];
+        let layout = tile_str[1..].split('}').next().unwrap_or("");
+        if let Some(reason) = other_than_row_major(&tshape, layout) {
+          return Err(reason);
+        }
         if let Some(start_paren) = tile_str.find('(') {
           if let Some(end_paren) = tile_str.find(')') {
             ttile = tile_str[start_paren + 1..end_paren].to_string();

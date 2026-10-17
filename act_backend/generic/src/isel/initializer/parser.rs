@@ -1,5 +1,5 @@
 use crate::isel::initializer::expression::{parse_hlo_expr, HLOExpr};
-use crate::isel::initializer::line::parse_line;
+use crate::isel::initializer::line::{other_than_row_major, parse_line};
 
 #[derive(Debug, Clone)]
 pub struct HLORegion {
@@ -67,6 +67,13 @@ pub fn parse_hlo_module_header(line: &str) -> Result<HloModuleHeader, String> {
   while let Some(start) = layout_cleaned.find('{') {
     if let Some(end) = layout_cleaned[start..].find('}') {
       let end_pos = start + end;
+      // The shape the layout follows
+      if let Some(shape_start) = layout_cleaned[..start].rfind('[') {
+        let shape = layout_cleaned[shape_start + 1..start].trim_end_matches(']');
+        if let Some(reason) = other_than_row_major(shape, &layout_cleaned[start + 1..end_pos]) {
+          return Err(reason);
+        }
+      }
       layout_cleaned = format!(
         "{}{}",
         &layout_cleaned[..start],

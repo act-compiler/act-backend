@@ -292,6 +292,28 @@ def hbm_only():
     return acc
 
 
+def scalar():
+    """No data model but the HBM: an add of two bf16 values of one element each, for the oracle"""
+    acc = Accelerator('SCALAR')
+    add_on_hbm(
+        acc,
+        'sadd',
+        ['2', '2', '2'],
+        [
+            '%In0 = u8[2] parameter(0)',
+            '%In1 = u8[2] parameter(1)',
+            '%a = u8[1,2] reshape(%In0)',
+            '%b = u8[1,2] reshape(%In1)',
+            '%x = bf16[1] bitcast_convert(%a)',
+            '%y = bf16[1] bitcast_convert(%b)',
+            '%z = bf16[1] add(%x, %y)',
+            '%c = u8[1,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[2] reshape(%c)',
+        ],
+    )
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
     """Generate the spec's backend once, in a directory of its own"""
@@ -310,6 +332,16 @@ def spreading_dir(tmp_path_factory):
     """Generate the oracle and the backend of the spec that spreads a vector"""
     work_dir = str(tmp_path_factory.mktemp('spreading'))
     acc = spreading()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+@pytest.fixture(scope='module')
+def scalar_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec that adds scalars"""
+    work_dir = str(tmp_path_factory.mktemp('scalar'))
+    acc = scalar()
     generate_oracle(acc, work_dir)
     generate_backend(acc, work_dir)
     return work_dir
@@ -657,6 +689,26 @@ def test_rank_1_input_is_simulated(spreading_dir, tmp_path):
     vector = jnp.arange(64, dtype=jnp.bfloat16) / 8
     output = simulated(spreading_dir, 'SPREADING', tmp_path / 'kernel.py', vector)
     assert np.array_equal(np.asarray(output), np.tile(np.asarray(vector), (64, 1)))
+
+
+# A bf16 scalar, the one input, added to itself
+SCALAR = """HloModule scalar, entry_computation_layout={(bf16[])->bf16[]}
+
+ENTRY main {
+  %s = bf16[] parameter(0)
+  ROOT %t = bf16[] add(%s, %s)
+}
+"""
+
+
+def test_rank_0_value_is_simulated(scalar_dir, tmp_path):
+    backend = os.path.join(scalar_dir, 'backends', 'SCALAR')
+    assert [name for name, _ in selected(backend, tmp_path, SCALAR)] == ['sadd']
+    # The scalar reaches the oracle with the kernel's shape, ()
+    scalar = jnp.array(1.5, dtype=jnp.bfloat16)
+    output = simulated(scalar_dir, 'SCALAR', tmp_path / 'kernel.py', scalar)
+    assert output.shape == ()
+    assert float(output) == 3.0
 
 
 # s32 rows narrowed to s8, widened back: low bytes kept

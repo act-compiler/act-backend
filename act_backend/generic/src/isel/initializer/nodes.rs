@@ -9,8 +9,8 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 
 use crate::isel::initializer::lib::EggSymbolTable;
 use crate::isel::initializer::shapes::{
-  apply_transpose_order, get_bytes, get_result_shape, get_tiled_shape, get_transpose_order_param,
-  get_transpose_order_result, shape_to_vec,
+  apply_transpose_order, byte_view, get_bytes, get_result_shape, get_tiled_shape,
+  get_transpose_order_param, get_transpose_order_result, shape_to_vec,
 };
 
 macro_rules! binary_op_match {
@@ -88,10 +88,7 @@ pub fn add_parameter(
       },
     );
 
-    let mut shape_with_size = tshape.to_string();
-    if dtype_size != 1 {
-      shape_with_size += &format!(",{}", dtype_size);
-    }
+    let shape_with_size = byte_view(tshape, dtype_size);
 
     let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [var_node]));
     let reshape_vec = shape_to_vec(&shape_with_size)?;
@@ -169,10 +166,7 @@ pub fn add_parameter(
       },
     );
 
-    let mut shape_with_size = tshape.to_string();
-    if dtype_size != 1 {
-      shape_with_size += &format!(",{}", dtype_size);
-    }
+    let shape_with_size = byte_view(tshape, dtype_size);
 
     let node = egraph.add(TensorOp::OpReshape(shape_with_size.clone(), [node]));
     let reshape_vec = shape_to_vec(&shape_with_size)?;
@@ -301,11 +295,13 @@ pub(super) fn add_concatenate(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  if inputs.len() < 2 {
+  if inputs.len() != 2 {
+    let values = if inputs.len() == 1 { "value" } else { "values" };
     return Err(format!(
-      "{} concatenates {} value, where a concatenate takes 2",
+      "{} concatenates {} {}, where a concatenate takes 2",
       tsymbol,
-      inputs.len()
+      inputs.len(),
+      values
     ));
   }
   let dim_str = dimensions
@@ -429,10 +425,7 @@ pub(super) fn add_root_operations(
   let bytes = get_bytes(tshape, dtype_size)?;
 
   if ttile.is_empty() {
-    let mut shape_with_size = tshape.to_string();
-    if dtype_size != 1 {
-      shape_with_size += &format!(",{}", dtype_size);
-    }
+    let shape_with_size = byte_view(tshape, dtype_size);
 
     let node = lookup(table, tsymbol)?;
 

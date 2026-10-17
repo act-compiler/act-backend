@@ -29,6 +29,26 @@ fn dimension(text: &str, shape: &str) -> Result<i32, String> {
   })
 }
 
+// The assembly's declared shape, a rank-0 value as ()
+pub(super) fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
+  if tshape == "[]" {
+    Ok(vec![])
+  } else {
+    shape_to_vec(tshape)
+  }
+}
+
+// A shape plus a dimension for a multi-byte element's bytes
+pub(super) fn byte_view(tshape: &str, dtype_size: i32) -> String {
+  // A rank-0 value is held as one element
+  let shape = if tshape == "[]" { "1" } else { tshape };
+  if dtype_size == 1 {
+    shape.to_string()
+  } else {
+    format!("{},{}", shape, dtype_size)
+  }
+}
+
 pub(super) fn get_bytes(shape: &str, dtype: i32) -> Result<i32, String> {
   let mut bytes = 1;
   shape_to_vec(shape)?.iter().for_each(|dim| bytes *= dim);
