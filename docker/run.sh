@@ -14,16 +14,12 @@ if nvidia-smi >/dev/null 2>&1 &&
   GPU_FLAGS=(--gpus all)
 fi
 # --cpu or --cuda13 overrides the host's default
-case "${1:-}" in
-  --cpu)
-    VARIANT=""
-    shift
-    ;;
-  --cuda13)
-    VARIANT="-cuda13"
-    shift
-    ;;
-esac
+for arg in "$@"; do
+  case "$arg" in
+    --cpu) VARIANT="" ;;
+    --cuda13) VARIANT="-cuda13" ;;
+  esac
+done
 # The GPU is passed to the cuda13 image alone
 [ -n "${VARIANT}" ] || GPU_FLAGS=()
 
@@ -65,6 +61,7 @@ PERSISTENT=0
 NO_DEFAULT=0
 while [ $# -gt 0 ]; do
   case "$1" in
+    --cpu | --cuda13) shift ;;
     --persistent)
       PERSISTENT=1
       shift

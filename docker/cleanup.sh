@@ -5,6 +5,26 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source act.env
 
+usage() {
+  echo "Usage: $0 [--cpu|--cuda13] [-h|--help]"
+}
+
+# Any argument but --cpu, --cuda13 and --help is refused
+for arg in "$@"; do
+  case "$arg" in
+    --cpu | --cuda13) ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown arg: $arg" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
 # Pick the cuda13 image on a GPU host
 VARIANT=""
 if nvidia-smi >/dev/null 2>&1 &&
@@ -12,35 +32,12 @@ if nvidia-smi >/dev/null 2>&1 &&
   VARIANT="-cuda13"
 fi
 # --cpu or --cuda13 overrides the host's default
-case "${1:-}" in
-  --cpu)
-    VARIANT=""
-    shift
-    ;;
-  --cuda13)
-    VARIANT="-cuda13"
-    shift
-    ;;
-esac
-
-usage() {
-  echo "Usage: $0 [--cpu|--cuda13] [-h|--help]"
-}
-
-# Past the image flag, only --help is read
-if [ $# -gt 0 ]; then
-  case "$1" in
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "Unknown arg: $1" >&2
-      usage >&2
-      exit 1
-      ;;
+for arg in "$@"; do
+  case "$arg" in
+    --cpu) VARIANT="" ;;
+    --cuda13) VARIANT="-cuda13" ;;
   esac
-fi
+done
 
 # Detect architecture
 ARCH=$(uname -m)
