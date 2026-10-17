@@ -4,17 +4,7 @@ import os
 import subprocess
 
 import pytest
-from conftest import compiled, instruction_calls
-
-# A one-input, one-output bf16 kernel around the given lines
-HEADER = 'HloModule bad, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}'
-
-
-def kernel(*lines, header=HEADER, regions=''):
-    """The text of a kernel: its header, its regions and an ENTRY of the lines given"""
-    return (
-        f'{header}\n\n{regions}\nENTRY main {{\n' + ''.join(f'  {line}\n' for line in lines) + '}\n'
-    )
+from conftest import compiled, instruction_calls, kernel
 
 
 def region(name, operation):

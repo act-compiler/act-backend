@@ -256,6 +256,17 @@ def endings():
             'ROOT %Out0 = bf16[32,64] add(%In0, %In1)',
         ],
     )
+    # The converts instruction: 31 converts, a slice, nine more
+    chain = ['%In0 = bf16[64,64] parameter(0)']
+    for k in range(1, 41):
+        rows = 64 if k <= 31 else 32
+        source = '%In0' if k == 1 else f'%c{k - 1}'
+        if k == 32:
+            chain.append('%s = f32[32,64] slice(%c31), slice={[0:32:1], [0:64:1]}')
+            source = '%s'
+        chain.append(f'%c{k} = {"f32" if k % 2 else "bf16"}[{rows},64] convert({source})')
+    chain[-1] = chain[-1].replace('%c40 =', 'ROOT %Out0 =')
+    add_on_d1(acc, 'converts', ['64', '32'], chain)
     # Its two inputs alone hold more rows than the buffer
     add_on_d1(
         acc,
@@ -292,6 +303,17 @@ def compiled(backend, tmp_path, kernel, output=None):
     return subprocess.run(
         [backend, *arguments], capture_output=True, text=True, check=False
     ), output
+
+
+# A one-input, one-output bf16 kernel around the given lines
+HEADER = 'HloModule bad, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}'
+
+
+def kernel(*lines, header=HEADER, regions=''):
+    """The text of a kernel: its header, its regions and an ENTRY of the lines given"""
+    return (
+        f'{header}\n\n{regions}\nENTRY main {{\n' + ''.join(f'  {line}\n' for line in lines) + '}\n'
+    )
 
 
 @pytest.fixture(scope='module')

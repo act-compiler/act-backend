@@ -4,7 +4,7 @@ import os
 import subprocess
 
 import pytest
-from conftest import add_moves, add_on_d1, compiled
+from conftest import add_moves, add_on_d1, compiled, instruction_calls, kernel
 from taidl import Accelerator
 
 from act_backend import generate_backend
@@ -204,3 +204,20 @@ def test_help_exits_0(backend):
     run = subprocess.run([backend, '--help'], capture_output=True, text=True, check=False)
     assert run.returncode == 0
     assert run.stdout.startswith('Usage: ')
+
+
+# 40 converts, then a slice of half of the rows
+CHAIN = kernel(
+    '%c0 = bf16[64,64] parameter(0)',
+    *[f'%c{k} = {"f32" if k % 2 else "bf16"}[64,64] convert(%c{k - 1})' for k in range(1, 41)],
+    'ROOT %s = bf16[32,64] slice(%c40), slice={[0:32:1], [0:64:1]}',
+    header='HloModule chain, entry_computation_layout={(bf16[64,64]{1,0})->bf16[32,64]{1,0}}',
+)
+
+
+def test_compile_at_the_iteration_limit_keeps_its_best_candidate(backend, tmp_path):
+    run, output = compiled(backend, tmp_path, CHAIN)
+    assert run.returncode == 0, run.stderr
+    # The slice moves down 39 passes, past the limit's 30
+    assert 'the rewrites reached the iteration limit of 30' in run.stdout
+    assert instruction_calls(output) == {'load_rm': 1, 'converts': 1, 'store_rm': 1}
