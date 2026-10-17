@@ -70,9 +70,12 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
 
   constraint::pii_node_constraints(scheduled);
   constraint::def_use_constraints(scheduled);
-  constraint::initial_constraints(known_offsets);
+  std::string why;
+  if (!constraint::initial_constraints(known_offsets, why))
+    return no_assembly(reason, reason_size, why);
   std::vector<operations_research::IntVar *> new_vars;
-  constraint::overlap_constraints(scheduled, tensor_map, new_vars);
+  if (!constraint::overlap_constraints(scheduled, tensor_map, new_vars, why))
+    return no_assembly(reason, reason_size, why);
 
   std::vector<operations_research::IntVar *> all_vars;
   for (auto &buffer : g_storage) {
@@ -129,7 +132,6 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
       return no_assembly(reason, reason_size, metadata.why);
     }
 
-    std::string why;
     if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {
       progress << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
       solver.EndSearch();

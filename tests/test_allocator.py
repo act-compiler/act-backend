@@ -163,3 +163,63 @@ def test_metadata_the_allocator_cannot_parse_drops_the_candidate(
     assert run.returncode == 1
     assert run.stderr == f'the allocator cannot parse metadata.json: {fault}\n'
     assert not assembly.exists()
+
+
+# Each line the allocator cannot build, at its place, and the fault it names
+UNBUILDABLE = {
+    'rank': (
+        2,
+        "t2: Modeld1[-1] = bf16[32] instr_load_rm[rows='32'](t1)",
+        'the tensor t2 has a shape of rank 1, where its storage Modeld1 has rank 2',
+    ),
+    'slice-operands': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] slice[slices='0:32'](t2, t3)",
+        'a slice takes one operand, and t4 has 2',
+    ),
+    'slice-storage': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] slice[slices='0:32'](t1)",
+        'the slice t4 lies in Modeld1, and its operand t1 in HBM',
+    ),
+    'slice-ranges': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] slice[slices=''](t2)",
+        'the slice t4 gives 0 ranges, where it takes 1',
+    ),
+    'slice-bounds': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] slice[slices='0:64'](t2)",
+        'the slice t4 takes 0:64 of t2, which has 32',
+    ),
+    'slice-size': (
+        4,
+        "t4: Modeld1[-1] = bf16[16,64] slice[slices='0:32'](t2)",
+        'the slice t4 has 16, where its range 0:32 takes 32',
+    ),
+    'concatenate-operands': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] concat[dimension='0'](t2)",
+        'a concatenate takes two operands, and t4 has 1',
+    ),
+    'concatenate-storage': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] concat[dimension='0'](t2, t1)",
+        'the concatenate t4 lies in Modeld1, and its operand t1 in HBM',
+    ),
+    'concatenate-sizes': (
+        4,
+        "t4: Modeld1[-1] = bf16[32,64] concat[dimension='0'](t2, t3)",
+        'the concatenate t4 has 32 along dimension 0, where its operands give 32 and 32',
+    ),
+}
+
+
+@pytest.mark.parametrize('index, line, fault', UNBUILDABLE.values(), ids=UNBUILDABLE)
+def test_line_the_allocator_cannot_build_drops_the_candidate(
+    allocator, tmp_path, index, line, fault
+):
+    run, assembly = allocated(allocator, tmp_path, with_line(index, line))
+    assert run.returncode == 1
+    assert run.stderr == f'the allocator cannot read the line `{line}`: {fault}\n'
+    assert not assembly.exists()
