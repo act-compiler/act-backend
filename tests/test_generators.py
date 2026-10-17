@@ -12,7 +12,7 @@ from act_backend.generator import get_instruction_metadata
 from act_backend.instruction_info import extract_instruction_info, get_type_names
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
-from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
+from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite
 from act_backend.malloc_act_malloc_cc_generator import (
     generate_buffer_names,
     generate_topological_order,
@@ -33,13 +33,12 @@ def squeeze(text):
     return ' '.join(text.split())
 
 
-def test_rewrite_rules(accelerator, templates):
-    rules = [
-        generate_rewrite_rule(m, templates)
-        for m in get_instruction_metadata(accelerator.instructions)
+def test_rewrites(accelerator, templates):
+    rewrites = [
+        generate_rewrite(m, templates) for m in get_instruction_metadata(accelerator.instructions)
     ]
     # The semantics as a pattern, `_?` for each carried attribute
-    assert [squeeze(rule) for rule in rules] == [
+    assert [squeeze(rewrite) for rewrite in rewrites] == [
         'instr_load-rm: (bitcvt (reshape_? ?a)) => (instr_load-rm_? ?a)',
         'instr_gemm: (dot_? ?a ?b) => (instr_gemm ?a ?b)',
     ]
@@ -56,7 +55,7 @@ def test_pattern_variables_are_told_apart(templates):
     lines += [f'%a{k} = bf16[64,64] add(%a{k - 1}, %In0)' for k in range(1, 25)]
     lines += ['ROOT %Out0 = bf16[64,64] add(%a24, %In0)']
     instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
-    rewrite = generate_rewrite_rule(get_instruction_metadata(acc.instructions)[0], templates)
+    rewrite = generate_rewrite(get_instruction_metadata(acc.instructions)[0], templates)
     # Each variable a name of its own
     variables = re.findall(r'(?<=[\s(])\?[^\s()]+', rewrite.split('=>')[0])
     assert len(set(variables)) == 27
@@ -76,7 +75,7 @@ ENTRY {
     ROOT %Out0 = bf16[64,64] add(%a, %a);
 }
 """)
-    rewrite = generate_rewrite_rule(get_instruction_metadata(acc.instructions)[0], templates)
+    rewrite = generate_rewrite(get_instruction_metadata(acc.instructions)[0], templates)
     assert squeeze(rewrite) == 'instr_four: (add (add ?a ?b) (add ?c ?d)) => (instr_four ?a)'
 
 
@@ -370,7 +369,7 @@ def test_storage_with_no_access_dimension():
     assert squeeze(model) == '{"Modeld1", new Storage("Modeld1", {}, 1)},'
 
 
-def test_rule_functions(accelerator):
+def test_rewrite_functions(accelerator):
     precond, metadata, set_shapes = generate_function_mappings(accelerator.instructions)
     # Rewrites in kebab-case, functions named after the instruction
     assert [squeeze(arm) for arm in precond] == [
@@ -401,8 +400,8 @@ def test_parser_cases(accelerator, templates):
 
 
 def test_fill_placeholders():
-    source = 'enum E {\n  A,\n  // {{VARIANTS}}\n}\nf(x, {/* {{NAMES}} */});\n{{RULES}}\n'
-    values = {'VARIANTS': '  B,\n  C,', 'NAMES': '"B", "C"', 'RULES': 'r: a => b'}
+    source = 'enum E {\n  A,\n  // {{VARIANTS}}\n}\nf(x, {/* {{NAMES}} */});\n{{REWRITES}}\n'
+    values = {'VARIANTS': '  B,\n  C,', 'NAMES': '"B", "C"', 'REWRITES': 'r: a => b'}
     # Comment lines replaced whole; block and bare ones in place
     filled = 'enum E {\n  A,\n  B,\n  C,\n}\nf(x, {"B", "C"});\nr: a => b\n'
     assert fill_placeholders(source, values, 'e.rs') == filled

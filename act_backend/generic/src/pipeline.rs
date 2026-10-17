@@ -480,7 +480,7 @@ fn main() {
     rewrites: RefCell::new(None),
   });
 
-  let rules = isel::rewrites::get_rewrites();
+  let rewrites = isel::rewrites::get_rewrites();
 
   let runner = {
     let search = search.clone();
@@ -509,7 +509,7 @@ fn main() {
 
         Ok(())
       })
-      .run(&rules.clone())
+      .run(&rewrites.clone())
   };
 
   // What follows the search, by its stop reason

@@ -33,7 +33,7 @@ OPERATIONS = {
 VARIABLE = re.compile(r'(?<![^\s(])\?[^\s()]+')
 
 
-class RewriteRuleVisitor(OperandVisitor):
+class RewriteVisitor(OperandVisitor):
     def __init__(self):
         super().__init__()
         self.variable_counter = 0
@@ -109,9 +109,9 @@ class RewriteRuleVisitor(OperandVisitor):
         return pattern
 
 
-def generate_rewrite_rule(metadata, templates):
+def generate_rewrite(metadata, templates):
     """Generate one rewrite from its template"""
-    visitor = RewriteRuleVisitor()
+    visitor = RewriteVisitor()
     lhs_pattern = visitor.visit(metadata.semantics_ast)
     parameter_vars = visitor.get_parameter_variables()
     rewrite_word = get_rewrite_word(metadata.name)
@@ -124,7 +124,7 @@ def generate_rewrite_rule(metadata, templates):
     padding = ' ' * (19 - len(rewrite_word))
 
     return templates.render(
-        'ir2isa_rewrites.txt.IR2ISA_REWRITE_RULES.rule.txt',
+        'ir2isa_rewrites.txt.IR2ISA_REWRITES.rewrite.txt',
         rewrite_word=rewrite_word,
         padding=padding,
         lhs_pattern=lhs_pattern,
@@ -142,16 +142,16 @@ def generate_ir2isa_rewrites_txt_file(backend_gen_dir: str, instruction_metadata
         content = f.read()
 
     # Generate every rewrite
-    rules = []
+    rewrites = []
     for metadata in instruction_metadata_list:
-        rule = generate_rewrite_rule(metadata, templates)
-        rules.append(rule)
+        rewrite = generate_rewrite(metadata, templates)
+        rewrites.append(rewrite)
 
-    # Join rules with newlines
-    all_rules = '\n'.join(rules)
+    # Join the rewrites with newlines
+    all_rewrites = '\n'.join(rewrites)
 
     # Replace placeholder
-    content = fill_placeholders(content, {'IR2ISA_REWRITE_RULES': all_rules}, rewrites_file)
+    content = fill_placeholders(content, {'IR2ISA_REWRITES': all_rewrites}, rewrites_file)
 
     # Write back
     with open(rewrites_file, 'w') as f:
