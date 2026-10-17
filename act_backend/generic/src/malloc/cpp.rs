@@ -1,9 +1,12 @@
 use std::{
   ffi::{CStr, CString},
   path::Path,
+  sync::atomic::Ordering,
 };
 
 use libc::{c_char, size_t};
+
+use crate::SHOW_PROGRESS;
 
 // The most bytes of a reason the allocator hands back
 const REASON_SIZE: usize = 1024;
@@ -14,6 +17,7 @@ unsafe extern "C" {
     pii_path: *const c_char,
     metadata_path: *const c_char,
     asm_path: *const c_char,
+    verbose: i32,
     reason: *mut c_char,
     reason_size: size_t,
   ) -> i32;
@@ -31,6 +35,7 @@ pub fn cpp_bridge(pii_path: &Path, metadata_path: &Path, asm_path: &Path) -> Res
       pii_path.as_ptr(),
       metadata_path.as_ptr(),
       asm_path.as_ptr(),
+      SHOW_PROGRESS.load(Ordering::Relaxed) as i32,
       reason.as_mut_ptr() as *mut c_char,
       reason.len(),
     )

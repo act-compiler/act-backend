@@ -7,6 +7,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -14,11 +15,12 @@ use egg::{EGraph, Id, Runner, StopReason};
 
 use backend::ir::egraph::{TensorInfo, TensorOp};
 use backend::isel;
+use backend::{report, SHOW_PROGRESS};
 use backend::{ITERATION_LIMIT, NODE_LIMIT, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
-    "Usage: {} --input <hlo_path> --output <asm_path> [--log <log_dir>]",
+    "Usage: {} --input <hlo_path> --output <asm_path> [--log <log_dir>] [--verbose]",
     program_name
   );
   println!();
@@ -36,6 +38,8 @@ fn print_help(program_name: String) {
   println!("  --log        Specify the log directory");
   println!("               (optional, defaults to a new directory under the system's");
   println!("               temporary directory)");
+  println!("  --verbose    Print the search's progress on stdout");
+  println!("               (optional, without it a compile prints only an error or a warning)");
   println!();
 }
 
@@ -48,7 +52,7 @@ struct AsmCandidate {
 
 // No assembly: one stderr line and status 1
 fn no_assembly(reason: &str) -> ! {
-  println!("No output file created.");
+  report!("No output file created.");
   eprintln!("Error: no assembly found: {}", reason);
   process::exit(1);
 }
@@ -71,16 +75,17 @@ fn make_unique_dir(template: &Path) -> std::io::Result<PathBuf> {
 
 // Report the search's elapsed time and when it stops
 fn report_elapsed(elapsed: Duration, stop: Duration) {
-  println!(
+  report!(
     "Current elapsed: {:?} | Will stop at {:?} if no progress",
-    elapsed, stop
+    elapsed,
+    stop
   );
 }
 
 fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Instant) -> bool {
   report_elapsed(start.elapsed(), TIME_LIMIT);
-  println!("Starting Performance Cost Evaluation for {:?}", asm_path);
-  println!();
+  report!("Starting Performance Cost Evaluation for {:?}", asm_path);
+  report!();
 
   let cost: f64 = match backend::cost::c_bridge(asm_path) {
     Ok(cost) => cost,
@@ -88,14 +93,14 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
   };
   let time = start.elapsed();
 
-  print!("New ASM has performance cost {}. ", cost);
+  report!("New ASM has performance cost {}.", cost);
 
   match best {
     Some(AsmCandidate {
       cost: best_cost, ..
     }) => {
       if cost < *best_cost {
-        println!("Better than the previous best ({}), updating.", best_cost);
+        report!("Better than the previous best ({}), updating.", best_cost);
         *best = Some(AsmCandidate {
           path: asm_path.clone(),
           cost,
@@ -103,12 +108,12 @@ fn update_best(best: &mut Option<AsmCandidate>, asm_path: &PathBuf, start: &Inst
         });
         true
       } else {
-        println!("Not better than the previous best ({}).", best_cost);
+        report!("Not better than the previous best ({}).", best_cost);
         false
       }
     }
     None => {
-      println!("First ASM found, setting as best.");
+      report!("First ASM found, setting as best.");
       *best = Some(AsmCandidate {
         path: asm_path.clone(),
         cost,
@@ -139,19 +144,19 @@ impl Search {
   fn check_termination(&self) {
     let current_time = self.start.elapsed();
     if current_time > TIME_LIMIT {
-      println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
-      println!();
+      report!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
+      report!();
       self.finish();
     }
     // Stop once no candidate has improved for long enough
     match self.best.borrow().clone() {
       Some(AsmCandidate { timestamp, .. }) => {
         if current_time > timestamp * SATURATION_FACTOR {
-          println!(
+          report!(
             "No improvement for last {:?}, stopping",
             current_time - timestamp
           );
-          println!();
+          report!();
           self.finish();
         } else {
           report_elapsed(current_time, min(timestamp * SATURATION_FACTOR, TIME_LIMIT));
@@ -165,29 +170,31 @@ impl Search {
 
   // End the compile, the best candidate to the output
   fn finish(&self) -> ! {
-    println!("Total time: {:?}", self.start.elapsed());
+    report!("Total time: {:?}", self.start.elapsed());
     match self.best.borrow().clone() {
       Some(AsmCandidate {
         path,
         cost,
         timestamp,
       }) => {
-        println!(
+        report!(
           "Best ASM {:?} with cost {} found at {:?}",
-          path, cost, timestamp
+          path,
+          cost,
+          timestamp
         );
 
         // The output takes its name once it is whole
         let partial = partial_output(&self.output_path);
         std::fs::copy(&path, &partial).expect("Failed to copy best ASM to output path");
         std::fs::rename(&partial, &self.output_path).expect("Failed to name the output");
-        println!(
+        report!(
           "Best ASM copied to output path: {}",
           self.output_path.display()
         );
       }
       None => {
-        println!("Could not find an ASM representation.");
+        report!("Could not find an ASM representation.");
         // What became of the candidates
         let candidates = match &*self.first_drop.borrow() {
           Some(reason) => format!("every candidate was dropped, the first because {}", reason),
@@ -210,11 +217,11 @@ impl Search {
   // Extract the e-graph at one limit and evaluate each candidate
   fn pass(&self, egraph: &EGraph<TensorOp, TensorInfo>, limit: usize) {
     self.check_termination();
-    println!(
+    report!(
       "Starting Phase 1 Module 3: Graph Extractor (limit {})",
       limit
     );
-    println!();
+    report!();
 
     let piis = isel::extractor::extract(
       &mut egraph.clone(),
@@ -227,8 +234,8 @@ impl Search {
     for pii in piis {
       let number = self.candidates.get();
       self.check_termination();
-      println!("Starting Phase 2 for PII #{}", number);
-      println!();
+      report!("Starting Phase 2 for PII #{}", number);
+      report!();
 
       // Phase 2
       let pii_path = self.log_dir.join(format!("{}.pii", number));
@@ -245,19 +252,21 @@ impl Search {
           self.first_drop.borrow_mut().get_or_insert(reason);
         }
       }
-      println!();
+      report!();
 
       self.candidates.set(number + 1);
     }
 
     self.check_termination();
-    println!("Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection");
-    println!();
+    report!("Completed Phase 2: Memory Allocation, returning to Phase 1: Instruction Selection");
+    report!();
   }
 }
 
 fn main() {
   let args: Vec<String> = env::args().collect();
+
+  SHOW_PROGRESS.store(args.contains(&"--verbose".to_string()), Ordering::Relaxed);
 
   if args.contains(&"--help".to_string()) {
     print_help(args[0].clone());
@@ -297,7 +306,7 @@ fn main() {
     process::exit(1);
   }
 
-  println!("Input file: {}", hlo_path.display());
+  report!("Input file: {}", hlo_path.display());
 
   // Process output file
   let output_index = args.iter().position(|x| x == "--output").unwrap() + 1;
@@ -316,7 +325,7 @@ fn main() {
     process::exit(1);
   }
 
-  println!("Output file: {}", output_path.display());
+  report!("Output file: {}", output_path.display());
 
   // Process log directory
   let own_log = !args.contains(&"--log".to_string());
@@ -397,20 +406,20 @@ fn main() {
       }
     }
   }
-  println!("Log directory: {}", log_dir.display());
-  println!("PII graphs dumped to: {}", log_dir.display());
-  println!();
+  report!("Log directory: {}", log_dir.display());
+  report!("PII graphs dumped to: {}", log_dir.display());
+  report!();
 
   // Start processing the input file
   let start = Instant::now();
 
   report_elapsed(start.elapsed(), TIME_LIMIT);
-  println!("Starting Phase 1: Instruction Selection...");
-  println!();
+  report!("Starting Phase 1: Instruction Selection...");
+  report!();
 
   report_elapsed(start.elapsed(), TIME_LIMIT);
-  println!("Starting Phase 1 Module 1: E-Graph Initializer...");
-  println!();
+  report!("Starting Phase 1 Module 1: E-Graph Initializer...");
+  report!();
 
   let (init_egraph, hbm_offsets, root, inputs, mut metadata) =
     match isel::initializer::parse_hlo_module_to_egraph(&hlo_path) {
@@ -418,10 +427,10 @@ fn main() {
       Err(reason) => no_assembly(&reason),
     };
 
-  println!("HBM Offsets: {:?}", hbm_offsets);
-  println!("Root ID: {:?}", root);
-  println!("Inputs: {:?}", inputs);
-  println!();
+  report!("HBM Offsets: {:?}", hbm_offsets);
+  report!("Root ID: {:?}", root);
+  report!("Inputs: {:?}", inputs);
+  report!();
 
   let metadata_path = log_dir.join("metadata.json");
   // The kernel's path as given, control characters escaped
@@ -471,11 +480,11 @@ fn main() {
         }
 
         search.check_termination();
-        println!(
+        report!(
           "Starting Phase 1 Module 2: Rewrite Applier (iteration {})",
           runner.iterations.len() + 1
         );
-        println!();
+        report!();
 
         Ok(())
       })
@@ -486,8 +495,8 @@ fn main() {
 
   match runner.stop_reason.as_ref().unwrap() {
     StopReason::TimeLimit(_) => {
-      println!("Info: Reached time limit. No further extraction.");
-      println!();
+      report!("Info: Reached time limit. No further extraction.");
+      report!();
     }
     StopReason::NodeLimit(_) | StopReason::IterationLimit(_) | StopReason::Saturated => {
       // What ended the rewrites, which the no-assembly line names
@@ -501,11 +510,11 @@ fn main() {
         ),
         _ => "the rewrites saturated".to_string(),
       };
-      println!(
+      report!(
         "Info: {}. Running extraction until time limit is hit.",
         rewrites
       );
-      println!();
+      report!();
       *search.rewrites.borrow_mut() = Some(rewrites);
 
       let mut limit: usize = SLOW_LIMIT_START;
@@ -513,7 +522,7 @@ fn main() {
         search.pass(&runner.egraph, limit);
         limit += 1; // Increment limit to allow for more extraction next time
       }
-      println!("Info: Reached time limit. No further extraction.");
+      report!("Info: Reached time limit. No further extraction.");
     }
     StopReason::Other(_) => {
       eprintln!("Error: Stopped for an unexpected reason. Requires investigation.");
@@ -521,7 +530,7 @@ fn main() {
     }
   }
 
-  println!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
-  println!();
+  report!("Reached overall time limit of {:?}, stopping", TIME_LIMIT);
+  report!();
   search.finish();
 }

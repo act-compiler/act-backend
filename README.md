@@ -55,6 +55,10 @@ An instruction with no semantics is left out of the backend.
 
 The backend compiles the kernel in an XLA-HLO file into assembly: a Python file of calls to the accelerator's instructions, which an oracle that [TAIDL-TO](https://github.com/act-compiler/act-oracle) generates for the same accelerator simulates.
 The backend is one file that holds its rewrites, and its run path names the OR-Tools directory it was built with.
+A compile searches for at most one second, its rewrites ending at 10,000 e-graph nodes, at 30 iterations or at saturation; it stops sooner once the time since the start exceeds ten times the time of its best candidate.
+It then writes the candidate of lowest cost.
+`--verbose` prints the search on stdout, where a compile otherwise names only the candidates it drops, and `--log <dir>` keeps the candidates in `<dir>`, removing nothing there but writing over an earlier compile's candidates; without it they go to a new directory under the system's temporary directory, which the compile leaves in place.
+A compile that finds no assembly, including one whose kernel cannot be read, writes one line on stderr saying why, leaves no output and exits with status 1, as a usage error does.
 
 ## Cost function
 

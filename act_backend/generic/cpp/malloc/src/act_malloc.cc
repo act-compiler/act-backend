@@ -17,8 +17,12 @@ static int no_assembly(char *reason, size_t reason_size, const std::string &why)
   return 1;
 }
 
-extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, char *reason,
-                          size_t reason_size) {
+extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, int verbose,
+                          char *reason, size_t reason_size) {
+  // The allocator's progress, printed under --verbose alone
+  std::ostream discard(nullptr);
+  std::ostream &progress = verbose ? std::cout : discard;
+
   std::ifstream pii_file(pii_path);
   if (!pii_file)
     return no_assembly(reason, reason_size, std::string("the allocator cannot read ") + pii_path);
@@ -45,7 +49,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
   Instruction *root = instructions.back();
   root->get_lhs()->type = Tensor::node_type::OUTPUT;
 
-  std::cout << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
+  progress << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
 
   auto scheduled = scheduler::topological(instructions, root, {/* {{BUFFER_NAMES}} */});
   if (scheduled.size() != instructions.size())
@@ -53,9 +57,9 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
                        "the allocator orders only " + std::to_string(scheduled.size()) +
                            " of its " + std::to_string(instructions.size()) + " instructions");
 
-  std::cout << "Starting Phase 2 Module 5: Constraint Satisfaction Problem "
-               "Generator..."
-            << std::endl;
+  progress << "Starting Phase 2 Module 5: Constraint Satisfaction Problem "
+              "Generator..."
+           << std::endl;
 
   constraint::pii_node_constraints(scheduled);
   constraint::def_use_constraints(scheduled);
@@ -92,7 +96,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
                 return w_a < w_b;
               return a->Min() < b->Min();
             });
-  std::cout << "Starting Google OR-Tools constraint solver..." << std::endl;
+  progress << "Starting Google OR-Tools constraint solver..." << std::endl;
 
   auto decision_builder =
       solver.MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
@@ -102,9 +106,9 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
   auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(SOLVER_TIME_LIMIT_MS));
   solver.NewSearch(decision_builder, time_limit);
   if (solver.NextSolution()) {
-    std::cout << "Found a solution!" << std::endl;
+    progress << "Found a solution!" << std::endl;
 
-    std::cout << "Starting Phase 2 Module 6: Code Emitter..." << std::endl;
+    progress << "Starting Phase 2 Module 6: Code Emitter..." << std::endl;
 
     std::ifstream metadata_file(metadata_path);
     if (!metadata_file) {
@@ -116,19 +120,19 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, c
 
     std::string why;
     if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {
-      std::cout << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
+      progress << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
       solver.EndSearch();
       return 0;
     }
 
-    std::cout << "No ASM candidate generated." << std::endl << std::endl;
+    progress << "No ASM candidate generated." << std::endl << std::endl;
     solver.EndSearch();
     return no_assembly(reason, reason_size, why);
 
   } else {
-    std::cout << "No solution found." << std::endl;
+    progress << "No solution found." << std::endl;
 
-    std::cout << "No ASM candidate generated." << std::endl << std::endl;
+    progress << "No ASM candidate generated." << std::endl << std::endl;
 
     // Whether the solver's time limit stopped the search
     bool timed_out = time_limit->crossed();

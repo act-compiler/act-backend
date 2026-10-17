@@ -11,7 +11,7 @@
 #include "tensor.h"
 
 // Return 0 with the assembly written, or 1 with the reason set
-extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, char *reason,
-                          size_t reason_size);
+extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, int verbose,
+                          char *reason, size_t reason_size);
 
 #endif // ACT_MALLOC_H

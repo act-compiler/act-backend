@@ -1,4 +1,18 @@
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
+
+// Whether a compile prints its search's progress, from --verbose
+pub static SHOW_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Print a line of the search's progress, only under --verbose
+#[macro_export]
+macro_rules! report {
+  ($($line:tt)*) => {
+    if $crate::SHOW_PROGRESS.load(std::sync::atomic::Ordering::Relaxed) {
+      println!($($line)*)
+    }
+  };
+}
 
 // The whole search's time
 pub const TIME_LIMIT: Duration = Duration::from_millis(1000);
