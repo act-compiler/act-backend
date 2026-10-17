@@ -1,0 +1,3 @@
+  if egraph.find(lhs_eclasses[{{copy}}]) != egraph.find(lhs_eclasses[{{first}}]) {
+    return false;
+  }

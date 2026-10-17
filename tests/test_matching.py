@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+from collections import Counter
 
 import pytest
 from taidl import Accelerator
@@ -60,6 +61,138 @@ def matching():
             'ROOT %Out0 = bf16[64,64] broadcast(%s), dimensions={0}',
         ],
     )
+    # A product through a transpose, both inputs declared first
+    add_on_d1(
+        acc,
+        'turn_dot',
+        ['32', '32', '64'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%In1 = bf16[32,64] parameter(1)',
+            '%t = bf16[64,32] transpose(%In0), dimensions={1,0}',
+            (
+                'ROOT %Out0 = bf16[64,64] dot(%t, %In1), lhs_contracting_dims={1}, '
+                'rhs_contracting_dims={0}'
+            ),
+        ],
+    )
+    # Sums of 32 rows, a value named like a copy
+    add_on_d1(
+        acc,
+        'rowsum_32',
+        ['32', '32'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%s_dup = bf16[32] reduce_add(%In0), dimensions={1}',
+            'ROOT %Out0 = bf16[32,64] broadcast(%s_dup), dimensions={0}',
+        ],
+    )
+    # One input read 27 times, by 26 sums
+    add_on_d1(
+        acc,
+        'sums',
+        ['64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%a0 = bf16[64,64] add(%In0, %In0)',
+            *[f'%a{k} = bf16[64,64] add(%a{k - 1}, %In0)' for k in range(1, 25)],
+            'ROOT %Out0 = bf16[64,64] add(%a24, %In0)',
+        ],
+    )
+    # The input added to itself, twice
+    add_on_d1(
+        acc,
+        'four',
+        ['64', '64'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            '%a = bf16[64,64] add(%In0, %In0)',
+            'ROOT %Out0 = bf16[64,64] add(%a, %a)',
+        ],
+    )
+    # Softmax, and the operations that spell it out
+    add_on_d1(
+        acc,
+        'softmax',
+        ['@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            '%a = bf16[`@c.n`,64] exponential(%In0)',
+            '%reduced = bf16[`@c.n`] reduce_add(%a), dimensions={1}',
+            '%b = bf16[`@c.n`,64] broadcast(%reduced), dimensions={0}',
+            'ROOT %Out0 = bf16[`@c.n`,64] divide(%a, %b)',
+        ],
+        ['n'],
+    )
+    add_on_d1(
+        acc,
+        'vexp',
+        ['@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            'ROOT %Out0 = bf16[`@c.n`,64] exponential(%In0)',
+        ],
+        ['n'],
+    )
+    add_on_d1(
+        acc,
+        'vdiv',
+        ['@c.n', '@c.n', '@c.n'],
+        [
+            '%In0 = bf16[`@c.n`,64] parameter(0)',
+            '%In1 = bf16[`@c.n`,64] parameter(1)',
+            'ROOT %Out0 = bf16[`@c.n`,64] divide(%In0, %In1)',
+        ],
+        ['n'],
+    )
+    return acc
+
+
+def add_on_hbm(acc, name, sizes, lines, attributes=()):
+    """An instruction from regions of the HBM to a region of it, the output's size last"""
+    addresses = [f'addr_{number}' for number in range(1, len(sizes))]
+    instr = acc.add_instruction(name, list(attributes), [*addresses, 'addr_out'])
+    instr.set_inputs([['d0', [f'@a.{address}'], [size]] for address, size in zip(addresses, sizes)])
+    instr.set_outputs([['d0', ['@a.addr_out'], [sizes[-1]]]])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in lines) + '}\n')
+
+
+def hbm_only():
+    """No data model but the HBM: a product and a sum, each reading its inputs' bytes"""
+    acc = Accelerator('HBM_ONLY')
+    add_on_hbm(
+        acc,
+        'gemm',
+        ['8192', '8192', '8192'],
+        [
+            '%In0 = u8[8192] parameter(0)',
+            '%In1 = u8[8192] parameter(1)',
+            '%a = u8[64,64,2] reshape(%In0)',
+            '%b = u8[64,64,2] reshape(%In1)',
+            '%x = bf16[64,64] bitcast_convert(%a)',
+            '%y = bf16[64,64] bitcast_convert(%b)',
+            '%z = bf16[64,64] dot(%x, %y), lhs_contracting_dims={1}, rhs_contracting_dims={0}',
+            '%c = u8[64,64,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[8192] reshape(%c)',
+        ],
+    )
+    add_on_hbm(
+        acc,
+        'vadd',
+        ['@c.n * 128', '@c.n * 128', '@c.n * 128'],
+        [
+            '%In0 = u8[`@c.n * 128`] parameter(0)',
+            '%In1 = u8[`@c.n * 128`] parameter(1)',
+            '%a = u8[`@c.n`,64,2] reshape(%In0)',
+            '%b = u8[`@c.n`,64,2] reshape(%In1)',
+            '%x = bf16[`@c.n`,64] bitcast_convert(%a)',
+            '%y = bf16[`@c.n`,64] bitcast_convert(%b)',
+            '%z = bf16[`@c.n`,64] add(%x, %y)',
+            '%c = u8[`@c.n`,64,2] bitcast_convert(%z)',
+            'ROOT %Out0 = u8[`@c.n * 128`] reshape(%c)',
+        ],
+        ['n'],
+    )
     return acc
 
 
@@ -74,6 +207,14 @@ def work_dir(tmp_path_factory):
 @pytest.fixture(scope='module')
 def backend(work_dir):
     return os.path.join(work_dir, 'backends', 'MATCHING')
+
+
+@pytest.fixture(scope='module')
+def hbm_backend(tmp_path_factory):
+    """Generate the backend of the spec with the HBM alone and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('hbm_only'))
+    generate_backend(hbm_only(), work_dir)
+    return os.path.join(work_dir, 'backends', 'HBM_ONLY')
 
 
 def selected(backend, tmp_path, kernel):
@@ -182,3 +323,145 @@ def test_rewrite_that_joins_unlike_values_ends_the_compile(backend, tmp_path):
     assert run.returncode != 0
     assert 'internal error: a rewrite joins the values s8[16, 16] and s8[1]' in run.stderr
     assert not output.exists()
+
+
+# One input's transpose times the other
+TURNED = """HloModule turned, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %t = bf16[64,32] transpose(%a), dimensions={1,0}
+  ROOT %c = bf16[64,64] dot(%t, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+"""
+
+
+def test_semantics_not_in_pattern_order_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, TURNED)
+    assert [name for name, _ in calls] == ['load_rm', 'load_rm', 'turn_dot', 'store_rm']
+    # The transposed input comes first, as in the kernel
+    loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
+    turned = calls[2][1]
+    assert (turned['addr_1'], turned['addr_2']) == (loaded['0'], loaded['4096'])
+
+
+# The rows' sums of 32 rows, spread along them
+SPREAD_32 = f"""HloModule spread_32, entry_computation_layout={{(bf16[32,64]{{1,0}})->bf16[32,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[32,64] parameter(0)
+  %zero = bf16[] constant(0)
+  %s = bf16[32] reduce(%x, %zero), dimensions={{1}}, to_apply=%reduce_add
+  ROOT %b = bf16[32,64] broadcast(%s), dimensions={{0}}
+}}
+"""
+
+
+def test_value_named_as_a_copy_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, SPREAD_32)
+    assert [name for name, _ in calls] == ['load_rm', 'rowsum_32', 'store_rm']
+
+
+# A product and its sum, each value in the HBM
+PRODUCT_SUM = """HloModule product_sum, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[64,64] parameter(0)
+  %b = bf16[64,64] parameter(1)
+  %c = bf16[64,64] parameter(2)
+  %p = bf16[64,64] dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %s = bf16[64,64] add(%p, %c)
+}
+"""
+
+
+def test_accelerator_with_no_on_chip_data_model_compiles(hbm_backend, tmp_path):
+    calls = selected(hbm_backend, tmp_path, PRODUCT_SUM)
+    assert [name for name, _ in calls] == ['gemm', 'vadd']
+    # The sum reads the product's output and the third input
+    (_, product), (_, total) = calls
+    assert (total['addr_1'], total['addr_2']) == (product['addr_out'], '16384')
+
+
+# The input added to itself and each sum: 26 sums
+SUMS = (
+    """HloModule sums, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %a0 = bf16[64,64] add(%x, %x)
+"""
+    + ''.join(f'  %a{k} = bf16[64,64] add(%a{k - 1}, %x)\n' for k in range(1, 25))
+    + """  ROOT %out = bf16[64,64] add(%a24, %x)
+}
+"""
+)
+
+
+def test_semantics_with_27_variables_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, SUMS)
+    assert [name for name, _ in calls] == ['load_rm', 'sums', 'store_rm']
+
+
+# Four times the input, by two sums
+FOUR = """HloModule four, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %a = bf16[64,64] add(%x, %x)
+  ROOT %b = bf16[64,64] add(%a, %a)
+}
+"""
+
+
+def test_copy_of_a_copy_is_selected(backend, tmp_path):
+    calls = selected(backend, tmp_path, FOUR)
+    assert [name for name, _ in calls] == ['load_rm', 'four', 'store_rm']
+
+
+# One input's exponentials over the rows' sums of the other's
+SKEWED = f"""HloModule skewed, entry_computation_layout={{(bf16[64,64]{{1,0}}, bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %y = bf16[64,64] parameter(1)
+  %ex = bf16[64,64] exponential(%x)
+  %ey = bf16[64,64] exponential(%y)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%ey, %zero), dimensions={{1}}, to_apply=%reduce_add
+  %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+  ROOT %out = bf16[64,64] divide(%ex, %b)
+}}
+"""
+
+# The rows' softmax: the exponentials, one value, read twice
+SOFTMAX = f"""HloModule softmax, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %ex = bf16[64,64] exponential(%x)
+  %zero = bf16[] constant(0)
+  %s = bf16[64] reduce(%ex, %zero), dimensions={{1}}, to_apply=%reduce_add
+  %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+  ROOT %out = bf16[64,64] divide(%ex, %b)
+}}
+"""
+
+
+def test_value_used_twice_matches_one_value(backend, tmp_path):
+    calls = selected(backend, tmp_path, SKEWED)
+    # Two exponentials, not softmax, which reads one value twice
+    names = Counter(name for name, _ in calls)
+    assert names == {'load_rm': 2, 'vexp': 2, 'rowsum': 1, 'vdiv': 1, 'store_rm': 1}
+
+
+def test_softmax_is_selected_over_one_value(backend, tmp_path):
+    calls = selected(backend, tmp_path, SOFTMAX)
+    assert [name for name, _ in calls] == ['load_rm', 'softmax', 'store_rm']

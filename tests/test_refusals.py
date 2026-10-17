@@ -431,8 +431,8 @@ def test_rewrite_that_repeats_a_leaf_refused(tmp_path):
     ]
     message = refusal(with_semantics(lines), tmp_path)
     assert message == (
-        "gemm: its semantics repeats '(constant_?)' on the left side of its rewrite, "
-        'and a rewrite that repeats a leaf never matches'
+        'gemm: its semantics holds two constants, '
+        'and a rewrite that holds two constants never matches'
     )
 
 

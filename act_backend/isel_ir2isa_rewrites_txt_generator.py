@@ -51,15 +51,14 @@ class RewriteRuleVisitor(OperandVisitor):
         self.used_values = set()
 
     def get_next_variable(self):
-        var_name = f'?{chr(ord("a") + self.variable_counter)}'
+        # Variables numbered ?v0, ?v1 and so on
+        var_name = f'?v{self.variable_counter}'
         self.variable_counter += 1
         return var_name
 
-    def substitute_params(self, pattern, substitutions):
-        result = pattern
-        for old_var, new_var in substitutions.items():
-            result = result.replace(old_var, new_var)
-        return result
+    def substitute_variables(self, pattern, substitutions):
+        # Whole variables, so ?v1 leaves ?v10 alone
+        return VARIABLE.sub(lambda var: substitutions.get(var[0], var[0]), pattern)
 
     def visitModule(self, ctx: IDLV2Parser.ModuleContext):
         self.visitChildren(ctx)
@@ -94,13 +93,12 @@ class RewriteRuleVisitor(OperandVisitor):
                     pattern = self.variable_definitions[operand_value]
 
                     if operand_value in self.used_values:
-                        substitutions = {}
-                        for param_var in self.parameter_variables.values():
-                            if param_var in pattern:
-                                fresh_var = self.get_next_variable()
-                                substitutions[param_var] = fresh_var
-                        if substitutions:
-                            pattern = self.substitute_params(pattern, substitutions)
+                        # A copy shares no variable with what it copies
+                        substitutions = {
+                            var: self.get_next_variable()
+                            for var in dict.fromkeys(VARIABLE.findall(pattern))
+                        }
+                        pattern = self.substitute_variables(pattern, substitutions)
                     else:
                         self.used_values.add(operand_value)
 

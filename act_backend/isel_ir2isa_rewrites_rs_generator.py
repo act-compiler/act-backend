@@ -35,24 +35,27 @@ class RustGeneratorVisitor(OperandVisitor):
         self.root_assignment = None
         self.comp_attributes = set()
         self.variable_definitions = {}
-        self.variable_usage = set()
 
     def visitModule(self, ctx):
         self.visitChildren(ctx)
 
-        duplicates = [a for a in self.assignments if a['lhs'].endswith('_dup')]
-        non_duplicates = [a for a in self.assignments if not a['lhs'].endswith('_dup')]
-        self.assignments = duplicates + non_duplicates
+        # The values in the pattern order a match walks
+        self.assignments = self.pattern_order(self.root_assignment['lhs'])
+        self.root_assignment = self.assignments[-1]
 
-        for assignment in self.assignments:
-            if assignment['lhs'] == self.root_assignment['lhs']:
-                self.root_assignment = assignment
-                break
+        # Each later occurrence of a value, beside its first
+        firsts = {}
+        copies = []
+        for position, assignment in enumerate(self.assignments):
+            first = firsts.setdefault(assignment['lhs'], position)
+            if first != position:
+                copies.append((position, first))
 
         return {
             'assignments': self.assignments,
             'root_assignment': self.root_assignment,
             'comp_attributes': list(self.comp_attributes),
+            'copies': copies,
         }
 
     def visitInstruction(self, ctx):
@@ -69,13 +72,6 @@ class RustGeneratorVisitor(OperandVisitor):
             for operand_text, operand_type in operands:
                 if operand_type == 'VALUE':
                     operand_names.append(operand_text)
-
-        for operand_text in operand_names:
-            if operand_text in self.variable_definitions:
-                if operand_text in self.variable_usage:
-                    self.duplicate_variable_recursive(operand_text)
-                else:
-                    self.variable_usage.add(operand_text)
 
         assignment = {
             'lhs': lhs_name,
@@ -94,28 +90,13 @@ class RustGeneratorVisitor(OperandVisitor):
 
         return assignment
 
-    def duplicate_variable_recursive(self, var_name):
-        dup_name = f'{var_name}_dup'
-
-        if dup_name in self.variable_definitions:
-            return
-
-        original = self.assignments[self.variable_definitions[var_name]]
-
-        for operand in original['operands']:
-            if operand in self.variable_definitions:
-                self.duplicate_variable_recursive(operand)
-
-        duplicate = {
-            'lhs': dup_name,
-            'dtype': original['dtype'],
-            'shape': original['shape'],
-            'dims': original['dims'],
-            'first': original['first'],
-            'operands': original['operands'],
-        }
-        self.variable_definitions[dup_name] = len(self.assignments)
-        self.assignments.append(duplicate)
+    def pattern_order(self, name):
+        """A value after the values it reads, left to right, one entry per occurrence"""
+        assignment = self.assignments[self.variable_definitions[name]]
+        ordered = []
+        for operand in assignment['operands']:
+            ordered += self.pattern_order(operand)
+        return [*ordered, assignment]
 
     def extract_comp_attrs_from_text(self, text):
         pattern = r'@c\.(\w+)'
@@ -201,8 +182,17 @@ def generate_precond_function(instruction_name, semantics_data, templates):
     # Generate comp attribute extraction
     comp_attr_code = generate_comp_attr_extraction(root_assignment, comp_attr, num_assignments)
 
+    # Each copy of a value is its first occurrence's e-class
+    shape_checks = [
+        templates.render(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.copy_check.txt',
+            copy=str(copy),
+            first=str(first),
+        )
+        for copy, first in semantics_data['copies']
+    ]
+
     # Generate shape/dtype checks for all assignments
-    shape_checks = []
     for i, assignment in enumerate(assignments):
         dtype_rust = ELEMENT_TYPES[assignment['dtype']]
         shape_vec = f'vec![{", ".join(assignment["dims"])}]'

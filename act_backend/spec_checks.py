@@ -536,12 +536,11 @@ def check_semantics(instructions):
                     f"{name}: its result's first dimension '{dimension}' is not the computational "
                     f"attribute '{attribute}' alone or times a positive integer"
                 )
-        # A rewrite repeating a variable or leaf never matches
-        leaf = repeated_leaf(RewriteRuleVisitor().visit(instruction.instr_semantics_ast))
-        if leaf:
+        # Every variable is fresh, so only a constant repeats
+        if repeated_leaf(RewriteRuleVisitor().visit(instruction.instr_semantics_ast)):
             raise ValueError(
-                f"{name}: its semantics repeats '{leaf}' on the left side of its rewrite, "
-                'and a rewrite that repeats a leaf never matches'
+                f'{name}: its semantics holds two constants, '
+                'and a rewrite that holds two constants never matches'
             )
 
 
