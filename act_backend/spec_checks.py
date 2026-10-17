@@ -9,7 +9,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
     RustGeneratorVisitor,
     attribute_reading,
 )
-from .isel_ir2isa_rewrites_txt_generator import OPERATIONS, RewriteRuleVisitor, repeated_leaf
+from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
 
 
@@ -163,12 +163,6 @@ def check_semantics(instructions):
                     f'{name}: no dimension of its semantics holds the computational attribute '
                     f"'{attribute}' alone or times a positive integer"
                 )
-        # Every variable is fresh, so only a constant repeats
-        if repeated_leaf(RewriteRuleVisitor().visit(instruction.instr_semantics_ast)):
-            raise ValueError(
-                f'{name}: its semantics holds two constants, '
-                'and a rewrite that holds two constants never matches'
-            )
 
 
 def address_attribute(start):

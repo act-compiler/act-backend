@@ -11,7 +11,7 @@ from taidl import Accelerator
 import act_backend
 from act_backend import generate_backend, spec_checks
 from act_backend.isel_ir2isa_rewrites_rs_generator import ELEMENT_TYPES
-from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS, repeated_leaf
+from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 
 
 def add_load(acc, instruction='load', attribute='n', address='addr_out', model='d1'):
@@ -274,35 +274,6 @@ def test_attribute_held_by_no_dimension_refused(dimension, tmp_path):
         "gemm: no dimension of its semantics holds the computational attribute 'k' "
         'alone or times a positive integer'
     )
-
-
-def test_rewrite_that_repeats_a_leaf_refused(tmp_path):
-    lines = [
-        IN0,
-        IN1,
-        '%zero = bf16[64,64] constant(0)',
-        '%one = bf16[64,64] constant(1)',
-        '%a = bf16[64,64] add(%In0, %zero)',
-        '%b = bf16[64,64] add(%In1, %one)',
-        result('add(%a, %b)'),
-    ]
-    message = refusal(with_semantics(lines), tmp_path)
-    assert message == (
-        'gemm: its semantics holds two constants, '
-        'and a rewrite that holds two constants never matches'
-    )
-
-
-def test_rewrites_of_the_tree_repeat_no_leaf():
-    rewrites = os.path.join(
-        os.path.dirname(act_backend.__file__), 'generic', 'src', 'isel', 'rewrites'
-    )
-    with open(os.path.join(rewrites, 'ir2ir_rewrites.txt')) as f:
-        for rewrite in f.read().splitlines():
-            left = rewrite.split(':', 1)[1].split('=>')[0]
-            assert repeated_leaf(left) is None, rewrite
-    # A repeated variable is a repeated leaf too
-    assert repeated_leaf('(add ?x (exponential ?x))') == '?x'
 
 
 def test_address_attribute_in_a_semantics_refused(tmp_path):

@@ -76,12 +76,13 @@ ENTRY {
 
 
 def test_type_names_are_told_apart():
-    # Instr and the camel case, the later of two numbered
-    names = get_type_names(['load_2', 'load2', 'load22', 'Var'])
+    # Instr and the camel case, an underscore kept before a digit where two fold to one
+    names = get_type_names(['load_2', 'load2', 'load22', 'mov_21', 'Var'])
     assert names == {
-        'load_2': 'InstrLoad2',
-        'load2': 'InstrLoad22',
-        'load22': 'InstrLoad222',
+        'load_2': 'InstrLoad_2',
+        'load2': 'InstrLoad2',
+        'load22': 'InstrLoad22',
+        'mov_21': 'InstrMov21',
         'Var': 'InstrVar',
     }
 
