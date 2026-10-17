@@ -5,7 +5,7 @@ pub type Line = (String, String, String, String, String, String, String);
 pub type MarkedLine = (Line, bool);
 
 // A layout other than row-major {n-1,...,0}, as a reason
-pub(super) fn other_than_row_major(shape: &str, layout: &str) -> Option<String> {
+pub fn other_than_row_major(shape: &str, layout: &str) -> Option<String> {
   let rank = shape.split(',').filter(|d| !d.trim().is_empty()).count();
   let order = layout.split(':').next().unwrap_or("").replace(' ', "");
   // A layout with no order, as a tile alone, passes

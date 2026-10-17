@@ -20,7 +20,7 @@ pub struct MetaData {
 }
 
 impl MetaData {
-  pub fn save(&self, path: &std::path::PathBuf) {
+  pub fn save(&self, path: &std::path::Path) {
     let mut file = File::create(path).expect("Unable to create file");
     let json = serde_json::to_string_pretty(&self).expect("Unable to serialize data");
     write!(file, "{}", json).expect("Unable to write data");

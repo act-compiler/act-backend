@@ -1,4 +1,4 @@
-pub(super) fn shape_to_vec(shape_str: &str) -> Result<Vec<i32>, String> {
+pub fn shape_to_vec(shape_str: &str) -> Result<Vec<i32>, String> {
   let cleaned = shape_str.trim();
 
   if cleaned.is_empty() || cleaned == "[]" {
@@ -30,7 +30,7 @@ fn dimension(text: &str, shape: &str) -> Result<i32, String> {
 }
 
 // A shape's dimensions as a kernel writes them
-pub(super) fn shape_text(shape: &[i32]) -> String {
+pub fn shape_text(shape: &[i32]) -> String {
   shape
     .iter()
     .map(|size| size.to_string())
@@ -39,7 +39,7 @@ pub(super) fn shape_text(shape: &[i32]) -> String {
 }
 
 // The assembly's declared shape, a rank-0 value as ()
-pub(super) fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
+pub fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
   if tshape == "[]" {
     Ok(vec![])
   } else {
@@ -48,7 +48,7 @@ pub(super) fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
 }
 
 // A shape plus a dimension for a multi-byte element's bytes
-pub(super) fn byte_view(tshape: &str, dtype_size: i32) -> String {
+pub fn byte_view(tshape: &str, dtype_size: i32) -> String {
   // A rank-0 value is held as one element
   let shape = if tshape == "[]" { "1" } else { tshape };
   if dtype_size == 1 {
@@ -58,13 +58,13 @@ pub(super) fn byte_view(tshape: &str, dtype_size: i32) -> String {
   }
 }
 
-pub(super) fn get_bytes(shape: &str, dtype: i32) -> Result<i32, String> {
+pub fn get_bytes(shape: &str, dtype: i32) -> Result<i32, String> {
   let mut bytes = 1;
   shape_to_vec(shape)?.iter().for_each(|dim| bytes *= dim);
   Ok(bytes * dtype)
 }
 
-pub(super) fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
+pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
   let shape_vec = shape
     .split(',')
     .map(|s| dimension(s, shape))
@@ -121,7 +121,7 @@ fn tile_size(text: &str, shape: &str, tile: &str) -> Result<i32, String> {
   }
 }
 
-pub(super) fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
+pub fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
   let dims = tshape
     .split(',')
     .map(|x| dimension(x, tshape))
@@ -147,7 +147,7 @@ pub(super) fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, Stri
   Ok(result.join(","))
 }
 
-pub(super) fn get_transpose_order_param(num_dims: i32) -> String {
+pub fn get_transpose_order_param(num_dims: i32) -> String {
   let mut order = Vec::with_capacity((num_dims * 2) as usize);
   for i in 0..num_dims {
     order.push(i + 1); // outer dimension (1-based)
@@ -161,7 +161,7 @@ pub(super) fn get_transpose_order_param(num_dims: i32) -> String {
     .join(",")
 }
 
-pub(super) fn get_transpose_order_result(n: i32) -> String {
+pub fn get_transpose_order_result(n: i32) -> String {
   let mut odds = (1..=2 * n).step_by(2).collect::<Vec<_>>();
   let evens = (2..=2 * n).step_by(2).collect::<Vec<_>>();
 
@@ -174,7 +174,7 @@ pub(super) fn get_transpose_order_result(n: i32) -> String {
     .join(",")
 }
 
-pub(super) fn apply_transpose_order(reshape_str: &str, order_str: &str) -> String {
+pub fn apply_transpose_order(reshape_str: &str, order_str: &str) -> String {
   let dims: Vec<&str> = reshape_str.split(',').map(|x| x.trim()).collect();
   let order: Vec<usize> = order_str
     .split(',')
