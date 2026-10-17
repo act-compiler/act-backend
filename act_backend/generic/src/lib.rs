@@ -20,6 +20,8 @@ pub const TIME_LIMIT: Duration = Duration::from_millis(1000);
 pub const NODE_LIMIT: usize = 10000;
 // The rewrites' iterations
 pub const ITERATION_LIMIT: usize = 30;
+// Number of iterations after which the extractor runs
+pub const N: usize = 1;
 
 // Max PiiGraph size for Slow Extractor Algorithm
 pub const SLOW_LIMIT_START: usize = 10;

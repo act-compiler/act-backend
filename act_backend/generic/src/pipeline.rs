@@ -16,7 +16,7 @@ use egg::{EGraph, Id, Runner, StopReason};
 use backend::ir::egraph::{TensorInfo, TensorOp};
 use backend::isel;
 use backend::{report, SHOW_PROGRESS};
-use backend::{ITERATION_LIMIT, NODE_LIMIT, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
+use backend::{ITERATION_LIMIT, N, NODE_LIMIT, SATURATION_FACTOR, SLOW_LIMIT_START, TIME_LIMIT};
 
 fn print_help(program_name: String) {
   println!(
@@ -492,8 +492,9 @@ fn main() {
       .with_iter_limit(ITERATION_LIMIT)
       .with_time_limit(TIME_LIMIT)
       .with_hook(move |runner| {
-        // Extract after every iteration
-        let extract_now = !runner.iterations.is_empty();
+        // Extract every N iterations
+        #[allow(clippy::modulo_one)]
+        let extract_now = runner.iterations.len() % N == 0 && !runner.iterations.is_empty();
         if extract_now {
           search.pass(&runner.egraph, limit);
           limit += 1; // Increment limit to allow for more extraction next time
