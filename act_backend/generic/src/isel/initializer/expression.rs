@@ -1,4 +1,5 @@
 use crate::isel::initializer::parser::HLORegion;
+use crate::isel::initializer::shapes::shape_text;
 
 #[derive(Debug, Clone)]
 pub enum HLOExpr {
@@ -155,6 +156,27 @@ fn required<'a>(
     .find(|(given, _)| given == name)
     .map(|(_, value)| value.trim_start_matches('{').trim_end_matches('}').trim())
     .ok_or_else(|| format!("{} gives {} no {} attribute", tsymbol, toperator, name))
+}
+
+// A list of dimensions, or why an entry is not one
+fn dimension_list(tsymbol: &str, name: &str, text: &str) -> Result<Vec<i32>, String> {
+  let mut dimensions = vec![];
+  for text in text
+    .split(',')
+    .map(str::trim)
+    .filter(|text| !text.is_empty())
+  {
+    match text.parse::<i32>() {
+      Ok(dimension) if dimension >= 0 => dimensions.push(dimension),
+      _ => {
+        return Err(format!(
+          "{} gives '{}' in {}, which is not a dimension",
+          tsymbol, text, name
+        ))
+      }
+    }
+  }
+  Ok(dimensions)
 }
 
 // One argument per field of the kernel's line
@@ -314,6 +336,7 @@ pub fn parse_hlo_expr(
 
     "transpose" => {
       let dim_str = required(tsymbol, toperator, &attributes, "dimensions")?;
+      let dimensions = dimension_list(tsymbol, "dimensions", dim_str)?;
 
       let source = toperands.trim().to_string();
 
@@ -323,7 +346,7 @@ pub fn parse_hlo_expr(
         tshape: tshape.to_string(),
         ttile: ttile.to_string(),
         source,
-        dimensions: dim_str.to_string(),
+        dimensions: shape_text(&dimensions),
       }
     }
 
@@ -340,7 +363,8 @@ pub fn parse_hlo_expr(
 
     "reduce" => {
       // The dimensions it sums over, dimensions={0,1}, and its region
-      let dimensions = required(tsymbol, toperator, &attributes, "dimensions")?.to_string();
+      let dim_str = required(tsymbol, toperator, &attributes, "dimensions")?;
+      let dimensions = shape_text(&dimension_list(tsymbol, "dimensions", dim_str)?);
       let to_apply = required(tsymbol, toperator, &attributes, "to_apply")?.to_string();
 
       validate_region_exists(&to_apply, regions)?;

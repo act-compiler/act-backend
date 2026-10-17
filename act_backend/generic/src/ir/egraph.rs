@@ -59,6 +59,39 @@ impl TensorOp {
     }
   }
 
+  // The integers a compared operation's payload holds, in order
+  fn payload_ints(enode: &Option<TensorOp>) -> Option<Vec<i32>> {
+    let data = match enode {
+      Some(
+        TensorOp::OpConcat(data, _)
+        | TensorOp::OpReduceSum(data, _)
+        | TensorOp::OpSlice(data, _)
+        | TensorOp::OpTranspose(data, _),
+      ) => data,
+      _ => return None,
+    };
+    data
+      .split([',', ':'])
+      .filter(|field| !field.trim().is_empty())
+      .map(|field| field.trim().parse().ok())
+      .collect()
+  }
+
+  // Whether a matched e-node's payload holds these integers
+  pub fn payload_is(enode: &Option<TensorOp>, ints: &[i32]) -> bool {
+    TensorOp::payload_ints(enode).as_deref() == Some(ints)
+  }
+
+  // How many integers a matched e-node's payload holds
+  pub fn payload_len(enode: &Option<TensorOp>) -> Option<usize> {
+    TensorOp::payload_ints(enode).map(|ints| ints.len())
+  }
+
+  // The integer at an index of a matched e-node's payload
+  pub fn payload_int(enode: &Option<TensorOp>, index: usize) -> Option<i32> {
+    TensorOp::payload_ints(enode)?.get(index).copied()
+  }
+
   pub fn is_detected_const(&self) -> bool {
     matches!(self, TensorOp::DetectedConst(_))
   }

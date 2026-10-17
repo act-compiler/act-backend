@@ -9,7 +9,7 @@ import taidl.operations
 from taidl import Accelerator
 
 import act_backend
-from act_backend import generate_backend, spec_checks
+from act_backend import generate_backend, isel_ir2isa_rewrites_rs_generator, spec_checks
 from act_backend.isel_ir2isa_rewrites_rs_generator import ELEMENT_TYPES
 from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
 
@@ -176,6 +176,15 @@ def test_operations_are_the_egraphs_own():
     assert {word[:-2] for word, _ in OPERATIONS.values() if word.endswith('_?')} <= carries
 
 
+def test_each_operation_with_attributes_is_compared_or_uncompared():
+    # Each operation taidl gives attributes is in one set
+    carrying = {word for word in OPERATIONS if taidl.operations.OPERATIONS[word][1]}
+    compared = isel_ir2isa_rewrites_rs_generator.COMPARED
+    uncompared = isel_ir2isa_rewrites_rs_generator.UNCOMPARED
+    assert carrying == compared | uncompared
+    assert not compared & uncompared
+
+
 @pytest.mark.parametrize('element_type', grammar_words('TYPE'))
 def test_element_type_handled_or_refused(element_type, tmp_path):
     lines = [
@@ -241,7 +250,7 @@ def test_instruction_with_no_inputs_refused(tmp_path):
 @pytest.mark.parametrize(
     'lines',
     [
-        # Named nowhere, only in a constant, only in an attribute
+        # Named nowhere, only in a constant, in an attribute but not alone
         [IN0, IN1, result(DOT)],
         [
             IN0,
@@ -254,13 +263,16 @@ def test_instruction_with_no_inputs_refused(tmp_path):
             IN0,
             IN1,
             '%a = bf16[64,64] add(%In0, %In1)',
-            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k`], [0:64]}',
+            'ROOT %Out0 = bf16[32,64] slice(%a), slice={[0:`@c.k + 32`], [0:64]}',
         ],
     ],
 )
 def test_computational_attribute_no_shape_names_refused(lines, tmp_path):
     message = refusal(with_semantics(lines, attributes=['k']), tmp_path)
-    assert message == "gemm: no shape of its semantics names the computational attribute 'k'"
+    assert message == (
+        "gemm: no shape of its semantics names the computational attribute 'k', "
+        "and no operation's attribute holds it alone or times a positive integer"
+    )
 
 
 @pytest.mark.parametrize('dimension', ['@c.k*(64+64)', '@c.k * @c.k', '@c.k + 1', '@c.k * 0'])
@@ -273,6 +285,15 @@ def test_attribute_held_by_no_dimension_refused(dimension, tmp_path):
     assert message == (
         "gemm: no dimension of its semantics holds the computational attribute 'k' "
         'alone or times a positive integer'
+    )
+
+
+def test_strided_slice_refused(tmp_path):
+    lines = [IN0, 'ROOT %Out0 = bf16[32,64] slice(%In0), slice={[0:64:2], [0:64]}']
+    message = refusal(with_semantics(lines, 1), tmp_path)
+    assert message == (
+        "gemm: its semantics slices '[0:64:2]' with the stride 2, "
+        'where the selector takes a stride of 1'
     )
 
 

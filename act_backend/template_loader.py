@@ -9,6 +9,11 @@ KEY = re.compile(r'\{\{(\w+)\}\}')
 LINE_WIDTH = 100
 
 
+def fits(text: str) -> bool:
+    """Whether every line of text fits the formatters' line width"""
+    return all(len(line) <= LINE_WIDTH for line in text.split('\n'))
+
+
 class TemplateLoader:
     """Manages loading and caching of templates for code generation"""
 
@@ -48,7 +53,7 @@ class TemplateLoader:
     def render_fitting(self, template_file: str, **kwargs) -> str:
         """Render a template, or its _wrapped twin where a line would not fit"""
         text = self.render(template_file, **kwargs)
-        if all(len(line) <= LINE_WIDTH for line in text.split('\n')):
+        if fits(text):
             return text
         return self.render(template_file.removesuffix('.txt') + '_wrapped.txt', **kwargs)
 

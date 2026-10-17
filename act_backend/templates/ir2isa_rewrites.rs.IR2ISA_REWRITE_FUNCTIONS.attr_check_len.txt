@@ -1,0 +1,3 @@
+  if TensorOp::payload_len(&lhs_enodes[{{index}}]) != Some({{count}}) {
+    return false;
+  }

@@ -8,6 +8,8 @@ from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     RustGeneratorVisitor,
     attribute_reading,
+    payload_reading,
+    slice_ranges,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
 from .semantics_visitor import OperandVisitor
@@ -62,6 +64,16 @@ class SemanticsChecker(OperandVisitor):
                     f'where the selector takes {count}'
                 )
             self.read.update(named)
+        # A slice's payload holds each range's start and limit
+        if word == 'slice':
+            ranges = ctx.attributes().attribute(0).attribute_value().slice_list()
+            for bounds in slice_ranges(ranges):
+                if len(bounds) == 3 and bounds[2].getText() != '1':
+                    written = ':'.join(bound.getText() for bound in bounds)
+                    raise ValueError(
+                        f"{self.name}: its semantics slices '[{written}]' with the stride "
+                        f'{bounds[2].getText()}, where the selector takes a stride of 1'
+                    )
         self.values.append(value)
         if ctx.ROOT():
             self.roots.append(value)
@@ -151,14 +163,18 @@ def check_semantics(instructions):
         # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
         lines = visitor.visit(instruction.instr_semantics_ast)
+        expressions = instruction.instr_expression_asts
         for attribute in instruction.comp_attr:
+            # Else some operation's attribute holds it alone or times a positive integer
             if attribute not in lines['comp_attributes']:
-                raise ValueError(
-                    f'{name}: no shape of its semantics names the computational attribute '
-                    f"'{attribute}'"
-                )
+                if payload_reading(lines['assignments'], attribute, expressions) is None:
+                    raise ValueError(
+                        f'{name}: no shape of its semantics names the computational attribute '
+                        f"'{attribute}', and no operation's attribute holds it alone or times a "
+                        'positive integer'
+                    )
             # Some dimension holds it alone or times a positive integer
-            if attribute_reading(lines['assignments'], attribute) is None:
+            elif attribute_reading(lines['assignments'], attribute) is None:
                 raise ValueError(
                     f'{name}: no dimension of its semantics holds the computational attribute '
                     f"'{attribute}' alone or times a positive integer"

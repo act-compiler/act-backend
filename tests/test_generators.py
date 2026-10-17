@@ -1,8 +1,10 @@
 """Unit tests of the generator functions, without a build."""
 
 import re
+import subprocess
 
 import pytest
+from conftest import TREE_DIR
 from taidl import Accelerator
 
 from act_backend import ir_egraph_rs_generator
@@ -153,6 +155,53 @@ def test_attribute_read_from_a_second_dimension():
     guard = 'if lhs_metadata[0].shape.len() <= 1 { return false; }'
     assert f'{guard} let attr_n = lhs_metadata[0].shape[1];' in functions
     assert functions.count('let attr_n = lhs_metadata[0].shape[1];') == 3
+
+
+def rustfmt_complaints(source, tmp_path):
+    """Return what rustfmt would change in a Rust source, by the tree's settings"""
+    path = tmp_path / 'source.rs'
+    path.write_text(source.rstrip('\n') + '\n')
+    check = ['rustfmt', '--check', '--config-path', TREE_DIR, str(path)]
+    run = subprocess.run(check, capture_output=True, text=True, check=False)
+    return run.stdout + run.stderr
+
+
+def test_wide_compared_values_are_laid_out_as_rustfmt_lays_them(templates, tmp_path):
+    acc = Accelerator('WIDE')
+    acc.add_data_model('d1', [512], [64], 'bf16')
+    # A long name, read from a payload over its factor
+    name = '@c.the_first_row_of_the_window_in_rows_x'
+    instr = acc.add_instruction('named', [name[3:]], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['16']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[16,64] slice(%In0), slice={{[`2 * {name}`:`2 * {name} + 16`], [0:64]}};
+}}
+""")
+    instr = acc.add_instruction('far', ['offset_rows'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.offset_rows']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['16']]])
+    rows = '@c.offset_rows'
+    # A value too wide for its check, and one too wide for a line
+    wide = f'{rows} + 16 + 0 * {rows} + 0'
+    wider = ' + '.join([f'({rows} - {rows}) * 2'] * 4) + f' - -{rows} * 1'
+    # Wide operands too: a product and a negation of wide brackets
+    total = ' + '.join([rows] * 6)
+    wider += f' + 2 * ({total}) - -({total})'
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[`{rows}`,64] parameter(0);
+    ROOT %Out0 = bf16[16,64] slice(%In0), slice={{[`{wide}`:`{wider}`], [0:64]}};
+}}
+""")
+    named, far = get_instruction_metadata(acc.instructions)
+    functions = generate_ir2isa_rust_functions(far, templates)
+    assert 'let value = attr_offset_rows + 16 + 0 * attr_offset_rows + 0;' in functions
+    functions += '\n' + generate_ir2isa_rust_functions(named, templates)
+    assert 'let attr_the_first_row_of_the_window_in_rows_x = value / 2;' in functions
+    assert rustfmt_complaints(functions, tmp_path) == ''
 
 
 def test_address_ranges(accelerator, templates):

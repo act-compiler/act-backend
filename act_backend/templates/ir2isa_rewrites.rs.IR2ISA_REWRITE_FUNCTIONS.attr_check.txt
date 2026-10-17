@@ -1,0 +1,3 @@
+  if !TensorOp::payload_is(&lhs_enodes[{{index}}], &[{{ints}}]) {
+    return false;
+  }
