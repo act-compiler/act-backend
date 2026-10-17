@@ -12,7 +12,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
     RustGeneratorVisitor,
     attribute_factor,
 )
-from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
+from .isel_ir2isa_rewrites_txt_generator import OPERATIONS, RewriteRuleVisitor, repeated_leaf
 from .semantics_visitor import OperandVisitor
 
 # The e-graph's operators, by their rewrite words
@@ -536,6 +536,13 @@ def check_semantics(instructions):
                     f"{name}: its result's first dimension '{dimension}' is not the computational "
                     f"attribute '{attribute}' alone or times a positive integer"
                 )
+        # A rewrite repeating a variable or leaf never matches
+        leaf = repeated_leaf(RewriteRuleVisitor().visit(instruction.instr_semantics_ast))
+        if leaf:
+            raise ValueError(
+                f"{name}: its semantics repeats '{leaf}' on the left side of its rewrite, "
+                'and a rewrite that repeats a leaf never matches'
+            )
 
 
 def address_attribute(start):

@@ -15,7 +15,7 @@ from act_backend.isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
     generate_ir2isa_rust_functions,
 )
-from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS
+from act_backend.isel_ir2isa_rewrites_txt_generator import OPERATIONS, repeated_leaf
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
 from act_backend.template_loader import get_backend_template_loader
@@ -417,6 +417,35 @@ def test_first_dimension_that_hides_its_attribute_refused(dimension, tmp_path):
         f"gemm: its result's first dimension '{dimension}' is not the computational "
         "attribute 'k' alone or times a positive integer"
     )
+
+
+def test_rewrite_that_repeats_a_leaf_refused(tmp_path):
+    lines = [
+        IN0,
+        IN1,
+        '%zero = bf16[64,64] constant(0)',
+        '%one = bf16[64,64] constant(1)',
+        '%a = bf16[64,64] add(%In0, %zero)',
+        '%b = bf16[64,64] add(%In1, %one)',
+        result('add(%a, %b)'),
+    ]
+    message = refusal(with_semantics(lines), tmp_path)
+    assert message == (
+        "gemm: its semantics repeats '(constant_?)' on the left side of its rewrite, "
+        'and a rewrite that repeats a leaf never matches'
+    )
+
+
+def test_rewrites_of_the_tree_repeat_no_leaf():
+    rewrites = os.path.join(
+        os.path.dirname(act_backend.__file__), 'generic', 'src', 'isel', 'rewrites'
+    )
+    with open(os.path.join(rewrites, 'ir2ir_rewrites.txt')) as f:
+        for rewrite in f.read().splitlines():
+            left = rewrite.split(':', 1)[1].split('=>')[0]
+            assert repeated_leaf(left) is None, rewrite
+    # A repeated variable is a repeated leaf too
+    assert repeated_leaf('(add ?x (exponential ?x))') == '?x'
 
 
 def test_address_attribute_in_a_semantics_refused(tmp_path):
