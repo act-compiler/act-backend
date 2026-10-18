@@ -1,0 +1,7 @@
+  if !TensorOp::holds_constant(
+    egraph,
+    lhs_eclasses[{{index}}],
+    "{{literal}}",
+  ) {
+    return false;
+  }

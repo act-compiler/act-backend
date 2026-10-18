@@ -246,15 +246,8 @@ def test_instruction_with_no_inputs_refused(tmp_path):
 @pytest.mark.parametrize(
     'lines',
     [
-        # Named nowhere, only in a constant, in an attribute but not alone
+        # Named nowhere, in an attribute but not alone
         [IN0, IN1, result(DOT)],
-        [
-            IN0,
-            IN1,
-            '%c = bf16[64,64] constant(`@c.k`)',
-            '%a = bf16[64,64] add(%In0, %c)',
-            result('add(%a, %In1)'),
-        ],
         [
             IN0,
             IN1,
@@ -290,6 +283,26 @@ def test_strided_slice_refused(tmp_path):
     assert message == (
         "gemm: its semantics slices '[0:64:2]' with the stride 2, "
         'where the selector takes a stride of 1'
+    )
+
+
+@pytest.mark.parametrize(
+    ('element_type', 'literal'),
+    [
+        ('u8', '256'),
+        ('u8', '-1'),
+        ('s8', '0.5'),
+        ('pred', '2'),
+        ('f32', 'true'),
+        ('bf16', '`64 * 2`'),
+    ],
+)
+def test_constant_whose_literal_is_not_one_value_refused(tmp_path, element_type, literal):
+    lines = [IN0, f'%c = {element_type}[64,64] constant({literal})', result('add(%In0, %c)')]
+    message = refusal(with_semantics(lines, 1), tmp_path)
+    assert message == (
+        f"gemm: its semantics gives the constant '%c' the literal '{literal}', "
+        f'which is not one {element_type} value'
     )
 
 

@@ -227,6 +227,68 @@ ENTRY main {
 """
 
 
+def add_offset(acc):
+    """An instruction that adds 0.1 to 32 rows of bf16 on d1, a constant spread over them"""
+    instr = acc.add_instruction('offset', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['32']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[32,64] parameter(0);
+    %tenth = bf16[] constant(0.1);
+    %spread = bf16[32,64] broadcast(%tenth), dimensions={};
+    ROOT %Out0 = bf16[32,64] add(%In0, %spread);
+}
+""")
+
+
+# A kernel that adds the constant TENTH, spread over its rows, to its input
+OFFSET = """HloModule offset, entry_computation_layout={(bf16[32,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %tenth = bf16[] constant(TENTH)
+  %spread = bf16[32,64] broadcast(%tenth), dimensions={}
+  ROOT %b = bf16[32,64] add(%a, %spread)
+}
+"""
+
+
+def add_rescale(acc):
+    """An instruction that takes (x + 1) / 2 + 1 of 32 rows of bf16 on d1, its ones read twice"""
+    instr = acc.add_instruction('rescale', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['32']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[32,64] parameter(0);
+    %one = bf16[] constant(1);
+    %two = bf16[] constant(2);
+    %ones = bf16[32,64] broadcast(%one), dimensions={};
+    %twos = bf16[32,64] broadcast(%two), dimensions={};
+    %a = bf16[32,64] add(%In0, %ones);
+    %b = bf16[32,64] divide(%a, %twos);
+    ROOT %Out0 = bf16[32,64] add(%b, %ones);
+}
+""")
+
+
+# A kernel that takes (x + ONE) / TWO + ONE of its input
+RESCALED = """HloModule rescaled, entry_computation_layout={(bf16[32,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[32,64] parameter(0)
+  %one = bf16[] constant(ONE)
+  %two = bf16[] constant(TWO)
+  %ones = bf16[32,64] broadcast(%one), dimensions={}
+  %twos = bf16[32,64] broadcast(%two), dimensions={}
+  %a = bf16[32,64] add(%x, %ones)
+  %b = bf16[32,64] divide(%a, %twos)
+  ROOT %c = bf16[32,64] add(%b, %ones)
+}
+"""
+
+
 def add_data_model_with_no_access_dimension(acc):
     """A buffer that is one unit of 64 columns"""
     acc.add_data_model('d3', [], [64], 'bf16')
@@ -250,6 +312,8 @@ def work_dir(tmp_path_factory):
         add_f32(acc)
         add_pred(acc)
         add_true_constant(acc)
+        add_offset(acc)
+        add_rescale(acc)
         add_data_model_with_no_access_dimension(acc)
         add_instruction_with_no_semantics(acc)
         return generate_backend(acc, *args, **kwargs)
@@ -270,8 +334,8 @@ def test_backend_compiles_with_the_constructs(work_dir, tmp_path):
     assert sum(instruction_calls(output_path).values()) == 9
 
 
-def compiled_calls(work_dir, tmp_path, kernel):
-    """Compile a kernel's text; return each call of its assembly, a name and its arguments"""
+def compiled(work_dir, tmp_path, kernel):
+    """Compile a kernel's text; return the run and the assembly's path"""
     path = tmp_path / 'kernel.hlo'
     path.write_text(kernel)
     output = tmp_path / 'kernel.py'
@@ -279,6 +343,12 @@ def compiled_calls(work_dir, tmp_path, kernel):
     log = str(tmp_path / 'log')
     arguments = ['--input', str(path), '--output', str(output), '--log', log]
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
+    return run, output
+
+
+def compiled_calls(work_dir, tmp_path, kernel):
+    """Compile a kernel's text; return each call of its assembly, a name and its arguments"""
+    run, output = compiled(work_dir, tmp_path, kernel)
     assert run.returncode == 0, run.stderr
     return [
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
@@ -361,6 +431,37 @@ def test_constants_of_one_text_and_two_shapes_stay_apart(work_dir, tmp_path, oth
     calls = compiled_calls(work_dir, tmp_path, INVERTED_BESIDE.replace('OTHER', other))
     # The constant xor reads keeps its own shape
     assert [name for name, _ in calls] == ['load_pred', 'invert', 'store_pred']
+
+
+@pytest.mark.parametrize('tenth', ['0.1', '0.1001'])
+def test_semantics_constant_matches_its_value_at_its_type(work_dir, tmp_path, tenth):
+    calls = compiled_calls(work_dir, tmp_path, OFFSET.replace('TENTH', tenth))
+    # Both texts read as one bf16 value
+    assert [name for name, _ in calls] == ['load_rm', 'offset', 'store_rm']
+
+
+@pytest.mark.parametrize(
+    'kernel', [OFFSET.replace('TENTH', '0.1006'), INVERTED.replace('true', 'false')]
+)
+def test_semantics_constant_matches_no_other_value(work_dir, tmp_path, kernel):
+    run, _ = compiled(work_dir, tmp_path, kernel)
+    # Neither offset nor invert computes the kernel
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: no assembly found:')
+
+
+def test_semantics_with_two_constants_is_selected(work_dir, tmp_path):
+    kernel = RESCALED.replace('ONE', '1').replace('TWO', '2')
+    calls = compiled_calls(work_dir, tmp_path, kernel)
+    assert [name for name, _ in calls] == ['load_rm', 'rescale', 'store_rm']
+
+
+def test_semantics_constants_match_each_its_own_value(work_dir, tmp_path):
+    kernel = RESCALED.replace('ONE', '2').replace('TWO', '1')
+    run, _ = compiled(work_dir, tmp_path, kernel)
+    # The kernel's ones and twos swapped
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: no assembly found:')
 
 
 # A kernel whose product takes the operands OPERANDS
