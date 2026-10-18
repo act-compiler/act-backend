@@ -1140,6 +1140,32 @@ def test_softmax_is_selected_over_one_value(backend, tmp_path):
     assert [name for name, _ in calls] == ['load_rm', 'softmax', 'store_rm']
 
 
+# Each row's sum from START, spread along it
+ROW_SUM_FROM = f"""HloModule row_sum_from, entry_computation_layout={{(bf16[64,64]{{1,0}})->bf16[64,64]{{1,0}}}}
+
+{REDUCE_ADD}
+
+ENTRY main {{
+  %x = bf16[64,64] parameter(0)
+  %start = bf16[] constant(START)
+  %s = bf16[64] reduce(%x, %start), dimensions={{1}}, to_apply=%reduce_add
+  ROOT %b = bf16[64,64] broadcast(%s), dimensions={{0}}
+}}
+"""
+
+
+def test_sum_from_another_start_is_not_read_as_the_sum_from_0(backend, tmp_path):
+    path = tmp_path / 'kernel.hlo'
+    path.write_text(ROW_SUM_FROM.replace('START', '1'))
+    output = tmp_path / 'kernel.py'
+    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
+    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
+    # rowsum sums from 0, never from 1
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: no assembly found:')
+    assert not output.exists()
+
+
 # The exponentials of the transpose of 32 rows
 TURNED_EXP = """HloModule turned_exp, entry_computation_layout={(bf16[32,64]{1,0})->bf16[64,32]{1,0}}
 

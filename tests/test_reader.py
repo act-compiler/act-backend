@@ -7,11 +7,11 @@ import pytest
 from conftest import compiled, instruction_calls, kernel
 
 
-def region(name, operation):
-    """A reduce region over two bf16 scalars that applies one binary operation"""
+def region(name, operation, dtype='bf16'):
+    """A reduce region over two scalars that applies one binary operation"""
     return (
-        f'%{name} (x: bf16[], y: bf16[]) -> bf16[] {{\n  %x = bf16[] parameter(0)\n'
-        f'  %y = bf16[] parameter(1)\n  ROOT %v = bf16[] {operation}(%x, %y)\n}}\n'
+        f'%{name} (x: {dtype}[], y: {dtype}[]) -> {dtype}[] {{\n  %x = {dtype}[] parameter(0)\n'
+        f'  %y = {dtype}[] parameter(1)\n  ROOT %v = {dtype}[] {operation}(%x, %y)\n}}\n'
     )
 
 
@@ -87,6 +87,17 @@ ZERO = '%z = bf16[] constant(0)'
             "%r gives 'y' in dimensions, which is not a dimension",
         ),
         (
+            kernel(
+                A,
+                '%i = bf16[] parameter(1)',
+                '%r = bf16[64] reduce(%a, %i), dimensions={1}, to_apply=%sum',
+                'ROOT %c = bf16[64,64] broadcast(%r), dimensions={0}',
+                header='HloModule init, entry_computation_layout={(bf16[64,64]{1,0}, bf16[])->bf16[64,64]{1,0}}',
+                regions=region('sum', 'add'),
+            ),
+            '%r starts its sum from %i, where the backend supports a sum only from 0, its identity',
+        ),
+        (
             kernel(A, 'ROOT %c = f8e4m3fn[64,64] convert(%a)'),
             "the element type 'f8e4m3fn' is not one the backend supports",
         ),
@@ -152,6 +163,7 @@ ZERO = '%z = bf16[] constant(0)'
         'divide_region',
         'three_operands',
         'reduce_not_a_number',
+        'sum_from_parameter',
         'element_type',
         'dimension',
         'type',
@@ -234,6 +246,18 @@ def test_kernel_attributes_are_read_by_name(endings_dir, tmp_path):
     assert "concat[axis='0']" in nodes
     # A reduce's dimensions, then its result type
     assert "reduce[dims='0,1:bf16']" in nodes
+
+
+@pytest.mark.parametrize('dtype', ['bf16', 'f16', 'f32'])
+def test_sum_from_zero_is_read(endings_dir, tmp_path, dtype):
+    text = kernel(
+        f'%a = {dtype}[64,64] parameter(0)',
+        f'%z = {dtype}[] constant(0)',
+        f'ROOT %r = {dtype}[] reduce(%a, %z), dimensions={{0,1}}, to_apply=%sum',
+        header=f'HloModule zero, entry_computation_layout={{({dtype}[64,64]{{1,0}})->{dtype}[]}}',
+        regions=region('sum', 'add', dtype),
+    )
+    assert f"reduce[dims='0,1:{dtype}']" in read_nodes(endings_dir, tmp_path, text)
 
 
 def test_dot_dimensions_are_read_by_name(endings_dir, tmp_path):
