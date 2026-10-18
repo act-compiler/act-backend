@@ -2,16 +2,89 @@
 
 import os
 
-from .expression_writer import source
+from .expression_writer import chain, source
 from .instruction_info import get_attribute_name, get_type_names
-from .template_loader import fill_placeholders, get_backend_template_loader
+from .template_loader import call_lines, fill_placeholders, fits, get_backend_template_loader
 
 
-def generate_get_h_method(index, addr_var, size_expr, templates):
-    range_pair = f'{addr_var}, MAKE_SUM({addr_var}, {size_expr})'
-    return templates.render_lines(
+def generate_size(size):
+    """A size's local as clang-format lays it out: on one line, after its =, or after operators"""
+    value = source(size)
+    for local in (f'    int64 size = {value};', f'    int64 size =\n        {value};'):
+        if fits(local):
+            return local
+    # Each operand on the line it fits, an operator ending a line
+    operands, operators = chain(size)
+    afters = [*(f' {operator}' for operator in operators), ';']
+    first = f'    int64 size = {operands[0]}{afters[0]}'
+    if fits(first):
+        # The rest aligned after the =
+        lines, indent = [first], ' ' * 17
+    else:
+        # All at the continuation indent below it
+        lines, indent = ['    int64 size =', f'        {operands[0]}{afters[0]}'], ' ' * 8
+    for operand, after in zip(operands[1:], afters[1:]):
+        if fits(f'{lines[-1]} {operand}{after}'):
+            lines[-1] += f' {operand}{after}'
+        else:
+            lines.append(f'{indent}{operand}{after}')
+    return '\n'.join(lines)
+
+
+def generate_range(address):
+    """A range's return as clang-format lays it out, each layout tried until one fits"""
+    for lines in (
+        [f'    return {{{{{address}, MAKE_SUM({address}, size)}}}};'],
+        ['    return {', f'        {{{address}, MAKE_SUM({address}, size)}}}};'],
+        [f'    return {{{{{address},', f'             MAKE_SUM({address}, size)}}}};'],
+        ['    return {', f'        {{{address},', f'         MAKE_SUM({address}, size)}}}};'],
+        [
+            f'    return {{{{{address},',
+            f'             MAKE_SUM({address},',
+            '                      size)}};',
+        ],
+    ):
+        if fits('\n'.join(lines)):
+            break
+    return '\n'.join(lines)
+
+
+def generate_get_h_method(index, addr_var, size, templates):
+    range_pair = f'{addr_var}, MAKE_SUM({addr_var}, {source(size)})'
+    method = templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=range_pair
     )
+    if fits(method):
+        return method
+    # The size first, as a local of its own
+    return templates.render_lines(
+        'instructions.h.INSTRUCTION_CLASSES.get_h_method_wrapped.txt',
+        index=index,
+        size=generate_size(size),
+        range=generate_range(addr_var),
+    )
+
+
+def generate_constructor_packed(class_name, op_name, attributes):
+    """A constructor too wide for its two templates, packed as clang-format packs it"""
+    parameters = ['Tensor *y', 'std::vector<Tensor *> X', *(f'int64 {a}' for a in attributes)]
+    declarator = call_lines(f'  {class_name}(', parameters, ')', 2, declaration=True)
+    # Initializers as many to a line as fit, one too wide broken after its parenthesis
+    pieces = [('Instruction(', f'"{op_name}", y, X)'), *((f'{a}(', f'{a})') for a in attributes)]
+    lines = ['      :']
+    for k, (head, value) in enumerate(pieces):
+        value += ' {' if k == len(pieces) - 1 else ','
+        column = len(lines[-1]) + 5
+        if fits(f'{lines[-1]} {head}{value}'):
+            lines[-1] += f' {head}{value}'
+        elif fits(f'        {head}{value}'):
+            lines.append(f'        {head}{value}')
+        elif fits(f'{lines[-1]} {head}') and fits(' ' * column + value):
+            lines[-1] += f' {head}'
+            lines.append(' ' * column + value)
+        else:
+            lines += [f'        {head}', f'            {value}']
+    return '\n'.join([declarator, *lines])
 
 
 def generate_instruction_class(instruction, class_name, templates):
@@ -30,7 +103,11 @@ def generate_instruction_class(instruction, class_name, templates):
     # A blank line parts the two kinds of member
     addr_var_members = '\n' if comp_attrs else ''
     for param in params:
-        addr_var_members += f'  IntVar *{names[param]} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);\n'
+        member = f'  IntVar *{names[param]} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);'
+        if not fits(member):
+            # Broken after its =
+            member = f'  IntVar *{names[param]} =\n      MAKE_INT_VAR(INT64_MIN, INT64_MAX);'
+        addr_var_members += member + '\n'
 
     # get_h methods: the output's first (get_h0), then the inputs'
     get_h_methods = ''
@@ -40,9 +117,8 @@ def generate_instruction_class(instruction, class_name, templates):
     operands = [*instruction.instr_output_asts, *instruction.instr_input_asts]
     for h_index, (_, starts, sizes) in enumerate(operands):
         addr_var = source(starts[0])
-        size_expr = source(sizes[0])
 
-        get_h_methods += generate_get_h_method(h_index, addr_var, size_expr, templates)
+        get_h_methods += generate_get_h_method(h_index, addr_var, sizes[0], templates)
         get_h_cases += templates.render_lines(
             'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
         )
@@ -65,20 +141,38 @@ def generate_instruction_class(instruction, class_name, templates):
         parameters=comp_attr_params,
         initializers=comp_attr_init,
     )
+    if not fits(constructor):
+        constructor = generate_constructor_packed(
+            class_name, op_name, [names[attr] for attr in comp_attrs]
+        )
 
     # The text names each attribute's value, a line each
     values = [(attr, names[attr]) for attr in comp_attrs]
     values += [(param, f'{names[param]}->Value()') for param in params]
     str_pieces = ''
     for index, (attr, value) in enumerate(values):
-        str_pieces += templates.render_lines(
+        str_pieces += templates.render_fitting(
             'instructions.h.INSTRUCTION_CLASSES.str_piece.txt',
             label=(', ' if index else '') + f'{attr} = ',
             value=value,
         )
+        str_pieces += '\n'
 
-    # Generate get_int_var list
-    get_int_var_list = ', '.join(names[param] for param in params)
+    # Address variables on one line, else pushed a line each
+    variables = [names[param] for param in params]
+    get_int_var = templates.render_lines(
+        'instructions.h.INSTRUCTION_CLASSES.get_int_var.txt', variables=', '.join(variables)
+    )
+    if not fits(get_int_var):
+        pushes = ''.join(
+            templates.render_lines(
+                'instructions.h.INSTRUCTION_CLASSES.get_int_var_push.txt', variable=variable
+            )
+            for variable in variables
+        )
+        get_int_var = templates.render_lines(
+            'instructions.h.INSTRUCTION_CLASSES.get_int_var_pushed.txt', pushes=pushes
+        )
 
     # Generate complete class using template
     return templates.render_lines(
@@ -90,7 +184,7 @@ def generate_instruction_class(instruction, class_name, templates):
         CONSTRUCTOR=constructor,
         STR_PIECES=str_pieces,
         GET_H_CASES=get_h_cases,
-        GET_INT_VAR_LIST=get_int_var_list,
+        GET_INT_VAR=get_int_var,
     )
 
 

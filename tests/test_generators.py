@@ -13,7 +13,10 @@ from act_backend.instruction_info import extract_instruction_info, get_type_name
 from act_backend.isel_applier_rs_generator import generate_function_mappings
 from act_backend.isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rust_functions
 from act_backend.isel_ir2isa_rewrites_txt_generator import generate_rewrite_rule
-from act_backend.malloc_act_malloc_cc_generator import generate_buffer_names
+from act_backend.malloc_act_malloc_cc_generator import (
+    generate_buffer_names,
+    generate_topological_order,
+)
 from act_backend.malloc_globals_cc_generator import generate_globals_models
 from act_backend.malloc_instructions_h_generator import generate_instruction_class
 from act_backend.malloc_parser_cc_generator import generate_parser_instructions
@@ -233,6 +236,101 @@ def test_long_attribute_names_are_laid_out_within_the_width(length, templates, t
     assert rustfmt_complaints(functions, tmp_path) == ''
 
 
+def clang_format_complaints(source, tmp_path):
+    """Return what clang-format would change in a C++ source, by the tree's settings"""
+    path = tmp_path / 'source.cc'
+    path.write_text(source.rstrip('\n') + '\n')
+    style = f'--style=file:{TREE_DIR}/.clang-format'
+    run = subprocess.run(
+        ['clang-format', '--dry-run', '-Werror', style, str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return run.stdout + run.stderr
+
+
+@pytest.mark.parametrize('length', [30, 60, 70, 76])
+def test_long_attribute_names_are_laid_out_as_clang_format_lays_them(length, templates, tmp_path):
+    instructions = long_names(length).instructions
+    class_names = get_type_names([instruction.instruction for instruction in instructions])
+    classes = '\n'.join(
+        generate_instruction_class(instruction, class_names[instruction.instruction], templates)
+        for instruction in instructions
+    )
+    # The parser's cases, closed as the generic parser closes them
+    cases = generate_parser_instructions(instructions, templates)
+    parser = (
+        f'Instruction *parse() {{\n  if (op_name == "") {{\n    return nullptr;\n{cases}\n  }}\n}}'
+    )
+    for source in (classes, parser):
+        # Every line within the width, as clang-format lays it out
+        assert max(len(line) for line in source.split('\n')) <= 100
+        assert clang_format_complaints(source, tmp_path) == ''
+
+
+# The longest names each layout of their C++ lines holds: a computational and an address attribute's
+ATTRIBUTE_NAME_WIDTH = 100 - len('            attr_) {')
+ADDRESS_NAME_WIDTH = 100 - len('            attr_->Value());')
+
+
+def test_attribute_names_of_every_length_are_laid_out_as_clang_format_lays_them(
+    templates, tmp_path
+):
+    acc = Accelerator('NAMED')
+    acc.add_data_model('d1', [512], [64], 'bf16')
+    # Two computational attributes of each length, the size of the output their sum
+    for length in range(1, ATTRIBUTE_NAME_WIDTH + 1):
+        first, second = (f'@c.{(letter + str(length)).ljust(length, letter)}' for letter in 'fs')
+        lines = [
+            f'%In0 = bf16[`{first}`,64] parameter(0)',
+            f'%In1 = bf16[`{second}`,64] parameter(1)',
+            f'ROOT %Out0 = bf16[`{first} + {second}`,64] concatenate(%In0, %In1), dimensions={{0}}',
+        ]
+        sizes = [first, second, f'{first} + {second}']
+        add_on_d1(acc, f'join_{length}', sizes, lines, [first[3:], second[3:]])
+    # Two address attributes of each length, the size a computational attribute
+    for length in range(1, ADDRESS_NAME_WIDTH + 1):
+        source, target = ((letter + str(length)).ljust(length, letter) for letter in 'ab')
+        instr = acc.add_instruction(f'move_{length}', ['n'], [source, target])
+        instr.set_inputs([['d1', [f'@a.{source}'], ['@c.n']]])
+        instr.set_outputs([['d1', [f'@a.{target}'], ['@c.n']]])
+        instr.add_semantics(
+            'ENTRY {\n    %In0 = bf16[`@c.n`,64] parameter(0);\n'
+            '    ROOT %Out0 = bf16[`@c.n`,64] exponential(%In0);\n}\n'
+        )
+    instructions = acc.instructions
+    class_names = get_type_names([instruction.instruction for instruction in instructions])
+    classes = '\n'.join(
+        generate_instruction_class(instruction, class_names[instruction.instruction], templates)
+        for instruction in instructions
+    )
+    # The parser's cases, closed as the generic parser closes them
+    cases = generate_parser_instructions(instructions, templates)
+    parser = (
+        f'Instruction *parse() {{\n  if (op_name == "") {{\n    return nullptr;\n{cases}\n  }}\n}}'
+    )
+    for source in (classes, parser):
+        # Every line within the width, as clang-format lays it out
+        assert max(len(line) for line in source.split('\n')) <= 100
+        assert clang_format_complaints(source, tmp_path) == ''
+
+
+@pytest.mark.parametrize('length', [30, 60, 76])
+def test_long_data_model_names_are_laid_out_as_clang_format_lays_them(length, templates, tmp_path):
+    acc = Accelerator('LONG')
+    # One access dimension and two, each name of about the length given
+    acc.add_data_model(('the_staging_buffer_' * 5)[:length].rstrip('_'), [512], [64], 'bf16')
+    acc.add_data_model(('the_result_buffer_' * 5)[:length].rstrip('_'), [128, 64], [64], 'bf16')
+    models = '\n'.join(generate_globals_models(acc.data_model))
+    storages = f'std::map<std::string, Storage *> g_storage = {{\n{models}\n}};'
+    order = f'void schedule() {{\n{generate_topological_order(acc.data_model, templates)}\n}}'
+    for source in (storages, order):
+        # Every line within the width, as clang-format lays it out
+        assert max(len(line) for line in source.split('\n')) <= 100
+        assert clang_format_complaints(source, tmp_path) == ''
+
+
 def test_address_ranges(accelerator, templates):
     load_rm = accelerator.instructions[0]
     load_rm = squeeze(generate_instruction_class(load_rm, 'InstrLoadRm', templates))
@@ -291,7 +389,7 @@ def test_rule_functions(accelerator):
 
 def test_buffer_names(accelerator, templates):
     # Every buffer but HBM, in the spec's order
-    assert generate_buffer_names(accelerator.data_model, templates) == '"Modeld1", "Modeld2"'
+    assert generate_buffer_names(accelerator.data_model, templates) == ['"Modeld1"', '"Modeld2"']
 
 
 def test_parser_cases(accelerator, templates):

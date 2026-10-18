@@ -1,0 +1,4 @@
+  std::vector<std::string> buffer_names = {
+{{buffer_names}}
+  };
+  auto scheduled = scheduler::topological(instructions, root, buffer_names);

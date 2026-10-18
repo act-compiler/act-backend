@@ -1,17 +1,20 @@
 import os
 
 from .instruction_info import get_attribute_name, get_graph_name, get_type_names
-from .template_loader import fill_placeholders, get_backend_template_loader
+from .template_loader import call_lines, fill_placeholders, get_backend_template_loader
 
 
 def generate_parser_instruction(instruction, class_name, templates):
     op_name = get_graph_name(instruction.instruction)
     comp_attrs = instruction.comp_attr
+    # The instruction built from its tensors and attributes
+    arguments = ['lhs_tensor', 'rhs_tensors', *map(get_attribute_name, comp_attrs)]
+    construction = call_lines(f'    return new {class_name}(', arguments, ');', 4)
 
     if comp_attrs:
         # Each attribute from the one string they travel in
         parses = '\n'.join(
-            templates.render(
+            templates.render_fitting(
                 'parser.cc.INSTRUCTION_CASES.attribute.txt',
                 variable=get_attribute_name(attr_name),
             )
@@ -20,13 +23,14 @@ def generate_parser_instruction(instruction, class_name, templates):
         return templates.render(
             'parser.cc.INSTRUCTION_CASES.case_with_attr.txt',
             op_name=op_name,
-            ClassName=class_name,
             attribute_parses=parses,
-            attributes=', '.join(get_attribute_name(attr_name) for attr_name in comp_attrs),
+            construction=construction,
         )
     else:
         return templates.render(
-            'parser.cc.INSTRUCTION_CASES.case_no_attr.txt', op_name=op_name, ClassName=class_name
+            'parser.cc.INSTRUCTION_CASES.case_no_attr.txt',
+            op_name=op_name,
+            construction=construction,
         )
 
 

@@ -24,6 +24,5 @@ public:
   }
 
   std::vector<IntVar *> get_int_var() override {
-    return {{{GET_INT_VAR_LIST}}};
-  }
+{{GET_INT_VAR}}  }
 };
