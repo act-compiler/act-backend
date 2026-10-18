@@ -1,12 +1,16 @@
 """Tests of how a compile ends: what it says and the output it leaves."""
 
+import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
+import jax.numpy as jnp
+import numpy as np
 import pytest
 from conftest import add_moves, add_on_d1, compiled, instruction_calls, kernel
 from taidl import Accelerator
@@ -409,3 +413,237 @@ def test_compile_is_quiet_unless_asked_for_its_search(backend, tmp_path):
     assert 'Starting Phase 1: Instruction Selection...' in verbose.stdout
     assert 'Starting Google OR-Tools constraint solver...' in verbose.stdout
     assert verbose.stderr == ''
+
+
+# The header of a kernel of one bf16 input of 32 rows
+ROWS_32 = 'HloModule constant, entry_computation_layout={(bf16[32,64]{1,0})->bf16[32,64]{1,0}}'
+
+# An input plus a constant other than the identity
+CONSTANT = kernel(
+    '%a = bf16[32,64] parameter(0)',
+    '%k = bf16[32,64] constant(3)',
+    'ROOT %c = bf16[32,64] add(%a, %k)',
+    header=ROWS_32,
+)
+
+# An input plus a constant that operators build
+BUILT = kernel(
+    '%a = bf16[32,64] parameter(0)',
+    '%f = s32[] constant(5)',
+    '%b = s32[32,64] broadcast(%f), dimensions={}',
+    '%s = s32[32,64] add(%b, %b)',
+    '%k = bf16[32,64] convert(%s)',
+    'ROOT %c = bf16[32,64] add(%a, %k)',
+    header=ROWS_32,
+)
+
+
+def plus(*lines, regions=''):
+    """A kernel of an input plus the constant %k the lines build"""
+    return kernel(
+        '%a = bf16[32,64] parameter(0)',
+        *lines,
+        'ROOT %c = bf16[32,64] add(%a, %k)',
+        header=ROWS_32,
+        regions=regions,
+    )
+
+
+def summed(dtype):
+    """A reduce region that sums two scalars of one type"""
+    return (
+        f'%sum (x: {dtype}[], y: {dtype}[]) -> {dtype}[] {{\n  %x = {dtype}[] parameter(0)\n'
+        f'  %y = {dtype}[] parameter(1)\n  ROOT %v = {dtype}[] add(%x, %y)\n}}\n'
+    )
+
+
+# Each constant an operator builds and the value it holds
+BUILT_BY = {
+    'divide_then_narrow': (
+        plus(
+            '%n = s32[32,64] constant(1000)',
+            '%d = s32[32,64] constant(300)',
+            '%q = s32[32,64] divide(%n, %d)',
+            '%s = s8[32,64] convert(%q)',
+            '%k = bf16[32,64] convert(%s)',
+        ),
+        3,
+    ),
+    'divide_then_shift': (
+        plus(
+            '%n = s32[32,64] constant(-8)',
+            '%d = s32[32,64] constant(2)',
+            '%q = s32[32,64] divide(%n, %d)',
+            '%one = s32[32,64] constant(1)',
+            '%s = s32[32,64] shift-right-logical(%q, %one)',
+            '%k = bf16[32,64] convert(%s)',
+        ),
+        2147483646,
+    ),
+    'negative_divide': (
+        plus(
+            '%n = s32[32,64] constant(-7)',
+            '%d = s32[32,64] constant(2)',
+            '%q = s32[32,64] divide(%n, %d)',
+            '%k = bf16[32,64] convert(%q)',
+        ),
+        -3,
+    ),
+    'or': (
+        plus(
+            '%p = s32[32,64] constant(5)',
+            '%q = s32[32,64] constant(3)',
+            '%o = s32[32,64] or(%p, %q)',
+            '%k = bf16[32,64] convert(%o)',
+        ),
+        7,
+    ),
+    'xor': (
+        plus(
+            '%p = s32[32,64] constant(5)',
+            '%q = s32[32,64] constant(3)',
+            '%o = s32[32,64] xor(%p, %q)',
+            '%k = bf16[32,64] convert(%o)',
+        ),
+        6,
+    ),
+    'shift_left': (
+        plus(
+            '%p = s32[32,64] constant(1)',
+            '%q = s32[32,64] constant(3)',
+            '%o = s32[32,64] shift-left(%p, %q)',
+            '%k = bf16[32,64] convert(%o)',
+        ),
+        8,
+    ),
+    'signed_shift_right': (
+        plus(
+            '%p = s32[32,64] constant(-8)',
+            '%q = s32[32,64] constant(1)',
+            '%o = s32[32,64] shift-right-logical(%p, %q)',
+            '%k = bf16[32,64] convert(%o)',
+        ),
+        2147483644,
+    ),
+    'exponential': (
+        plus('%one = bf16[32,64] constant(1)', '%k = bf16[32,64] exponential(%one)'),
+        jnp.exp(jnp.bfloat16(1)),
+    ),
+    'float_divide': (
+        plus(
+            '%p = bf16[32,64] constant(7)',
+            '%q = bf16[32,64] constant(2)',
+            '%k = bf16[32,64] divide(%p, %q)',
+        ),
+        3.5,
+    ),
+    'reduce': (
+        plus(
+            '%m = bf16[32,64] constant(1)',
+            '%z = bf16[] constant(0)',
+            '%r = bf16[32] reduce(%m, %z), dimensions={1}, to_apply=%sum',
+            '%k = bf16[32,64] broadcast(%r), dimensions={0}',
+            regions=summed('bf16'),
+        ),
+        64,
+    ),
+    'reduce_from_two': (
+        plus(
+            '%m = bf16[32,64] constant(1)',
+            '%z = bf16[] constant(2)',
+            '%r = bf16[32] reduce(%m, %z), dimensions={1}, to_apply=%sum',
+            '%k = bf16[32,64] broadcast(%r), dimensions={0}',
+            regions=summed('bf16'),
+        ),
+        66,
+    ),
+    'widened_reduce': (
+        plus(
+            '%m = s8[32,64] constant(100)',
+            '%z = s32[] constant(0)',
+            '%r = s32[32] reduce(%m, %z), dimensions={1}, to_apply=%sum',
+            '%b = s32[32,64] broadcast(%r), dimensions={0}',
+            '%k = bf16[32,64] convert(%b)',
+            regions=summed('s32'),
+        ),
+        6400,
+    ),
+    'dot': (
+        plus(
+            '%p = s8[32,64] constant(2)',
+            '%q = s8[64,64] constant(3)',
+            '%d = s32[32,64] dot(%p, %q), lhs_contracting_dims={1}, rhs_contracting_dims={0}',
+            '%k = bf16[32,64] convert(%d)',
+        ),
+        384,
+    ),
+    'transpose': (
+        plus('%t = bf16[64,32] constant(5)', '%k = bf16[32,64] transpose(%t), dimensions={1,0}'),
+        5,
+    ),
+    'negative_zero': (plus('%k = bf16[32,64] constant(-0)'), -0.0),
+}
+
+# An input plus rows of a constant too large for the buffer
+SLICED = plus(
+    '%f = bf16[1024,64] constant(3)', '%k = bf16[32,64] slice(%f), slice={[96:128], [0:64]}'
+)
+
+# An input plus a constant joined from two halves of its columns
+JOINED = plus(
+    '%f = bf16[32,32] constant(3)',
+    '%g = bf16[32,32] constant(4)',
+    '%k = bf16[32,64] concatenate(%f, %g), dimensions={1}',
+)
+
+# An input plus a constant given as an array of ones
+ARRAY = '{ ' + ', '.join('{' + ', '.join(['1'] * 64) + '}' for _ in range(32)) + ' }'
+ARRAYED = plus(f'%k = bf16[32,64] constant({ARRAY})')
+
+
+def declared_constants(assembly):
+    """The constants an assembly declares to its kernel decorator"""
+    spec = importlib.util.spec_from_file_location('assembly', assembly)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    declared = {}
+    (function,) = re.findall(r'^def (\w+)\(kernel, api\):', assembly.read_text(), re.MULTILINE)
+    getattr(module, function)(lambda **fields: declared.update(fields) or (lambda body: body), None)
+    return declared['constant']
+
+
+@pytest.mark.parametrize(
+    'text, value',
+    [(CONSTANT, 3), (BUILT, 10), *BUILT_BY.values()],
+    ids=['filled', 'built', *BUILT_BY],
+)
+def test_constant_is_written_at_its_value(backend, tmp_path, text, value):
+    run, output = compiled(backend, tmp_path, text)
+    assert run.returncode == 0, run.stderr
+    assert (run.stdout, run.stderr) == ('', '')
+    # The bytes of the bf16 value HBM holds
+    want = np.full((32, 64), value, dtype=jnp.bfloat16).view(np.uint8).reshape(-1)
+    (constant,) = declared_constants(output)
+    assert (constant['shape'], np.dtype(constant['dtype'])) == ((want.size,), np.uint8)
+    assert np.asarray(constant['value']).dtype == np.uint8
+    assert np.array_equal(np.asarray(constant['value']), want)
+
+
+@pytest.mark.parametrize(
+    'text, reason',
+    [
+        (SLICED, 'a constant built by slice'),
+        (JOINED, 'a constant built by concatenate'),
+        (ARRAYED, 'a bf16[32,64] constant given as an array'),
+    ],
+    ids=['slice', 'concatenate', 'array'],
+)
+def test_constant_the_allocator_cannot_write_drops_its_candidate(backend, tmp_path, text, reason):
+    run, output = compiled(backend, tmp_path, text, flags=['--verbose'])
+    assert run.returncode == 1
+    assert run.stderr.startswith('Error: no assembly found: ')
+    assert run.stderr.count('\n') == 1
+    assert run.stderr.endswith(f'the first because the allocator cannot write {reason}\n')
+    # Its candidates are dropped, each by that one reason
+    assert f'dropped: the allocator cannot write {reason}\n' in run.stdout
+    assert not output.exists()

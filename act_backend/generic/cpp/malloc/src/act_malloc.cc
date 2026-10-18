@@ -53,6 +53,14 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
       instructions.push_back(instr);
   }
 
+  // Each constant's value, else the candidate is dropped
+  std::unordered_map<Tensor *, std::string> constant_values;
+  for (const auto &[tensor, expr] : known_constants) {
+    std::string why;
+    if (!emitter::constant_value(expr, constant_values[tensor], why))
+      return no_assembly(reason, reason_size, why);
+  }
+
   Instruction *root = instructions.back();
   root->get_lhs()->type = Tensor::node_type::OUTPUT;
 
@@ -126,7 +134,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
       return no_assembly(reason, reason_size,
                          std::string("the allocator cannot read ") + metadata_path);
     }
-    emitter::MetaData metadata(metadata_file, tensor_map, known_constants);
+    emitter::MetaData metadata(metadata_file, tensor_map, constant_values);
     if (!metadata.why.empty()) {
       solver.EndSearch();
       return no_assembly(reason, reason_size, metadata.why);
