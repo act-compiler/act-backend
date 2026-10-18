@@ -42,6 +42,25 @@ fn lookup(table: &EggSymbolTable, symbol: &str) -> Result<Id, String> {
   })
 }
 
+// An operand of the line's element type, which HLO keeps
+fn keeps_type(
+  tsymbol: &str,
+  operation: &str,
+  dtype: Dtype,
+  operand: &str,
+  egraph: &EGraph<TensorOp, TensorInfo>,
+  table: &EggSymbolTable,
+) -> Result<(), String> {
+  let given = egraph[lookup(table, operand)?].data.dtype;
+  if given != dtype {
+    return Err(format!(
+      "{} gives the element type {} to {}, which keeps the element type {} of {}",
+      tsymbol, dtype, operation, given, operand
+    ));
+  }
+  Ok(())
+}
+
 // Give a node its type, shape and kernel name
 pub fn bind_node(
   tsymbol: &str,
@@ -216,6 +235,7 @@ pub fn add_broadcast(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  keeps_type(tsymbol, "broadcast", dtype, source, egraph, table)?;
 
   // The result shape, then the dimension map
   let node = egraph.add(TensorOp::OpBroadcast(
@@ -240,6 +260,9 @@ pub fn add_binary_op(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  for operand in [lhs, rhs] {
+    keeps_type(tsymbol, op_name, dtype, operand, egraph, table)?;
+  }
 
   let node = binary_op_match!(op_name, lhs, rhs, table, egraph, {
       "add" => TensorOp::OpAdd,
@@ -288,6 +311,7 @@ pub fn add_slice(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  keeps_type(tsymbol, "slice", dtype, source, egraph, table)?;
   let source = lookup(table, source)?;
   // The dimensions the bounds lie in, as the allocator checks
   let dims = egraph[source].data.shape.clone();
@@ -378,6 +402,9 @@ pub fn add_concatenate(
       values
     ));
   }
+  for input in inputs {
+    keeps_type(tsymbol, "concatenate", dtype, input, egraph, table)?;
+  }
   let (lhs, rhs) = (lookup(table, &inputs[0])?, lookup(table, &inputs[1])?);
   // The shapes join along the dimension, as the allocator checks
   let (lhs_shape, rhs_shape) = (&egraph[lhs].data.shape, &egraph[rhs].data.shape);
@@ -424,6 +451,7 @@ pub fn add_reshape(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  keeps_type(tsymbol, "reshape", dtype, source, egraph, table)?;
 
   let node = egraph.add(TensorOp::OpReshape(
     tshape.to_string(),
@@ -444,6 +472,7 @@ pub fn add_transpose(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  keeps_type(tsymbol, "transpose", dtype, source, egraph, table)?;
 
   let node = egraph.add(TensorOp::OpTranspose(
     dimensions.to_string(),
@@ -489,6 +518,7 @@ pub fn add_reduce(
 
   // The value the sum starts from, a constant or not
   let start = lookup(table, init)?;
+  keeps_type(tsymbol, "reduce", dtype, init, egraph, table)?;
 
   // The dimensions, then the result type
   let node = egraph.add(TensorOp::OpReduceSum(
@@ -525,6 +555,7 @@ pub fn add_exponential(
 ) -> Result<(), String> {
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
+  keeps_type(tsymbol, "exponential", dtype, source, egraph, table)?;
 
   let node = egraph.add(TensorOp::OpExp([lookup(table, source)?]));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);

@@ -725,29 +725,52 @@ def test_library_matches_as_much_in_a_second_run(work_dir, tmp_path):
     assert second == first
 
 
-# A broadcast onto its own shape that retypes its value
-RETYPED = """HloModule retyped, entry_computation_layout={(s8[64,64]{1,0})->s32[64,64]{1,0}}
+# A library caller joining each convert with the value it converts
+JOINED = """use backend::ir::egraph::TensorOp;
+use backend::isel;
+use egg::Language;
+
+fn main() {
+  let kernel = std::env::args().nth(1).unwrap();
+  let (mut egraph, ..) = isel::initializer::parse_hlo_module_to_egraph(&kernel).unwrap();
+  let pairs: Vec<_> = egraph
+    .classes()
+    .flat_map(|class| class.nodes.iter().map(move |node| (class.id, node)))
+    .filter(|(_, node)| matches!(node, TensorOp::OpConvert(..)))
+    .map(|(id, node)| (id, node.children()[0]))
+    .collect();
+  for (convert, value) in pairs {
+    egraph.union(convert, value);
+  }
+  egraph.rebuild();
+}
+"""
+
+# An s8 value converted to s32
+CONVERTED = """HloModule converted, entry_computation_layout={(s8[64,64]{1,0})->s32[64,64]{1,0}}
 
 ENTRY main {
   %a = s8[64,64] parameter(0)
-  ROOT %c = s32[64,64] broadcast(%a), dimensions={0,1}
+  ROOT %c = s32[64,64] convert(%a)
 }
 """
 
 
-def test_rewrite_that_joins_unlike_values_ends_the_compile(backend, tmp_path):
-    path = tmp_path / 'kernel.hlo'
-    path.write_text(RETYPED)
-    output = tmp_path / 'kernel.py'
-    arguments = ['--input', str(path), '--output', str(output), '--log', str(tmp_path / 'log')]
-    run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
-    # The broadcast dropped onto a value of another type
+def test_join_of_unlike_values_ends_the_run(work_dir, tmp_path):
+    crate = os.path.join(work_dir, 'targets', 'MATCHING', 'backend')
+    os.makedirs(os.path.join(crate, 'examples'), exist_ok=True)
+    with open(os.path.join(crate, 'examples', 'joined.rs'), 'w') as f:
+        f.write(JOINED)
+    kernel = tmp_path / 'kernel.hlo'
+    kernel.write_text(CONVERTED)
+    command = ['cargo', 'run', '--release', '--locked', '--example', 'joined', str(kernel)]
+    run = subprocess.run(command, cwd=crate, capture_output=True, text=True, check=False)
+    # The s32 convert joined with its s8 value
     assert run.returncode != 0
     joined = re.findall(
         r'internal error: a rewrite joins the values (\S+ \d+\]) and (\S+ \d+\])', run.stderr
     )
     assert [set(pair) for pair in joined] == [{'s32[64, 64]', 's8[64, 64]'}]
-    assert not output.exists()
 
 
 # One input's transpose times the other
