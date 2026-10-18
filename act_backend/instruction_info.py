@@ -69,6 +69,18 @@ def get_buffer_name(data_model_name: str) -> str:
     return 'HBM' if data_model_name == 'd0' else f'Model{data_model_name}'
 
 
+# rustfmt's widest vec! on one line
+ARRAY_WIDTH = 60
+
+
+def buffer_vec(buffers):
+    """The buffers' vec!, a line each where rustfmt would break it"""
+    one_line = f'vec![{", ".join(buffers)}]'
+    if len(one_line) <= ARRAY_WIDTH:
+        return one_line
+    return 'vec![\n' + ''.join(f'      {buffer},\n' for buffer in buffers) + '    ]'
+
+
 def extract_instruction_info(instructions) -> list[InstructionInfo]:
     info_list = []
     type_names = get_type_names([instruction.instruction for instruction in instructions])
@@ -86,7 +98,7 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
             buffer_name = get_buffer_name(input_item[0])
             buffers.append(f'Buffer::{buffer_name}')
 
-        buffer_assignment = f'Some(vec![{", ".join(buffers)}])'
+        buffer_assignment = f'Some({buffer_vec(buffers)})'
 
         info_list.append(
             InstructionInfo(

@@ -1,0 +1,4 @@
+      Buffer::{{buffer_name}} => write!(
+        f,
+        "{{buffer_name}}"
+      ),

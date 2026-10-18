@@ -83,23 +83,39 @@ def unfilled_sources(work_dir, example_dir):
 TREE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def unformatted_sources(backend_dir):
-    """Return what rustfmt and clang-format would change in a generated backend"""
-    sources = []
+def generated_files(backend_dir, suffixes):
+    """Return a generated backend's sources of the given suffixes"""
+    files = []
     for root, dirs, names in os.walk(backend_dir):
         # The build trees hold no generated source
         dirs[:] = [d for d in dirs if d not in ('target', 'build')]
-        sources += [os.path.join(root, name) for name in names]
-    rust = [path for path in sources if path.endswith('.rs')]
-    cpp = [path for path in sources if path.endswith(('.cc', '.h'))]
+        files += [os.path.join(root, name) for name in names if name.endswith(suffixes)]
     # A backend with no sources would pass unchecked
-    assert rust and cpp, f'no generated sources in {backend_dir}'
-    checks = [
-        ['rustfmt', '--check', '--config-path', TREE_DIR, '--config', 'skip_children=true', *rust],
-        ['clang-format', '--dry-run', '-Werror', f'--style=file:{TREE_DIR}/.clang-format', *cpp],
-    ]
-    runs = [subprocess.run(check, capture_output=True, text=True, check=False) for check in checks]
-    return ''.join(run.stdout + run.stderr for run in runs if run.returncode != 0)
+    assert files, f'no generated sources in {backend_dir}'
+    return files
+
+
+def complaints(check):
+    """Return what a formatter's check would change, nothing where it passes"""
+    run = subprocess.run(check, capture_output=True, text=True, check=False)
+    return '' if run.returncode == 0 else run.stdout + run.stderr
+
+
+def unformatted_rust(backend_dir):
+    """Return what rustfmt would change in a generated backend's Rust"""
+    rust = generated_files(backend_dir, '.rs')
+    return complaints(
+        ['rustfmt', '--check', '--config-path', TREE_DIR, '--config', 'skip_children=true', *rust]
+    )
+
+
+def unformatted_sources(backend_dir):
+    """Return what rustfmt and clang-format would change in a generated backend"""
+    cpp = generated_files(backend_dir, ('.cc', '.h'))
+    style = f'--style=file:{TREE_DIR}/.clang-format'
+    return unformatted_rust(backend_dir) + complaints(
+        ['clang-format', '--dry-run', '-Werror', style, *cpp]
+    )
 
 
 def compile_hlo(work_dir, example_dir):
@@ -343,6 +359,78 @@ ENTRY {
     %In1 = bf16[64,64] parameter(1);
     ROOT %Out0 = bf16[64,64] dot(%In0, %In1), lhs_contracting_dims={1}, rhs_contracting_dims={0};
 }
+""")
+    return acc
+
+
+def long_names(length=60):
+    """Long names: two attributes of about the length given, four instructions, two data models"""
+    rows = ('the_number_of_rows_' * 9)[:length].rstrip('_')
+    first = ('the_first_row_' * 12)[:length].rstrip('_')
+    staging = 'the_staging_buffer_of_the_vector_engine_x'
+    result = 'the_result_buffer_of_the_vector_engine_xy'
+    acc = Accelerator('LONG')
+    acc.add_data_model(staging, [512], [64], 'bf16')
+    acc.add_data_model(result, [512], [64], 'bf16')
+
+    # Each attribute read from a shape, both in a slice
+    instr = acc.add_instruction(
+        'load_the_window_of_rows_into_the_staging_buffer', [rows, first], ['addr_in', 'addr_out']
+    )
+    instr.set_inputs([['d0', ['@a.addr_in'], [f'@c.{rows} * 128']]])
+    instr.set_outputs([[staging, ['@a.addr_out'], [f'@c.{first}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = u8[`@c.{rows} * 128`] parameter(0);
+    %a = u8[`@c.{rows}`,64,2] reshape(%In0);
+    %b = bf16[`@c.{rows}`,64] bitcast_convert(%a);
+    ROOT %Out0 = bf16[`@c.{first}`,64] slice(%b), slice={{[`@c.{rows} - @c.{first}`:`@c.{rows}`], [0:64]}};
+}}
+""")
+
+    # One attribute, read from a second dimension
+    instr = acc.add_instruction(
+        'exponentiate_the_rows_of_the_staging_buffer_now', [rows], ['addr_in', 'addr_out']
+    )
+    instr.set_inputs([[staging, ['@a.addr_in'], ['64']]])
+    instr.set_outputs([[result, ['@a.addr_out'], ['64']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[64,`@c.{rows}`] parameter(0);
+    ROOT %Out0 = bf16[64,`@c.{rows}`] exponential(%In0);
+}}
+""")
+
+    # No attribute, two inputs
+    instr = acc.add_instruction(
+        'add_the_rows_of_the_staging_buffer_to_the_result', [], ['addr_1', 'addr_2', 'addr_out']
+    )
+    instr.set_inputs([[staging, ['@a.addr_1'], ['64']], [result, ['@a.addr_2'], ['64']]])
+    instr.set_outputs([[result, ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] add(%In0, %In1);
+}
+""")
+
+    # A dimension that sums both attributes
+    instr = acc.add_instruction(
+        'join_the_rows_of_the_staging_buffer_into_the_result',
+        [rows, first],
+        ['addr_1', 'addr_2', 'addr_out'],
+    )
+    instr.set_inputs(
+        [[staging, ['@a.addr_1'], [f'@c.{rows}']], [staging, ['@a.addr_2'], [f'@c.{first}']]]
+    )
+    instr.set_outputs([[result, ['@a.addr_out'], [f'@c.{rows} + @c.{first}']]])
+    instr.add_semantics(f"""
+ENTRY {{
+    %In0 = bf16[`@c.{rows}`,64] parameter(0);
+    %In1 = bf16[`@c.{first}`,64] parameter(1);
+    ROOT %Out0 = bf16[`@c.{rows} + @c.{first}`,64] concatenate(%In0, %In1), dimensions={{0}};
+}}
 """)
     return acc
 

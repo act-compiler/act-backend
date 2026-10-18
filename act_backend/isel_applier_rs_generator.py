@@ -1,7 +1,15 @@
 import os
 
 from .instruction_info import get_rewrite_word
-from .template_loader import fill_placeholders
+from .template_loader import fill_placeholders, fits
+
+
+def mapping_arm(rewrite_word, function):
+    """A match arm as rustfmt lays it out, its function in a block where the arm is too wide"""
+    arm = f'    "{rewrite_word}" => {function},'
+    if fits(arm):
+        return arm
+    return f'    "{rewrite_word}" => {{\n      {function}\n    }}'
 
 
 def generate_function_mappings(instructions):
@@ -12,9 +20,9 @@ def generate_function_mappings(instructions):
         name = instruction.instruction
         rewrite_word = get_rewrite_word(name)
 
-        mappings['precond'].append(f'    "{rewrite_word}" => precond_{name},')
-        mappings['metadata'].append(f'    "{rewrite_word}" => metadata_{name},')
-        mappings['set_shapes'].append(f'    "{rewrite_word}" => set_shapes_{name},')
+        mappings['precond'].append(mapping_arm(rewrite_word, f'precond_{name}'))
+        mappings['metadata'].append(mapping_arm(rewrite_word, f'metadata_{name}'))
+        mappings['set_shapes'].append(mapping_arm(rewrite_word, f'set_shapes_{name}'))
 
     return mappings['precond'], mappings['metadata'], mappings['set_shapes']
 

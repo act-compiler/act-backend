@@ -1,0 +1,8 @@
+      op if op.rsplit_once('_').is_some_and(|(word, _)| {
+        word == "{{rewrite_word}}"
+      }) && <[Id; {{arity}}] as LanguageChildren>::can_be_length(children.len()) =>
+      {
+        let (_, data) = op.rsplit_once('_').unwrap();
+        let children = <[Id; {{arity}}] as LanguageChildren>::from_vec(children);
+        Ok({{node}})
+      }

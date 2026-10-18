@@ -5,5 +5,5 @@
       {
         let (_, data) = op.rsplit_once('_').unwrap();
         let children = <[Id; {{arity}}] as LanguageChildren>::from_vec(children);
-        Ok(TensorOp::{{variant_name}}(data.to_string(), children))
+        Ok({{node}})
       }
