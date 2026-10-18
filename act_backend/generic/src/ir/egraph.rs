@@ -64,21 +64,20 @@ impl TensorOp {
     let data = match enode {
       // A broadcast's map follows its shape
       Some(TensorOp::OpBroadcast(data, _)) => data.split_once(';')?.1,
-      // A dot's four lists, each after its length
+      // A dot's four lists, each after its length, then its type
       Some(TensorOp::OpDot(data, _)) => {
         let mut ints = vec![];
-        for list in data.split(';') {
+        for list in data.split_once(':')?.0.split(';') {
           let list = TensorOp::ints_of(list)?;
           ints.push(list.len() as i32);
           ints.extend(list);
         }
         return Some(ints);
       }
+      // A reduce's dimensions, then its type
+      Some(TensorOp::OpReduceSum(data, _)) => data.split_once(':')?.0,
       Some(
-        TensorOp::OpConcat(data, _)
-        | TensorOp::OpReduceSum(data, _)
-        | TensorOp::OpSlice(data, _)
-        | TensorOp::OpTranspose(data, _),
+        TensorOp::OpConcat(data, _) | TensorOp::OpSlice(data, _) | TensorOp::OpTranspose(data, _),
       ) => data.as_str(),
       _ => return None,
     };

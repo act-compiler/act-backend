@@ -268,9 +268,9 @@ pub fn add_dot(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  // The four dimension lists, one after another
+  // The four dimension lists, then the result type
   let node = egraph.add(TensorOp::OpDot(
-    dimensions.to_string(),
+    format!("{}:{}", dimensions, dtype),
     [lookup(table, lhs)?, lookup(table, rhs)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
@@ -484,8 +484,9 @@ pub fn add_reduce(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
+  // The dimensions, then the result type
   let node = egraph.add(TensorOp::OpReduceSum(
-    dimensions.to_string(),
+    format!("{}:{}", dimensions, dtype),
     [lookup(table, source)?],
   ));
   bind_node(tsymbol, node, shape, dtype, false, egraph, table);
