@@ -487,20 +487,31 @@ pub fn add_reduce(
   let dtype = Dtype::try_from(ttype)?;
   let shape = shape_to_vec(tshape)?;
 
-  // A sum is read from its identity, a constant 0
-  if !TensorOp::holds_constant(egraph, lookup(table, init)?, "0") {
-    return Err(format!(
-      "{} starts its sum from {}, where the backend supports a sum only from 0, its identity",
-      tsymbol, init
-    ));
-  }
+  // The value the sum starts from, a constant or not
+  let start = lookup(table, init)?;
 
   // The dimensions, then the result type
   let node = egraph.add(TensorOp::OpReduceSum(
     format!("{}:{}", dimensions, dtype),
     [lookup(table, source)?],
   ));
-  bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+  // A sum from its identity, 0 or -0, is the reduce alone
+  if TensorOp::holds_constant(egraph, start, "0") || TensorOp::holds_constant(egraph, start, "-0") {
+    bind_node(tsymbol, node, shape, dtype, false, egraph, table);
+    return Ok(());
+  }
+
+  // Else the sum from 0 plus the start, spread over it
+  let info = TensorInfo {
+    shape: shape.clone(),
+    dtype,
+    is_const: false,
+  };
+  egraph.set_analysis_data(node, info.clone());
+  let spread = egraph.add(TensorOp::OpBroadcast(format!("{};", tshape), [start]));
+  egraph.set_analysis_data(spread, info);
+  let sum = egraph.add(TensorOp::OpAdd([node, spread]));
+  bind_node(tsymbol, sum, shape, dtype, false, egraph, table);
   Ok(())
 }
 

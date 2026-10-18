@@ -87,17 +87,6 @@ ZERO = '%z = bf16[] constant(0)'
             "%r gives 'y' in dimensions, which is not a dimension",
         ),
         (
-            kernel(
-                A,
-                '%i = bf16[] parameter(1)',
-                '%r = bf16[64] reduce(%a, %i), dimensions={1}, to_apply=%sum',
-                'ROOT %c = bf16[64,64] broadcast(%r), dimensions={0}',
-                header='HloModule init, entry_computation_layout={(bf16[64,64]{1,0}, bf16[])->bf16[64,64]{1,0}}',
-                regions=region('sum', 'add'),
-            ),
-            '%r starts its sum from %i, where the backend supports a sum only from 0, its identity',
-        ),
-        (
             kernel(A, 'ROOT %c = f8e4m3fn[64,64] convert(%a)'),
             "the element type 'f8e4m3fn' is not one the backend supports",
         ),
@@ -163,7 +152,6 @@ ZERO = '%z = bf16[] constant(0)'
         'divide_region',
         'three_operands',
         'reduce_not_a_number',
-        'sum_from_parameter',
         'element_type',
         'dimension',
         'type',
@@ -258,6 +246,53 @@ def test_sum_from_zero_is_read(endings_dir, tmp_path, dtype):
         regions=region('sum', 'add', dtype),
     )
     assert f"reduce[dims='0,1:{dtype}']" in read_nodes(endings_dir, tmp_path, text)
+
+
+# A library caller printing each add of a kernel, then its values typed
+ADDS = """use backend::ir::egraph::TensorOp;
+use backend::isel;
+use egg::Language;
+
+fn main() {
+  let kernel = std::env::args().nth(1).unwrap();
+  let (egraph, ..) = isel::initializer::parse_hlo_module_to_egraph(&kernel).unwrap();
+  for class in egraph.classes() {
+    for node in class.nodes.iter().filter(|node| matches!(node, TensorOp::OpAdd(_))) {
+      println!("{}", node);
+      for child in node.children() {
+        let value = &egraph[*child];
+        println!("{} {}{:?}", value.nodes[0], value.data.dtype, value.data.shape);
+      }
+    }
+  }
+}
+"""
+
+
+@pytest.mark.parametrize(
+    'start, header',
+    [
+        ('%o = bf16[] constant(1)', '(bf16[64,64]{1,0})->bf16[64]{0}'),
+        ('%o = bf16[] parameter(1)', '(bf16[64,64]{1,0}, bf16[])->bf16[64]{0}'),
+    ],
+    ids=['constant', 'parameter'],
+)
+def test_sum_from_another_start_is_read_as_the_sum_plus_the_start(
+    endings_dir, tmp_path, start, header
+):
+    text = kernel(
+        A,
+        start,
+        'ROOT %r = bf16[64] reduce(%a, %o), dimensions={1}, to_apply=%sum',
+        header=f'HloModule start, entry_computation_layout={{{header}}}',
+        regions=region('sum', 'add'),
+    )
+    # The sum from 0, then the start spread over it
+    assert read_nodes(endings_dir, tmp_path, text, ADDS) == [
+        'add',
+        "reduce[dims='1:bf16'] bf16[64]",
+        "broadcast[dims='64;'] bf16[64]",
+    ]
 
 
 def test_dot_dimensions_are_read_by_name(endings_dir, tmp_path):
