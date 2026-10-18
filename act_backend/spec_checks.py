@@ -168,10 +168,6 @@ def check_semantics(instructions):
                 f'{name}: its semantics reads {len(checker.inputs)} inputs by parameter, '
                 f'and the instruction has {len(instruction.instr_inputs)}'
             )
-        if not checker.inputs:
-            raise ValueError(
-                f'{name}: the instruction has no inputs, which the selector cannot match'
-            )
         # An address is set after selection: no line reads one
         for expression in instruction.instr_expression_asts.values():
             placed = Trees.findAllTokenNodes(expression, IDLV2ExprParser.ADDRESSING)

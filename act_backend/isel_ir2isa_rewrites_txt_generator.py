@@ -116,12 +116,9 @@ def generate_rewrite_rule(metadata, templates):
     parameter_vars = visitor.get_parameter_variables()
     rewrite_word = get_rewrite_word(metadata.name)
 
-    # Generate RHS with or without _? suffix
-    rhs = (
-        f'({rewrite_word}_? {" ".join(parameter_vars)})'
-        if metadata.attributes
-        else f'({rewrite_word} {" ".join(parameter_vars)})'
-    )
+    # The right side over the inputs it has, _? with attributes
+    head = f'{rewrite_word}_?' if metadata.attributes else rewrite_word
+    rhs = f'({" ".join([head, *parameter_vars])})'
 
     # Calculate padding to align the '=>' at column 20
     padding = ' ' * (19 - len(rewrite_word))

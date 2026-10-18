@@ -59,9 +59,10 @@ int64 esun(Instruction *instr, const std::string &d, EsunCache &esun_cache) {
     mem_xs_sum += m;
   }
 
-  int64 tau_x_min = INT64_MAX;
+  // With no operands, its output's memory alone
+  int64 tau_x_min = rhs_instrs.empty() ? 0 : INT64_MAX;
   for (size_t i = 0; i < rhs_instrs.size(); ++i) {
-    int esun_x_i;
+    int64 esun_x_i;
     if (rhs_instrs[i]) {
       esun_x_i = esun(rhs_instrs[i], d, esun_cache);
     } else {

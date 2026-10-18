@@ -512,6 +512,57 @@ def widening():
     return acc
 
 
+def filling():
+    """96 rows, loads of 64 rows, stores of 32, an upper half, an add and a fill of 32 rows"""
+    acc = Accelerator('FILLING')
+    acc.add_data_model('d1', [96], [64], 'bf16')
+    instr = acc.add_instruction('load_64', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['8192']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[8192] parameter(0);
+    %a = u8[64,64,2] reshape(%In0);
+    ROOT %Out0 = bf16[64,64] bitcast_convert(%a);
+}
+""")
+    instr = acc.add_instruction('store_32', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['32']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['4096']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[32,64] parameter(0);
+    %a = u8[32,64,2] bitcast_convert(%In0);
+    ROOT %Out0 = u8[4096] reshape(%a);
+}
+""")
+    add_on_d1(
+        acc,
+        'upper',
+        ['64', '32'],
+        [
+            '%In0 = bf16[64,64] parameter(0)',
+            'ROOT %Out0 = bf16[32,64] slice(%In0), slice={[0:32], [0:64]}',
+        ],
+    )
+    add_on_d1(
+        acc,
+        'vadd_32',
+        ['32', '32', '32'],
+        [
+            '%In0 = bf16[32,64] parameter(0)',
+            '%In1 = bf16[32,64] parameter(1)',
+            'ROOT %Out0 = bf16[32,64] add(%In0, %In1)',
+        ],
+    )
+    # No inputs: 32 rows of halves
+    instr = acc.add_instruction('fill', [], ['addr_out'])
+    instr.set_inputs([])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['32']]])
+    instr.add_semantics('ENTRY {\n    ROOT %Out0 = bf16[32,64] constant(0.5);\n}\n')
+    return acc
+
+
 @pytest.fixture(scope='module')
 def work_dir(tmp_path_factory):
     """Generate the spec's backend once, in a directory of its own"""
@@ -575,6 +626,14 @@ def widening_backend(tmp_path_factory):
     work_dir = str(tmp_path_factory.mktemp('widening'))
     generate_backend(widening(), work_dir)
     return os.path.join(work_dir, 'backends', 'WIDENING')
+
+
+@pytest.fixture(scope='module')
+def filling_backend(tmp_path_factory):
+    """Generate the backend of the spec with a fill and return the binary's path"""
+    work_dir = str(tmp_path_factory.mktemp('filling'))
+    generate_backend(filling(), work_dir)
+    return os.path.join(work_dir, 'backends', 'FILLING')
 
 
 def selected(backend, tmp_path, kernel):
@@ -975,6 +1034,29 @@ def test_sums_of_one_input_typed_apart_stay_apart(widening_backend, tmp_path):
     calls = selected(widening_backend, tmp_path, SUMMED_APART)
     # The wide sum keeps its own type
     assert [name for name, _ in calls] == ['load_bf16', 'wide_rowsum', 'store_f32']
+
+
+# The upper halves of two inputs added, then halves no load moves
+FILLED_LAST = """HloModule filled_last, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %x1 = bf16[64,64] parameter(0)
+  %x2 = bf16[64,64] parameter(1)
+  %u1 = bf16[32,64] slice(%x1), slice={[0:32], [0:64]}
+  %u2 = bf16[32,64] slice(%x2), slice={[0:32], [0:64]}
+  %b = bf16[32,64] add(%u1, %u2)
+  %h = bf16[32,64] constant(0.5)
+  ROOT %y = bf16[32,64] add(%b, %h)
+}
+"""
+
+
+def test_instruction_with_no_inputs_is_scheduled_where_its_rows_fit(filling_backend, tmp_path):
+    calls = selected(filling_backend, tmp_path, FILLED_LAST)
+    # The fill runs once both halves are added, its rows free by then
+    names = [name for name, _ in calls]
+    assert names.count('fill') == 1
+    assert names.index('fill') > names.index('vadd_32')
 
 
 # The input added to itself and each sum: 26 sums

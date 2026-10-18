@@ -238,11 +238,6 @@ def test_semantics_that_reads_inputs_never_given_refused(tmp_path):
     assert message == 'gemm: its semantics reads 2 inputs by parameter, and the instruction has 0'
 
 
-def test_instruction_with_no_inputs_refused(tmp_path):
-    message = refusal(with_semantics([result('constant(0)')], inputs=0), tmp_path)
-    assert message == 'gemm: the instruction has no inputs, which the selector cannot match'
-
-
 @pytest.mark.parametrize(
     'lines',
     [
