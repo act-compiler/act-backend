@@ -28,7 +28,7 @@ def check_outputs(instructions):
 
 
 class SemanticsChecker(OperandVisitor):
-    """Refuses each line of a semantics the selector cannot write into a rule"""
+    """Refuses each line of a semantics the selector cannot write into a rewrite"""
 
     def __init__(self, name):
         super().__init__()
@@ -149,7 +149,7 @@ def divides_by_zero(expression):
 
 
 def check_semantics(instructions):
-    """Refuse a semantics the selector cannot write a rule from"""
+    """Refuse a semantics the selector cannot write a rewrite from"""
     for instruction in instructions:
         name = instruction.instruction
         checker = SemanticsChecker(name)

@@ -83,7 +83,7 @@ fn op_repr(
   None
 }
 
-// Build Op*-only representation for a single enode.
+// Build Op*-only representation for a single e-node.
 fn op_repr_en(
   egraph: &EGraph<TensorOp, TensorInfo>,
   en: &TensorOp,

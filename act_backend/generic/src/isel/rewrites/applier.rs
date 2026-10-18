@@ -6,8 +6,8 @@ use itertools::Itertools;
 use crate::ir::egraph::*;
 use crate::isel::rewrites::{ir2ir_rewrites::*, ir2isa_rewrites::*};
 
-pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
-  let fields: Vec<&str> = rule.split(':').collect();
+pub fn get_applier(rewrite: &str) -> Rewrite<TensorOp, TensorInfo> {
+  let fields: Vec<&str> = rewrite.split(':').collect();
   let name = fields[0];
   let eqn: Vec<&str> = fields[1].split("=>").collect();
   let lhs: Pattern<TensorOp> = eqn[0].parse().unwrap();
@@ -24,7 +24,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
     "7" => precond_7,
     "8" => precond_8,
     "9" => precond_9,
-    _ => panic!("No precondition function for rule {}!", name),
+    _ => panic!("No precondition function for rewrite {}!", name),
   };
   let metadata_fn = match name {
     // {{ISA_METADATA_MATCH_ARMS}}
@@ -38,7 +38,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
     "7" => metadata_7,
     "8" => metadata_8,
     "9" => metadata_9,
-    _ => panic!("No metadata function for rule {}!", name),
+    _ => panic!("No metadata function for rewrite {}!", name),
   };
   let set_shapes_fn = match name {
     // {{ISA_SET_SHAPES_MATCH_ARMS}}
@@ -52,7 +52,7 @@ pub fn get_applier(rule: &str) -> Rewrite<TensorOp, TensorInfo> {
     "7" => set_shapes_7,
     "8" => set_shapes_8,
     "9" => set_shapes_9,
-    _ => panic!("No set_shapes function for rule {}!", name),
+    _ => panic!("No set_shapes function for rewrite {}!", name),
   };
   rewrite!(name; { lhs.clone() } => {
           ApplyRewrite { lhs, rhs, precond_fn, metadata_fn, set_shapes_fn, }

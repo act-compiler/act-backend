@@ -349,7 +349,7 @@ impl std::fmt::Display for TensorOp {
       TensorOp::OpReshape(data, _) => write!(f, "reshape[shape='{}']", data),
       TensorOp::OpShiftLeft(_) => write!(f, "shift_left"),
       TensorOp::OpShiftRightLogical(_) => write!(f, "shift_right_logical"),
-      TensorOp::OpSlice(data, _) => write!(f, "slice[slice='{}']", data), // e.g., "4:4" for 1D slice, "1:3;4:6" for 2D slice
+      TensorOp::OpSlice(data, _) => write!(f, "slice[slice='{}']", data), // e.g., "0:4" for a 1D slice, "1:3,4:6" for a 2D slice
       TensorOp::OpXor(_) => write!(f, "xor"),
       TensorOp::OpTranspose(data, _) => write!(f, "transpose[perm='{}']", data),
       TensorOp::DetectedConst(id) => write!(f, "DCC[{}]", id),

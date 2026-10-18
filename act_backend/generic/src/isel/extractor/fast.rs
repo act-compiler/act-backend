@@ -17,7 +17,7 @@ pub fn extract_fast(
 ) -> Vec<PiiGraph> {
   // Bottom-up traversal to detect compile-time constants
   let constants = detect_constants(egraph, inputs);
-  // Annotate the egraph with DetectedConst nodes and mark analysis data.
+  // Annotate the e-graph with DetectedConst nodes and mark analysis data.
   annotate_constants(egraph, &constants);
 
   // Top-down traversal to perform extraction
