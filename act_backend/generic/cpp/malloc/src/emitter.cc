@@ -502,7 +502,10 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
 
   // Assembly code
   for (auto *instr : instructions) {
-    outfile << indent2 << "api." << instr->str() << std::endl;
+    // An in-place slice or concatenate has no text
+    std::string text = instr->str();
+    if (!text.empty())
+      outfile << indent2 << "api." << text << std::endl;
   }
 
   outfile << std::endl;

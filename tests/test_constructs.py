@@ -1,11 +1,19 @@
-"""Tests of constructs a backend builds with: mini_trn's spec with each one added, generated once"""
+"""Tests of constructs on mini_trn's backend, with and without them"""
 
 import os
 import re
 import subprocess
 
+import jax.numpy as jnp
+import numpy as np
 import pytest
-from conftest import EXAMPLES_DIR, generate_oracle_and_backend, instruction_calls, run_backend
+from conftest import (
+    EXAMPLES_DIR,
+    generate_oracle_and_backend,
+    instruction_calls,
+    run_backend,
+    simulated,
+)
 
 import act_backend
 from act_backend import generate_backend
@@ -45,6 +53,16 @@ ENTRY main {
   %sum = bf16[64] reduce(%exp, %zero), dimensions={1}, to_apply=%reduce_add
   %sums = bf16[64,64] broadcast(%sum), dimensions={0}
   ROOT %out = bf16[64,64] divide(%exp, %sums)
+}
+"""
+
+# A kernel that is the concatenate of its two inputs
+CONCATENATED = """HloModule concatenated, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  ROOT %joined = bf16[64,64] concatenate(%a, %b), dimensions={0}
 }
 """
 
@@ -385,6 +403,14 @@ def work_dir(tmp_path_factory):
     return work_dir
 
 
+@pytest.fixture(scope='module')
+def plain_dir(tmp_path_factory):
+    """Generate mini_trn's oracle and backend with no construct added"""
+    plain_dir = str(tmp_path_factory.mktemp('plain'))
+    generate_oracle_and_backend(EXAMPLE_DIR, plain_dir)
+    return plain_dir
+
+
 def test_backend_compiles_with_the_constructs(work_dir, tmp_path):
     # Every rewrite loads; the kernel compiles as on mini_trn
     run, output_path = run_backend(
@@ -424,6 +450,21 @@ def test_concatenate_is_selected(work_dir, tmp_path):
     loaded = {call['addr_in']: call['addr_out'] for name, call in calls if name == 'load_rm'}
     join = calls[2][1]
     assert (join['addr_1'], join['addr_2']) == (loaded['0'], loaded['4096'])
+
+
+@pytest.mark.parametrize('spec_dir', ['work_dir', 'plain_dir'])
+def test_concatenate_in_place_is_simulated(spec_dir, request, tmp_path):
+    # mini_trn's spec with join among its constructs, then with none
+    spec_dir = request.getfixturevalue(spec_dir)
+    run, output = compiled(spec_dir, tmp_path, CONCATENATED)
+    assert run.returncode == 0, run.stderr
+    # Joined in place: the two loads and the store alone
+    calls = re.findall(r'^ *api\.(\w*)', output.read_text(), re.MULTILINE)
+    assert calls == ['load_rm', 'load_rm', 'store_rm']
+    # Each row its own value, so a misplaced half shows
+    rows = jnp.repeat(jnp.arange(64, dtype=jnp.bfloat16)[:, None], 64, axis=1)
+    result = simulated(spec_dir, 'mini_trn', output, rows[:32], rows[32:])
+    assert np.array_equal(np.asarray(result), np.concatenate([rows[:32], rows[32:]]))
 
 
 def test_rank_0_result_is_selected(work_dir, tmp_path):
