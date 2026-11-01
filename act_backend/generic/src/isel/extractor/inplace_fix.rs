@@ -3,14 +3,16 @@ use std::collections::{HashMap, HashSet};
 use crate::ir::pii::PiiGraph;
 
 /// Give an instruction overwriting a shared operand its own copy
-pub fn fix_inplace(pii: &mut PiiGraph) {
+/// Err where that operand is pinned in HBM
+pub fn fix_inplace(pii: &mut PiiGraph) -> Result<(), String> {
   let mut visited: HashSet<usize> = HashSet::new();
   let mut copied = false;
-  copy_overwritten(pii, pii.root, &mut visited, &mut copied);
+  copy_overwritten(pii, pii.root, &mut visited, &mut copied)?;
   // A copy goes last, out of topological order
   if copied {
     compact(pii);
   }
+  Ok(())
 }
 
 /// A node's uses, so f(x, x) uses x twice
@@ -29,9 +31,9 @@ fn copy_overwritten(
   node: usize,
   visited: &mut HashSet<usize>,
   copied: &mut bool,
-) {
+) -> Result<(), String> {
   if !visited.insert(node) {
-    return;
+    return Ok(());
   }
 
   let inplace = pii.nodes[node].op.inplace_children();
@@ -40,14 +42,19 @@ fn copy_overwritten(
     // All false for a plain instruction, empty for an operator
     let overwritten = inplace.get(i) == Some(&true);
     if overwritten && count_uses(pii, child) > 1 {
+      // A copy is a node, never storage pinned in HBM
+      if pii.nodes[child].hbm_offset.is_some() {
+        return Err("an overwritten operand has another reader and is pinned in HBM".to_string());
+      }
       let copy = copy_node(pii, child);
       pii.nodes[node].children[i] = copy;
       *copied = true;
-      copy_overwritten(pii, copy, visited, copied);
+      copy_overwritten(pii, copy, visited, copied)?;
     } else {
-      copy_overwritten(pii, child, visited, copied);
+      copy_overwritten(pii, child, visited, copied)?;
     }
   }
+  Ok(())
 }
 
 /// A copy of a node, added last

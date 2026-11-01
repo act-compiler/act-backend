@@ -245,12 +245,14 @@ impl Search {
       report!("Starting Phase 2 for PII #{}", number);
       report!();
 
-      // Phase 2
+      // Phase 2, for a candidate the extractors kept
       let pii_path = self.log_dir.join(format!("{}.pii", number));
-      pii.save(&pii_path);
-
       let asm_path = self.log_dir.join(format!("{}.py", number));
-      match backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path) {
+      let allocated = pii.and_then(|pii| {
+        pii.save(&pii_path);
+        backend::malloc::cpp_bridge(&pii_path, &self.metadata_path, &asm_path)
+      });
+      match allocated {
         // Check cost and update best if necessary
         Ok(()) => {
           update_best(

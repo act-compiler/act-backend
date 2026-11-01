@@ -17,7 +17,7 @@ pub fn extract_slow(
   inputs: &HashSet<Id>,
   hbm_offsets: &[(Option<Id>, i32)],
   limit: usize,
-) -> Vec<PiiGraph> {
+) -> Vec<Result<PiiGraph, String>> {
   // Bottom-up traversal to detect compile-time constants
   let constants = detect_constants(egraph, inputs);
   // Annotate the e-graph with DetectedConst nodes and mark analysis data.
@@ -233,7 +233,7 @@ fn extraction_to_piigraph(
   extraction: &Extraction,
   hbm_offsets: &[(Option<Id>, i32)],
   egraph: &EGraph<TensorOp, TensorInfo>,
-) -> PiiGraph {
+) -> Result<PiiGraph, String> {
   let mut pii = PiiGraph::default();
 
   // A postorder from root 0, by the extraction's children map
@@ -278,6 +278,6 @@ fn extraction_to_piigraph(
   }
 
   // Value numbering shares subtrees, an overwritten operand among them
-  fix_inplace(&mut pii);
-  pii
+  fix_inplace(&mut pii)?;
+  Ok(pii)
 }

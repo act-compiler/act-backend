@@ -485,3 +485,52 @@ def test_no_candidate_reads_an_overwritten_operand_again(in_place_dir, tmp_path)
     piis = sorted((tmp_path / 'log').glob('*.pii'))
     assert len(piis) > 1
     assert [pii.name for pii in piis if rereads(pii)] == []
+
+
+def pinned():
+    """Two loads, one in place, and an add into HBM"""
+    acc = Accelerator('PINNED')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_load(acc, 'load_d1', 'd1')
+    add_load(acc, 'load_d2', 'd2').set_inplace([True])
+    # No store, so no candidate copies x through HBM
+    instr = acc.add_instruction('add_out', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d2', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['8192']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    %a = bf16[64,64] add(%In0, %In1);
+    %b = u8[64,64,2] bitcast_convert(%a);
+    ROOT %Out0 = u8[8192] reshape(%b);
+}
+""")
+    return acc
+
+
+@pytest.fixture(scope='module')
+def pinned_backend(tmp_path_factory):
+    """Generate the backend of the spec whose every candidate is dropped"""
+    work_dir = str(tmp_path_factory.mktemp('pinned'))
+    generate_backend(pinned(), work_dir)
+    return os.path.join(work_dir, 'backends', 'PINNED')
+
+
+def dropped_first(backend, tmp_path, kernel):
+    """Return why a failing compile dropped its first candidate"""
+    run, output = compiled(backend, tmp_path, kernel)
+    assert run.returncode == 1
+    assert not output.exists()
+    # One stderr line, the first dropped candidate's reason last
+    (line,) = run.stderr.splitlines()
+    ended, reason = line.split(', and every candidate was dropped, the first because ')
+    assert ended.startswith('Error: no assembly found: ')
+    return reason
+
+
+def test_overwritten_operand_pinned_in_hbm_drops_the_candidate(pinned_backend, tmp_path):
+    # x loaded into d1 and, overwriting it, into d2
+    reason = dropped_first(pinned_backend, tmp_path, SIBLINGS)
+    assert reason == 'an overwritten operand has another reader and is pinned in HBM'

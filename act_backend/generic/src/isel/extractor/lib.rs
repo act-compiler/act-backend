@@ -17,7 +17,7 @@ pub fn extract(
   inputs: &HashSet<Id>,
   hbm_offsets: &[(Option<Id>, i32)],
   limit: usize,
-) -> Vec<PiiGraph> {
+) -> Vec<Result<PiiGraph, String>> {
   let nodes = egraph.total_number_of_nodes();
 
   let start = Instant::now();
@@ -29,7 +29,7 @@ pub fn extract(
 
   report!();
 
-  let mut piis_slow: Vec<PiiGraph> = vec![];
+  let mut piis_slow: Vec<Result<PiiGraph, String>> = vec![];
   if limit <= SLOW_LIMIT_CUTOFF {
     let start = Instant::now();
     piis_slow = extract_slow(egraph, root, inputs, hbm_offsets, limit);
