@@ -534,3 +534,25 @@ def test_overwritten_operand_pinned_in_hbm_drops_the_candidate(pinned_backend, t
     # x loaded into d1 and, overwriting it, into d2
     reason = dropped_first(pinned_backend, tmp_path, SIBLINGS)
     assert reason == 'an overwritten operand has another reader and is pinned in HBM'
+
+
+# An exponential of a concatenate, added to the concatenate
+VIEWED = """HloModule viewed, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %ab = bf16[64,64] concatenate(%a, %b), dimensions={0}
+  %e = bf16[64,64] exponential(%ab)
+  ROOT %y = bf16[64,64] add(%e, %ab)
+}
+"""
+
+
+def test_overwritten_view_of_shared_storage_drops_the_candidate(in_place_dir, tmp_path):
+    backend = os.path.join(in_place_dir, 'backends', 'IN_PLACE')
+    run, _ = compiled(backend, tmp_path, VIEWED, flags=['--verbose'])
+    number = first_fast(run.stdout)
+    # A copy of the concatenate would view the same loads
+    reason = 'an overwritten operand views storage that has another reader'
+    assert f'PII #{number} dropped: {reason}\n' in run.stdout

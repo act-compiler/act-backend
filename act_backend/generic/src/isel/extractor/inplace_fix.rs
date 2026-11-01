@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::ir::egraph::TensorOp;
 use crate::ir::pii::PiiGraph;
 
 /// Give an instruction overwriting a shared operand its own copy
 /// Err where that operand is pinned in HBM
+/// Err where that operand views shared storage
 pub fn fix_inplace(pii: &mut PiiGraph) -> Result<(), String> {
   let mut visited: HashSet<usize> = HashSet::new();
   let mut copied = false;
@@ -25,6 +27,24 @@ fn count_uses(pii: &PiiGraph, target: usize) -> usize {
     .count()
 }
 
+/// A slice or concatenate lies in its operands' storage
+fn is_view(op: &TensorOp) -> bool {
+  matches!(op, TensorOp::OpSlice(..) | TensorOp::OpConcat(..))
+}
+
+/// Walk an overwritten view down to its storage's owners
+fn check_view_chain(pii: &PiiGraph, node: usize) -> Result<(), String> {
+  if count_uses(pii, node) > 1 {
+    return Err("an overwritten operand views storage that has another reader".to_string());
+  }
+  if is_view(&pii.nodes[node].op) {
+    for &child in pii.nodes[node].children.iter() {
+      check_view_chain(pii, child)?;
+    }
+  }
+  Ok(())
+}
+
 /// Copy each shared operand overwritten at or below a node
 fn copy_overwritten(
   pii: &mut PiiGraph,
@@ -41,7 +61,11 @@ fn copy_overwritten(
   for (i, &child) in children.iter().enumerate() {
     // All false for a plain instruction, empty for an operator
     let overwritten = inplace.get(i) == Some(&true);
-    if overwritten && count_uses(pii, child) > 1 {
+    if overwritten && is_view(&pii.nodes[child].op) {
+      // A copy of a view would view the same storage
+      check_view_chain(pii, child)?;
+      copy_overwritten(pii, child, visited, copied)?;
+    } else if overwritten && count_uses(pii, child) > 1 {
       // A copy is a node, never storage pinned in HBM
       if pii.nodes[child].hbm_offset.is_some() {
         return Err("an overwritten operand has another reader and is pinned in HBM".to_string());
