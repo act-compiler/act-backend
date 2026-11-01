@@ -1,6 +1,7 @@
 """End-to-end test for ACT-Backend using mini_trn ISA."""
 
 import os
+import re
 
 import jax.numpy as jnp
 import numpy as np
@@ -62,3 +63,16 @@ def test_fast_extraction_gives_one_graph(work_dir, tmp_path):
         run, _ = compiled(backend, tmp_path, f.read(), flags=['--verbose'])
     assert run.returncode == 0, run.stderr
     assert ('Fast', 1) in extracted(run.stdout)
+
+
+def test_softmax_is_marked_in_place(work_dir, tmp_path):
+    # The softmax overwrites its input, and its e-node says so
+    path = os.path.join(work_dir, 'targets', 'mini_trn', 'backend', 'src', 'ir', 'egraph.rs')
+    with open(path) as f:
+        assert 'TensorOp::InstrSoftmax(..) => &[true],' in f.read()
+    # No candidate of the attention kernel dropped
+    backend = os.path.join(work_dir, 'backends', 'mini_trn')
+    with open(os.path.join(EXAMPLE_DIR, 'kernels', 'attention.hlo')) as f:
+        run, _ = compiled(backend, tmp_path, f.read(), flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    assert re.search(r'PII #\d+ dropped', run.stdout) is None
