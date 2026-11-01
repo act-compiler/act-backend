@@ -59,17 +59,24 @@ fn get_pii_graph(
     }
   }
 
-  'en_loop: for en in &egraph[eclass].nodes {
-    // A snapshot to roll back to if this e-node fails
-    let snapshot = selected.clone();
-    // Base case: input e-node
-    if inputs.contains(&eclass) && target_buf == Buffer::HBM {
+  // Base case: an input e-class offers its Var
+  if inputs.contains(&eclass) && target_buf == Buffer::HBM {
+    if let Some(en) = egraph[eclass]
+      .nodes
+      .iter()
+      .find(|en| matches!(en, TensorOp::Var(_)))
+    {
       selected.insert(
         (en.clone(), target_buf),
         (eclass, egraph[eclass].data.clone()),
       );
       return true;
     }
+  }
+
+  'en_loop: for en in &egraph[eclass].nodes {
+    // A snapshot to roll back to if this e-node fails
+    let snapshot = selected.clone();
     // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
       selected.insert(
