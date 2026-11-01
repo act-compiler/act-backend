@@ -6,7 +6,7 @@ import re
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, bf16, compiled, extracted, simulated
+from conftest import add_moves, add_on_d1, bf16, compiled, extracted, instruction_calls, simulated
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
@@ -358,3 +358,71 @@ def test_fast_extraction_copies_a_value_needed_in_two_buffers(copying_dir, tmp_p
     # numpy's exponential, rounded to bf16 like the kernel
     expected = bf16(2 * bf16(np.exp(np.asarray(x, np.float64))))
     assert np.allclose(np.asarray(result, np.float64), expected, rtol=2**-7, atol=0)
+
+
+# The sum of an add's two inputs
+SUM_LINES = [
+    '%In0 = bf16[64,64] parameter(0)',
+    '%In1 = bf16[64,64] parameter(1)',
+    'ROOT %Out0 = bf16[64,64] add(%In0, %In1)',
+]
+
+
+def exp_in_place(acc):
+    """An exponential of 64 rows of d1 that overwrites its input"""
+    instr = acc.add_instruction('exp_in_place', [], ['addr'])
+    instr.set_inputs([['d1', ['@a.addr'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr'], ['64']]])
+    instr.set_inplace([True])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[64,64] exponential(%In0);
+}
+""")
+
+
+def in_place():
+    """Moves, an in-place exponential and add, and a plain add"""
+    acc = Accelerator('IN_PLACE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    add_moves(acc)
+    exp_in_place(acc)
+    # Declared first, so its e-class holds it first
+    instr = acc.add_instruction('add_in_place', [], ['addr_1', 'addr_2'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_1'], ['64']]])
+    instr.set_inplace([True, False])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in SUM_LINES) + '}\n')
+    add_on_d1(acc, 'add_d1', ['64', '64', '64'], SUM_LINES)
+    return acc
+
+
+@pytest.fixture(scope='module')
+def in_place_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec whose instructions overwrite an input"""
+    work_dir = str(tmp_path_factory.mktemp('in_place'))
+    acc = in_place()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+# A sum added to its first input
+RESUMMED = """HloModule resummed, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %y = bf16[64,64] parameter(1)
+  %s = bf16[64,64] add(%x, %y)
+  ROOT %t = bf16[64,64] add(%s, %x)
+}
+"""
+
+
+def test_fast_extraction_offers_a_plain_enode_before_an_in_place_one(in_place_dir, tmp_path):
+    output = fast_compiled(in_place_dir, 'IN_PLACE', tmp_path, RESUMMED)
+    # Plain adds, so x is loaded once and read twice
+    assert instruction_calls(output) == {'load_rm': 2, 'add_d1': 2, 'store_rm': 1}
+    result = simulated(in_place_dir, 'IN_PLACE', output, ROWS, 2 * ROWS)
+    assert np.array_equal(np.asarray(result), np.asarray(4 * ROWS))

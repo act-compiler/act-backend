@@ -74,7 +74,15 @@ fn get_pii_graph(
     }
   }
 
-  'en_loop: for en in &egraph[eclass].nodes {
+  // In-place e-nodes overwrite storage, so an e-class offers them last
+  let nodes = &egraph[eclass].nodes;
+  let plain = nodes
+    .iter()
+    .filter(|en| !en.inplace_children().contains(&true));
+  let inplace = nodes
+    .iter()
+    .filter(|en| en.inplace_children().contains(&true));
+  'en_loop: for en in plain.chain(inplace) {
     // A snapshot to roll back to if this e-node fails
     let snapshot = selected.clone();
     // Base case: detected constant e-node
