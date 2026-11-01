@@ -140,15 +140,11 @@ ENTRY {
 """)
 
 
-def two_loads():
-    """Moves, a load into d2, and an add across buffers"""
-    acc = Accelerator('TWO_LOADS')
-    acc.add_data_model('d1', [128], [64], 'bf16')
-    acc.add_data_model('d2', [128], [64], 'bf16')
-    add_moves(acc)
-    instr = acc.add_instruction('load_d2', ['n'], ['addr_in', 'addr_out'])
+def add_load(acc, name, model):
+    """A load of rows into a buffer"""
+    instr = acc.add_instruction(name, ['n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
-    instr.set_outputs([['d2', ['@a.addr_out'], ['@c.n']]])
+    instr.set_outputs([[model, ['@a.addr_out'], ['@c.n']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = u8[`@c.n * 128`] parameter(0);
@@ -156,6 +152,16 @@ ENTRY {
     ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
 }
 """)
+    return instr
+
+
+def two_loads():
+    """Moves, a load into d2, and an add across buffers"""
+    acc = Accelerator('TWO_LOADS')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_moves(acc)
+    add_load(acc, 'load_d2', 'd2')
     add_across(acc)
     return acc
 
