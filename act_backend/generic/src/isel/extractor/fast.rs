@@ -21,7 +21,7 @@ pub fn extract_fast(
   annotate_constants(egraph, &constants);
 
   // Top-down extraction; e-node order keeps the numbering stable
-  let mut selected: BTreeMap<TensorOp, (Id, TensorInfo)> = BTreeMap::new();
+  let mut selected: BTreeMap<(TensorOp, Buffer), (Id, TensorInfo)> = BTreeMap::new();
   let ret = get_pii_graph(
     egraph,
     root,
@@ -44,7 +44,7 @@ fn get_pii_graph(
   target_buf: Buffer,
   inputs: &HashSet<Id>,
   path: &mut HashSet<Id>,
-  selected: &mut BTreeMap<TensorOp, (Id, TensorInfo)>,
+  selected: &mut BTreeMap<(TensorOp, Buffer), (Id, TensorInfo)>,
 ) -> bool {
   if path.contains(&eclass) {
     // no cycles allowed
@@ -52,11 +52,9 @@ fn get_pii_graph(
   }
 
   for en in &egraph[eclass].nodes {
-    if let Some(bufs) = get_bufs(en) {
-      // Memoization case: a selected e-node, at a cost to completeness
-      if selected.get(en).is_some() && target_buf == bufs[0] {
-        return true;
-      }
+    // Memoization case: a selected e-node, at a cost to completeness
+    if selected.contains_key(&(en.clone(), target_buf)) {
+      return true;
     }
   }
 
@@ -65,12 +63,18 @@ fn get_pii_graph(
     let snapshot = selected.clone();
     // Base case: input e-node
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
-      selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
+      selected.insert(
+        (en.clone(), target_buf),
+        (eclass, egraph[eclass].data.clone()),
+      );
       return true;
     }
     // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
-      selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
+      selected.insert(
+        (en.clone(), target_buf),
+        (eclass, egraph[eclass].data.clone()),
+      );
       return true;
     }
 
@@ -82,11 +86,7 @@ fn get_pii_graph(
 
       path.insert(eclass);
       for (i, child_ec) in en.children().iter().enumerate() {
-        let out_buf = if bufs[0] != Buffer::ANY {
-          bufs[1 + i]
-        } else {
-          target_buf
-        };
+        let out_buf = child_buf(&bufs, target_buf, i);
         if !get_pii_graph(egraph, *child_ec, out_buf, inputs, path, selected) {
           // Roll back any selections that happened while attempting this e-node
           selected.clear();
@@ -100,7 +100,10 @@ fn get_pii_graph(
       }
       path.remove(&eclass);
 
-      selected.insert(en.clone(), (eclass, egraph[eclass].data.clone()));
+      selected.insert(
+        (en.clone(), target_buf),
+        (eclass, egraph[eclass].data.clone()),
+      );
       return true;
     }
   }
@@ -109,17 +112,18 @@ fn get_pii_graph(
 
 /// The selected e-nodes as a pii graph, built bottom-up
 fn select2pii_graph(
-  selected: &BTreeMap<TensorOp, (Id, TensorInfo)>,
+  selected: &BTreeMap<(TensorOp, Buffer), (Id, TensorInfo)>,
   hbm_offsets: &[(Option<Id>, i32)],
 ) -> PiiGraph {
   let mut pii_graph = PiiGraph::default();
 
-  let mut to_remove: Vec<TensorOp> = vec![];
-  // Map selected e-node's e-class -> node index in pii graph
-  let mut eclass_map: HashMap<Id, usize> = HashMap::new();
+  let mut to_remove: Vec<(TensorOp, Buffer)> = vec![];
+  // Map e-class and buffer -> node index in pii graph
+  let mut eclass_map: HashMap<(Id, Buffer), usize> = HashMap::new();
 
   // Add leaf e-nodes to the pii graph
-  for (en, (ec_id, info)) in selected.iter() {
+  for (key, (ec_id, info)) in selected.iter() {
+    let (en, buf) = key;
     if en.is_leaf() {
       let new_id = pii_graph.add_node(
         en.clone(),
@@ -127,36 +131,39 @@ fn select2pii_graph(
         vec![],
         get_hbm_offset(hbm_offsets, *ec_id),
       );
-      eclass_map.insert(*ec_id, new_id);
-      to_remove.push(en.clone());
+      eclass_map.insert((*ec_id, *buf), new_id);
+      to_remove.push(key.clone());
     }
   }
 
   // Add first candidate e-node to the pii graph
   while to_remove.len() < selected.len() {
     let mut progress = false;
-    for (en, (ec_id, info)) in selected.iter() {
-      if to_remove.contains(en) {
+    for (key, (ec_id, info)) in selected.iter() {
+      if to_remove.contains(key) {
         continue;
       }
-      if en
+      let (en, buf) = key;
+      let bufs = get_bufs(en).unwrap();
+      let children: Option<Vec<usize>> = en
         .children()
         .iter()
-        .all(|child_ec| eclass_map.contains_key(child_ec))
-      {
-        let children: Vec<usize> = en
-          .children()
-          .iter()
-          .map(|child_ec| *eclass_map.get(child_ec).unwrap())
-          .collect();
+        .enumerate()
+        .map(|(i, child_ec)| {
+          eclass_map
+            .get(&(*child_ec, child_buf(&bufs, *buf, i)))
+            .copied()
+        })
+        .collect();
+      if let Some(children) = children {
         let new_id = pii_graph.add_node(
           en.clone(),
           info.clone(),
           children,
           get_hbm_offset(hbm_offsets, *ec_id),
         );
-        eclass_map.insert(*ec_id, new_id);
-        to_remove.push(en.clone());
+        eclass_map.insert((*ec_id, *buf), new_id);
+        to_remove.push(key.clone());
         progress = true;
         break;
       }
@@ -169,4 +176,14 @@ fn select2pii_graph(
   }
 
   pii_graph
+}
+
+/// Where an e-node selected in `buf` needs its `i`th child
+fn child_buf(bufs: &[Buffer], buf: Buffer, i: usize) -> Buffer {
+  if bufs[0] != Buffer::ANY {
+    bufs[1 + i]
+  } else {
+    // A buffer-agnostic e-node takes children from its own buffer
+    buf
+  }
 }

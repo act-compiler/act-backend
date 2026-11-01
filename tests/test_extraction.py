@@ -3,9 +3,12 @@
 import os
 import re
 
+import jax.numpy as jnp
+import numpy as np
 import pytest
-from conftest import add_moves, compiled
+from conftest import add_moves, compiled, extracted, simulated
 from taidl import Accelerator
+from taidl_to import generate_oracle
 
 from act_backend import generate_backend
 
@@ -116,7 +119,139 @@ def test_fast_extraction_orders_the_nodes_alike_on_every_compile(backend, tmp_pa
         run, _ = compiled(backend, run_dir, SUM, flags=['--verbose'])
         assert run.returncode == 0, run.stderr
         # The fast candidate is extracted first, so it is 0.pii
-        assert re.search(r'graphs extracted: (\d+)', run.stdout)[1] == '1'
+        assert extracted(run.stdout)[0] == ('Fast', 1)
         candidates.add((run_dir / 'log' / '0.pii').read_text())
     # Two independent leaves and loads, yet one node order
     assert len(candidates) == 1
+
+
+def add_across(acc):
+    """An add of 64 rows of d1 to 64 rows of d2, into d1"""
+    instr = acc.add_instruction('add_across', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d2', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    ROOT %Out0 = bf16[64,64] add(%In0, %In1);
+}
+""")
+
+
+def two_loads():
+    """Moves, a load into d2, and an add across buffers"""
+    acc = Accelerator('TWO_LOADS')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_moves(acc)
+    instr = acc.add_instruction('load_d2', ['n'], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
+    instr.set_outputs([['d2', ['@a.addr_out'], ['@c.n']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = u8[`@c.n * 128`] parameter(0);
+    %a = u8[`@c.n`,64,2] reshape(%In0);
+    ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
+}
+""")
+    add_across(acc)
+    return acc
+
+
+@pytest.fixture(scope='module')
+def two_loads_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec that loads into two buffers"""
+    work_dir = str(tmp_path_factory.mktemp('two_loads'))
+    acc = two_loads()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+def first_fast(stdout):
+    """Return the number of a compile's first fast candidate"""
+    reports = extracted(stdout)
+    assert ('Fast', 1) in reports, 'the fast extractor found no graph'
+    # Numbered as extracted, so count the ones before it
+    return sum(count for _, count in reports[: reports.index(('Fast', 1))])
+
+
+def fast_compiled(work_dir, name, tmp_path, kernel):
+    """Compile a kernel and check the fast candidate won"""
+    backend = os.path.join(work_dir, 'backends', name)
+    run, output = compiled(backend, tmp_path, kernel, flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    number = first_fast(run.stdout)
+    assert f'PII #{number} dropped' not in run.stdout
+    assert output.read_text() == (tmp_path / 'log' / f'{number}.py').read_text()
+    return output
+
+
+# Each row its own value, so a misplaced operand shows
+ROWS = jnp.repeat(jnp.arange(64, dtype=jnp.bfloat16)[:, None], 64, axis=1)
+
+# An input added to itself, read from d1 and d2
+SIBLINGS = """HloModule siblings, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  ROOT %y = bf16[64,64] add(%x, %x)
+}
+"""
+
+
+def test_fast_extraction_gives_a_value_read_in_two_buffers_a_node_in_each(two_loads_dir, tmp_path):
+    output = fast_compiled(two_loads_dir, 'TWO_LOADS', tmp_path, SIBLINGS)
+    result = simulated(two_loads_dir, 'TWO_LOADS', output, ROWS)
+    assert np.array_equal(np.asarray(result), np.asarray(ROWS + ROWS))
+
+
+# Two concatenates sharing an input, read from d1 and d2
+SHARED = """HloModule shared, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %c = bf16[32,64] parameter(2)
+  %ab = bf16[64,64] concatenate(%a, %b), dimensions={0}
+  %ac = bf16[64,64] concatenate(%a, %c), dimensions={0}
+  ROOT %y = bf16[64,64] add(%ab, %ac)
+}
+"""
+
+# The concatenated inputs, each row its own value
+A, B, C = ROWS[:32], ROWS[32:], ROWS[:32] + 64
+
+
+def test_fast_extraction_takes_a_concatenates_inputs_from_its_buffer(two_loads_dir, tmp_path):
+    output = fast_compiled(two_loads_dir, 'TWO_LOADS', tmp_path, SHARED)
+    result = simulated(two_loads_dir, 'TWO_LOADS', output, A, B, C)
+    expected = jnp.concatenate([A, B]) + jnp.concatenate([A, C])
+    assert np.array_equal(np.asarray(result), np.asarray(expected))
+
+
+# One concatenate, read from d1 and from d2
+REPEATED = """HloModule repeated, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %ab = bf16[64,64] concatenate(%a, %b), dimensions={0}
+  ROOT %y = bf16[64,64] add(%ab, %ab)
+}
+"""
+
+
+def test_fast_extraction_gives_a_concatenate_read_in_two_buffers_a_node_in_each(
+    two_loads_dir, tmp_path
+):
+    backend = os.path.join(two_loads_dir, 'backends', 'TWO_LOADS')
+    run, _ = compiled(backend, tmp_path, REPEATED, flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    number = first_fast(run.stdout)
+    assert f'PII #{number} dropped' not in run.stdout
+    # The fast candidate itself, whichever candidate the output is
+    candidate = tmp_path / 'log' / f'{number}.py'
+    result = simulated(two_loads_dir, 'TWO_LOADS', candidate, A, B)
+    assert np.array_equal(np.asarray(result), np.asarray(2 * jnp.concatenate([A, B])))
