@@ -20,7 +20,6 @@ from .malloc_instructions_h_generator import generate_instructions_file
 from .malloc_parser_cc_generator import generate_parser_file
 from .spec_checks import (
     check_constraints,
-    check_inplace,
     check_operands,
     check_outputs,
     check_semantics,
@@ -101,7 +100,6 @@ def generate_backend(
     check_outputs(instructions)
     check_semantics(instructions)
     check_operands(instructions, accelerator.data_model)
-    check_inplace(instructions)
     check_constraints(instructions)
     check_state(instructions)
 

@@ -11,6 +11,8 @@ class InstructionInfo:
     arity: int
     attributes: list[str]
     buffer_assignment: str
+    # One flag per input, true where it is overwritten
+    inplace: list[bool]
 
     @property
     def has_metadata(self):
@@ -102,7 +104,12 @@ def extract_instruction_info(instructions) -> list[InstructionInfo]:
 
         info_list.append(
             InstructionInfo(
-                name, type_names[name], arity, list(instruction.comp_attr), buffer_assignment
+                name,
+                type_names[name],
+                arity,
+                list(instruction.comp_attr),
+                buffer_assignment,
+                list(instruction.inplace),
             )
         )
 

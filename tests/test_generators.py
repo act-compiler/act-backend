@@ -1,13 +1,16 @@
 """Unit tests of the generator functions, without a build."""
 
+import os
 import re
+import shutil
 import subprocess
 
 import pytest
 from conftest import TREE_DIR, add_on_d1, long_names
 from taidl import Accelerator
 
-from act_backend import ir_egraph_rs_generator
+import act_backend
+from act_backend import generate_backend, ir_egraph_rs_generator
 from act_backend.generator import get_instruction_metadata
 from act_backend.instruction_info import extract_instruction_info, get_type_names
 from act_backend.isel_applier_rs_generator import generate_function_mappings
@@ -204,6 +207,60 @@ ENTRY {{
     functions += '\n' + generate_ir2isa_rust_functions(named, templates)
     assert 'let attr_the_first_row_of_the_window_in_rows_x = value / 2;' in functions
     assert rustfmt_complaints(functions, tmp_path) == ''
+
+
+def test_wide_inplace_flags_are_laid_out_as_rustfmt_lays_them(tmp_path):
+    acc = Accelerator('FLAGS')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    # Instructions of 1 to 30 inputs, each overwriting its first
+    flag_lists = [[True] + [False] * (count - 1) for count in range(1, 31)]
+    # Arrays that fill a line to column 99 or 100
+    flag_lists += [[True] * 5 + [False] * 10, [True] * 5 + [False] * 17]
+    flag_lists += [[True] * 5 + [False] * 9, [True] * 6 + [False] * 9]
+    flag_lists += [[True] * 6 + [False] * 8 + [True] * 5 + [False] * 9]
+    for number, flags in enumerate(flag_lists, 1):
+        count = len(flags)
+        lines = [f'%In{k} = bf16[64,64] parameter({k})' for k in range(count)]
+        total = '%In0'
+        for k in range(1, count):
+            lines.append(f'%s{k} = bf16[64,64] add({total}, %In{k})')
+            total = f'%s{k}'
+        lines.append(f'ROOT %Out0 = bf16[64,64] copy({total})')
+        add_on_d1(acc, f'sum_{number}', ['64'] * (count + 1), lines)
+        acc.instructions[-1].set_inplace(flags)
+    generic = os.path.join(os.path.dirname(act_backend.__file__), 'generic')
+    egraph = tmp_path / 'src' / 'ir' / 'egraph.rs'
+    egraph.parent.mkdir(parents=True)
+    shutil.copy(os.path.join(generic, 'src', 'ir', 'egraph.rs'), egraph)
+    ir_egraph_rs_generator.generate_egraph_rs_file(str(tmp_path), acc.instructions)
+    text = egraph.read_text()
+    # The widest arrays packed onto lines of their own
+    assert 'TensorOp::InstrSum30(..) => &[\n' in text
+    assert rustfmt_complaints(text, tmp_path) == ''
+
+
+def test_input_marked_in_place_reaches_the_egraph(tmp_path, monkeypatch):
+    acc = Accelerator('ONE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    lines = [
+        '%In0 = bf16[64,64] parameter(0)',
+        '%In1 = bf16[64,64] parameter(1)',
+        'ROOT %Out0 = bf16[64,64] add(%In0, %In1)',
+    ]
+    add_on_d1(acc, 'vadd', ['64', '64', '64'], lines)
+    (vadd,) = acc.instructions
+    vadd.set_inplace([False, True])
+
+    # The sources alone, the build stopped
+    def stopped(command, **options):
+        return subprocess.CompletedProcess(command, 1, stdout='')
+
+    monkeypatch.setattr(subprocess, 'run', stopped)
+    with pytest.raises(RuntimeError):
+        generate_backend(acc, str(tmp_path))
+    egraph = tmp_path / 'targets' / 'ONE' / 'backend' / 'src' / 'ir' / 'egraph.rs'
+    # One flag per input, true where vadd overwrites it
+    assert 'TensorOp::InstrVadd(..) => &[false, true],' in egraph.read_text()
 
 
 def test_constant_literals_are_laid_out_as_rustfmt_lays_them(templates, tmp_path):

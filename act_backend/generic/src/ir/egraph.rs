@@ -126,6 +126,14 @@ impl TensorOp {
     matches!(self, TensorOp::DetectedConst(_))
   }
 
+  // One flag per child, true where the instruction overwrites it
+  pub fn inplace_children(&self) -> &'static [bool] {
+    match self {
+      // {{ISA_INPLACE_MATCH_ARMS}}
+      _ => &[],
+    }
+  }
+
   pub fn set_metadata(&mut self, metadata: Option<String>) {
     match self {
       // {{ISA_SET_METADATA_MATCH_ARMS}}
