@@ -1,6 +1,5 @@
 """Tests of where an instruction is selected: a spec made for them, generated once."""
 
-import importlib.util
 import os
 import re
 import subprocess
@@ -9,7 +8,7 @@ from collections import Counter
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, add_on_d1, import_oracle
+from conftest import add_moves, add_on_d1, simulated
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
@@ -649,19 +648,6 @@ def selected(backend, tmp_path, kernel):
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
         for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', output.read_text())
     ]
-
-
-def simulated(work_dir, name, assembly, *inputs):
-    """Run a compiled kernel on the oracle of the accelerator named and return its output"""
-    decorator, api = import_oracle(work_dir, os.path.join(work_dir, name))
-    spec = importlib.util.spec_from_file_location('kernel', assembly)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    (function,) = re.findall(r'^def (\w+)\(kernel, api\):', assembly.read_text(), re.MULTILINE)
-    kernel = getattr(module, function)(decorator.kernel, api)
-    kernel('fsim-compile')()
-    outputs, _ = kernel('fsim')(*inputs)
-    return outputs[0]
 
 
 # The sum of a reduce region
