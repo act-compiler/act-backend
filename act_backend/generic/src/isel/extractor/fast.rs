@@ -1,5 +1,5 @@
 use egg::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::ir::buffer::Buffer;
 use crate::ir::egraph::{TensorInfo, TensorOp};
@@ -20,8 +20,8 @@ pub fn extract_fast(
   // Annotate the e-graph with DetectedConst nodes and mark analysis data.
   annotate_constants(egraph, &constants);
 
-  // Top-down traversal to perform extraction
-  let mut selected: HashMap<TensorOp, (Id, TensorInfo)> = HashMap::new();
+  // Top-down extraction; e-node order keeps the numbering stable
+  let mut selected: BTreeMap<TensorOp, (Id, TensorInfo)> = BTreeMap::new();
   let ret = get_pii_graph(
     egraph,
     root,
@@ -44,7 +44,7 @@ fn get_pii_graph(
   target_buf: Buffer,
   inputs: &HashSet<Id>,
   path: &mut HashSet<Id>,
-  selected: &mut HashMap<TensorOp, (Id, TensorInfo)>,
+  selected: &mut BTreeMap<TensorOp, (Id, TensorInfo)>,
 ) -> bool {
   if path.contains(&eclass) {
     // no cycles allowed
@@ -109,7 +109,7 @@ fn get_pii_graph(
 
 /// The selected e-nodes as a pii graph, built bottom-up
 fn select2pii_graph(
-  selected: &HashMap<TensorOp, (Id, TensorInfo)>,
+  selected: &BTreeMap<TensorOp, (Id, TensorInfo)>,
   hbm_offsets: &[(Option<Id>, i32)],
 ) -> PiiGraph {
   let mut pii_graph = PiiGraph::default();
