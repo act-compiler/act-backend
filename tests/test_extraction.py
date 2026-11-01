@@ -6,7 +6,7 @@ import re
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, compiled, extracted, simulated
+from conftest import add_moves, bf16, compiled, extracted, simulated
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
@@ -255,3 +255,53 @@ def test_fast_extraction_gives_a_concatenate_read_in_two_buffers_a_node_in_each(
     candidate = tmp_path / 'log' / f'{number}.py'
     result = simulated(two_loads_dir, 'TWO_LOADS', candidate, A, B)
     assert np.array_equal(np.asarray(result), np.asarray(2 * jnp.concatenate([A, B])))
+
+
+def copying():
+    """Moves, a copy to d2, an exponential, an add across buffers"""
+    acc = Accelerator('COPYING')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_moves(acc)
+    add_copy(acc, 'to_d2', 'd1', 'd2')
+    instr = acc.add_instruction('exp_d1', [], ['addr_in', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[64,64] exponential(%In0);
+}
+""")
+    add_across(acc)
+    return acc
+
+
+@pytest.fixture(scope='module')
+def copying_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec that copies to d2"""
+    work_dir = str(tmp_path_factory.mktemp('copying'))
+    acc = copying()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+# An exponential added to itself, copied from d1 to d2
+COPIED = """HloModule copied, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %e = bf16[64,64] exponential(%x)
+  ROOT %y = bf16[64,64] add(%e, %e)
+}
+"""
+
+
+def test_fast_extraction_copies_a_value_needed_in_two_buffers(copying_dir, tmp_path):
+    output = fast_compiled(copying_dir, 'COPYING', tmp_path, COPIED)
+    x = ROWS / 64
+    result = simulated(copying_dir, 'COPYING', output, x)
+    # numpy's exponential, rounded to bf16 like the kernel
+    expected = bf16(2 * bf16(np.exp(np.asarray(x, np.float64))))
+    assert np.allclose(np.asarray(result, np.float64), expected, rtol=2**-7, atol=0)

@@ -8,7 +8,7 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Fast extraction: one pii graph, visiting each e-class once
+/// Fast extraction: one pii graph, each e-class once per buffer
 pub fn extract_fast(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
@@ -43,10 +43,11 @@ fn get_pii_graph(
   eclass: Id,
   target_buf: Buffer,
   inputs: &HashSet<Id>,
-  path: &mut HashSet<Id>,
+  path: &mut HashSet<(Id, Buffer)>,
   selected: &mut BTreeMap<(TensorOp, Buffer), (Id, TensorInfo)>,
 ) -> bool {
-  if path.contains(&eclass) {
+  // An e-class in another buffer is another node
+  if path.contains(&(eclass, target_buf)) {
     // no cycles allowed
     return false;
   }
@@ -84,7 +85,7 @@ fn get_pii_graph(
         continue;
       }
 
-      path.insert(eclass);
+      path.insert((eclass, target_buf));
       for (i, child_ec) in en.children().iter().enumerate() {
         let out_buf = child_buf(&bufs, target_buf, i);
         if !get_pii_graph(egraph, *child_ec, out_buf, inputs, path, selected) {
@@ -94,11 +95,11 @@ fn get_pii_graph(
             selected.insert(k.clone(), v.clone());
           }
           // Remove current e-class from path before trying next e-node
-          path.remove(&eclass);
+          path.remove(&(eclass, target_buf));
           continue 'en_loop;
         }
       }
-      path.remove(&eclass);
+      path.remove(&(eclass, target_buf));
 
       selected.insert(
         (en.clone(), target_buf),
