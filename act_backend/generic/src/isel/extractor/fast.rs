@@ -6,6 +6,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::ir::pii::PiiGraph;
 
 use crate::ir::buffer::buffer_assignment as get_bufs;
+use crate::isel::extractor::inplace_fix::fix_inplace;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
 /// Fast extraction: one pii graph, each e-class once per buffer
@@ -179,6 +180,7 @@ fn select2pii_graph(
           get_hbm_offset(hbm_offsets, *ec_id),
         );
         eclass_map.insert((*ec_id, *buf), new_id);
+        pii_graph.root = new_id;
         to_remove.push(key.clone());
         progress = true;
         break;
@@ -191,6 +193,7 @@ fn select2pii_graph(
     }
   }
 
+  fix_inplace(&mut pii_graph);
   pii_graph
 }
 

@@ -2,6 +2,7 @@
 
 import os
 import re
+from collections import Counter
 
 import jax.numpy as jnp
 import numpy as np
@@ -426,3 +427,55 @@ def test_fast_extraction_offers_a_plain_enode_before_an_in_place_one(in_place_di
     assert instruction_calls(output) == {'load_rm': 2, 'add_d1': 2, 'store_rm': 1}
     result = simulated(in_place_dir, 'IN_PLACE', output, ROWS, 2 * ROWS)
     assert np.array_equal(np.asarray(result), np.asarray(4 * ROWS))
+
+
+# An exponential added to its own input
+RAISED = """HloModule raised, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %e = bf16[64,64] exponential(%x)
+  ROOT %y = bf16[64,64] add(%e, %x)
+}
+"""
+
+
+def test_fast_extraction_copies_a_shared_operand_for_the_instruction_overwriting_it(
+    in_place_dir, tmp_path
+):
+    output = fast_compiled(in_place_dir, 'IN_PLACE', tmp_path, RAISED)
+    # exp_in_place overwrites one load of x, add_d1 reads the other
+    calls = {'load_rm': 2, 'exp_in_place': 1, 'add_d1': 1, 'store_rm': 1}
+    assert instruction_calls(output) == calls
+    x = ROWS / 64
+    result = simulated(in_place_dir, 'IN_PLACE', output, x)
+    # numpy's exponential and sum, rounded to bf16 like the kernel
+    x = np.asarray(x, np.float64)
+    expected = bf16(bf16(np.exp(x)) + x)
+    assert np.allclose(np.asarray(result, np.float64), expected, rtol=2**-7, atol=0)
+
+
+# Each in-place instruction and the operand it overwrites
+OVERWRITES = {'instr_exp_in_place': 0, 'instr_add_in_place': 0}
+
+
+def rereads(pii):
+    """Whether a candidate reads an operand an instruction overwrites again"""
+    nodes = [NODE.fullmatch(line).groups() for line in pii.read_text().splitlines()]
+    operands = {number: re.findall(r't(\d+)', children) for number, _, _, children in nodes}
+    readers = Counter(child for children in operands.values() for child in children)
+    return any(
+        readers[operands[number][OVERWRITES[operation]]] > 1
+        for number, _, operation, _ in nodes
+        if operation in OVERWRITES
+    )
+
+
+def test_no_candidate_reads_an_overwritten_operand_again(in_place_dir, tmp_path):
+    backend = os.path.join(in_place_dir, 'backends', 'IN_PLACE')
+    run, _ = compiled(backend, tmp_path, RAISED)
+    assert run.returncode == 0, run.stderr
+    # Every logged candidate, the fast one and the slow ones
+    piis = sorted((tmp_path / 'log').glob('*.pii'))
+    assert len(piis) > 1
+    assert [pii.name for pii in piis if rereads(pii)] == []

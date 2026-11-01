@@ -7,6 +7,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::ir::pii::PiiGraph;
 
 use crate::ir::buffer::buffer_assignment as get_bufs;
+use crate::isel::extractor::inplace_fix::fix_inplace;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
 /// Slow extraction: repeat-free pii graphs of up to `limit` e-nodes
@@ -272,8 +273,11 @@ fn extraction_to_piigraph(
     let ec_id = egraph.lookup(op.clone()).unwrap();
     let info = egraph[ec_id].data.clone();
     let node_id = pii.add_node(op, info, child_node_ids, get_hbm_offset(hbm_offsets, ec_id));
+    pii.root = node_id;
     idx_map.insert(idx, node_id);
   }
 
+  // Value numbering shares subtrees, an overwritten operand among them
+  fix_inplace(&mut pii);
   pii
 }
