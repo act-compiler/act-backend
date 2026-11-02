@@ -194,6 +194,19 @@ def run_compiled_kernel(work_dir, assembly_path, example_dir):
     return outputs[0]
 
 
+def simulated(work_dir, name, assembly, *inputs):
+    """Run a compiled kernel on the oracle of the accelerator named and return its output"""
+    decorator, api = import_oracle(work_dir, os.path.join(work_dir, name))
+    spec = importlib.util.spec_from_file_location('kernel', assembly)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    (function,) = re.findall(r'^def (\w+)\(kernel, api\):', assembly.read_text(), re.MULTILINE)
+    kernel = getattr(module, function)(decorator.kernel, api)
+    kernel('fsim-compile')()
+    outputs, _ = kernel('fsim')(*inputs)
+    return outputs[0]
+
+
 def load_golden(data_dir):
     """Return the attention golden and the record of where it came from"""
     with open(os.path.join(data_dir, 'goldens.json')) as f:

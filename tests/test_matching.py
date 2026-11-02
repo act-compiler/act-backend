@@ -1,6 +1,5 @@
 """Tests of where an instruction is selected: a spec made for them, generated once."""
 
-import importlib.util
 import os
 import re
 import subprocess
@@ -9,7 +8,7 @@ from collections import Counter
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, add_on_d1, import_oracle
+from conftest import add_moves, add_on_d1, simulated
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
@@ -645,23 +644,20 @@ def selected(backend, tmp_path, kernel):
     run = subprocess.run([backend, *arguments], capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
     assert output.exists(), 'the compile found no assembly'
+    return calls_in(output.read_text())
+
+
+def calls_in(assembly):
+    """Return each call in an assembly's text as its name and arguments"""
     return [
         (name, dict(re.findall(r'(\w+) = (\d+)', arguments)))
-        for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', output.read_text())
+        for name, arguments in re.findall(r'api\.(\w+)\(([^)]*)\)', assembly)
     ]
 
 
-def simulated(work_dir, name, assembly, *inputs):
-    """Run a compiled kernel on the oracle of the accelerator named and return its output"""
-    decorator, api = import_oracle(work_dir, os.path.join(work_dir, name))
-    spec = importlib.util.spec_from_file_location('kernel', assembly)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    (function,) = re.findall(r'^def (\w+)\(kernel, api\):', assembly.read_text(), re.MULTILINE)
-    kernel = getattr(module, function)(decorator.kernel, api)
-    kernel('fsim-compile')()
-    outputs, _ = kernel('fsim')(*inputs)
-    return outputs[0]
+def logged_calls(tmp_path):
+    """Return the calls of each candidate a compile logged"""
+    return [calls_in(path.read_text()) for path in sorted((tmp_path / 'log').glob('*.py'))]
 
 
 # The sum of a reduce region
@@ -1226,7 +1222,12 @@ ENTRY main {
 
 
 def test_two_attributes_are_carried_into_the_assembly(backend, tmp_path):
-    calls = selected(backend, tmp_path, TOP)
+    # The slice in place, one call cheaper than top's candidate
+    in_place = selected(backend, tmp_path, TOP)
+    assert [name for name, _ in in_place] == ['load_rm', 'store_rm']
+    # The store starts where the load does
+    assert in_place[1][1]['addr_in'] == in_place[0][1]['addr_out']
+    calls = next(calls for calls in logged_calls(tmp_path) if 'top' in dict(calls))
     assert [name for name, _ in calls] == ['load_rm', 'top', 'store_rm']
     # Each attribute by name, from the dimension holding it
     assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
@@ -1243,7 +1244,12 @@ ENTRY main {
 
 
 def test_slice_is_selected_by_its_ranges(backend, tmp_path):
-    calls = selected(backend, tmp_path, BOTTOM)
+    # The slice in place, one call cheaper than bottom's candidate
+    in_place = selected(backend, tmp_path, BOTTOM)
+    assert [name for name, _ in in_place] == ['load_rm', 'store_rm']
+    # The store starts 32 rows past the load
+    assert int(in_place[1][1]['addr_in']) == int(in_place[0][1]['addr_out']) + 32
+    calls = next(calls for calls in logged_calls(tmp_path) if 'bottom' in dict(calls))
     assert [name for name, _ in calls] == ['load_rm', 'bottom', 'store_rm']
     assert {name: calls[1][1][name] for name in ['m', 'n']} == {'m': '64', 'n': '32'}
 
@@ -1259,7 +1265,12 @@ ENTRY main {
 
 
 def test_attribute_no_shape_names_is_read_from_its_slice(backend, tmp_path):
-    calls = selected(backend, tmp_path, WINDOW)
+    # The slice in place, one call cheaper than window's candidate
+    in_place = selected(backend, tmp_path, WINDOW)
+    assert [name for name, _ in in_place] == ['load_rm', 'store_rm']
+    # The store starts 8 rows past the load
+    assert int(in_place[1][1]['addr_in']) == int(in_place[0][1]['addr_out']) + 8
+    calls = next(calls for calls in logged_calls(tmp_path) if 'window' in dict(calls))
     assert [name for name, _ in calls] == ['load_rm', 'window', 'store_rm']
     assert calls[1][1]['s'] == '8'
 
@@ -1275,9 +1286,10 @@ ENTRY main {
 
 
 def test_slice_of_ranges_no_instruction_spells_selects_none(backend, tmp_path):
-    calls = selected(backend, tmp_path, MIDDLE)
-    # Neither top nor bottom, which slice other rows
-    assert not {'top', 'bottom'} & {name for name, _ in calls}
+    # The slice in place
+    assert [name for name, _ in selected(backend, tmp_path, MIDDLE)] == ['load_rm', 'store_rm']
+    # No candidate calls top or bottom, which slice other rows
+    assert not any({'top', 'bottom'} & dict(calls).keys() for calls in logged_calls(tmp_path))
 
 
 # The exponentials of a transpose that keeps each dimension
