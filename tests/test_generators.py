@@ -116,10 +116,11 @@ def test_enum_variants(accelerator, templates):
 def test_preconditions(accelerator, templates):
     load_rm, gemm = get_instruction_metadata(accelerator.instructions)
     functions = squeeze(generate_ir2isa_rust_functions(load_rm, templates))
-    # Read from the input's dimension, over its factor
-    assert 'let attr_n = lhs_metadata[0].shape[0] / 128;' in functions
+    # Read from the input's dimension, over its factor, once the input has one
+    guard = 'if lhs_metadata[0].shape.is_empty() { return false; }'
+    assert f'{guard} let attr_n = lhs_metadata[0].shape[0] / 128;' in functions
     # Each semantics value is held to its shape and type
-    assert functions.count('if lhs_metadata[') == 3
+    assert functions.count('if lhs_metadata[') == 4
     shapes = [(0, 'attr_n * 128', 'U8'), (1, 'attr_n, 64, 2', 'U8'), (2, 'attr_n, 64', 'BF16')]
     for index, shape, dtype in shapes:
         value = f'TensorInfo {{ shape: vec![{shape}], dtype: Dtype::{dtype}, is_const: false, }}'

@@ -230,9 +230,10 @@ def generate_comp_attr_extraction(assignments, attributes, checked, expressions)
             continue
         position, dimension, factor = attribute_reading(assignments, attribute)
         shape = f'lhs_metadata[{position}].shape'
-        if checked and dimension:
-            # A matched value may have fewer dimensions
-            code += f'  if {shape}.len() <= {dimension} {{\n    return false;\n  }}\n'
+        if checked:
+            # A matched value may have fewer dimensions, none among them
+            short = f'{shape}.is_empty()' if dimension == 0 else f'{shape}.len() <= {dimension}'
+            code += f'  if {short} {{\n    return false;\n  }}\n'
         division = f' / {factor}' if factor != 1 else ''
         code += let_line(name, f'{shape}[{dimension}]{division}')
     return code
