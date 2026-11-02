@@ -9,7 +9,7 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions) {
     Constraints constraints = instr->get_e();
 
     for (auto *constraint : constraints) {
-      solver.AddConstraint(constraint);
+      solver->AddConstraint(constraint);
     }
 
     // LHS Tensor addresses: (Is(y), Ie(y)) = h(0)(beta)
@@ -20,8 +20,8 @@ void pii_node_constraints(const std::vector<Instruction *> &instructions) {
     auto h0 = instr->get_h(0);
 
     for (size_t i = 0; i < lhs_offsets.size(); ++i) {
-      solver.AddConstraint(MAKE_EQUALITY(h0[i].first, lhs_offsets[i]));
-      solver.AddConstraint(MAKE_EQUALITY(h0[i].second, MAKE_SUM(lhs_offsets[i], lhs_size[i])));
+      solver->AddConstraint(MAKE_EQUALITY(h0[i].first, lhs_offsets[i]));
+      solver->AddConstraint(MAKE_EQUALITY(h0[i].second, MAKE_SUM(lhs_offsets[i], lhs_size[i])));
     }
   }
 }
@@ -37,8 +37,8 @@ void def_use_constraints(const std::vector<Instruction *> &instructions) {
       auto h_i = instr->get_h(i + 1);
 
       for (size_t j = 0; j < offsets.size(); ++j) {
-        solver.AddConstraint(MAKE_EQUALITY(h_i[j].first, offsets[j]));
-        solver.AddConstraint(MAKE_EQUALITY(h_i[j].second, MAKE_SUM(offsets[j], sizes[j])));
+        solver->AddConstraint(MAKE_EQUALITY(h_i[j].first, offsets[j]));
+        solver->AddConstraint(MAKE_EQUALITY(h_i[j].second, MAKE_SUM(offsets[j], sizes[j])));
       }
     }
   }
@@ -60,7 +60,7 @@ bool initial_constraints(const std::unordered_map<Tensor *, int64> &known_offset
       return false;
     }
 
-    solver.AddConstraint(MAKE_EQUALITY(offsets[0], offset));
+    solver->AddConstraint(MAKE_EQUALITY(offsets[0], offset));
   }
   return true;
 }
@@ -105,10 +105,10 @@ bool overlap_constraints(const std::vector<Instruction *> &instructions,
       auto end2 = MAKE_SUM(offsets2[i], sizes2[i]);
 
       // One range ends first: b1 + b2 >= 1
-      IntVar *b1 = solver.MakeIsLessOrEqualVar(end1, offsets2[i]);
-      IntVar *b2 = solver.MakeIsLessOrEqualVar(end2, offsets1[i]);
-      solver.AddConstraint(
-          solver.MakeGreaterOrEqual(solver.MakeSum(std::vector<IntVar *>{b1, b2}), int64_t(1)));
+      IntVar *b1 = solver->MakeIsLessOrEqualVar(end1, offsets2[i]);
+      IntVar *b2 = solver->MakeIsLessOrEqualVar(end2, offsets1[i]);
+      solver->AddConstraint(
+          solver->MakeGreaterOrEqual(solver->MakeSum(std::vector<IntVar *>{b1, b2}), int64_t(1)));
       new_vars.push_back(b1);
       new_vars.push_back(b2);
     }

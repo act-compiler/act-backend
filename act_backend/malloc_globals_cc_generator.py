@@ -15,13 +15,14 @@ def generate_globals_models(data_models):
             num_unit = len(data_model.unit_dim)
             # Every entry ends in a comma, the last one too
             entry = (
-                f'    {{"{buffer_name}", new Storage("{buffer_name}", {access_dims}, {num_unit})}},'
+                f'      {{"{buffer_name}", '
+                f'new Storage("{buffer_name}", {access_dims}, {num_unit})}},'
             )
             if not fits(entry):
                 # Broken after the name, the storage's arguments packed
                 arguments = [f'"{buffer_name}"', access_dims, str(num_unit)]
-                storage = call_lines('     new Storage(', arguments, ')},', 5)
-                entry = f'    {{"{buffer_name}",\n{storage}'
+                storage = call_lines('       new Storage(', arguments, ')},', 7)
+                entry = f'      {{"{buffer_name}",\n{storage}'
             models.append(entry)
 
     return models
