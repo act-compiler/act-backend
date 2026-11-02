@@ -530,12 +530,14 @@ def generate_known_integer_checks(constraints, starts, templates):
 
     A divisor of computational attributes alone is also other than 0, which the oracle refuses.
     """
-    parts = [
-        part
-        for tree in constraints
-        for conjunction in tree.conjunction()
-        for part in known_integers(conjunction.comparison(0))
+    # Each comparison, however its condition joins and brackets it
+    nodes = [node for tree in constraints for node in Trees.descendants(tree)]
+    comparisons = [
+        node
+        for node in nodes
+        if isinstance(node, IDLV2ExprParser.ComparisonContext) and node.condition() is None
     ]
+    parts = [part for comparison in comparisons for part in known_integers(comparison)]
     parts += [part for start in starts for part in known_integers(start)]
     checks = ''
     for part in parts:
