@@ -1,4 +1,4 @@
-"""Rust and C++ for a value taidl has parsed, each attribute by its generated name"""
+"""Rust and C++ for a value or a comparison taidl parsed, each attribute by its generated name"""
 
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser, IDLV2ExprVisitor
@@ -142,3 +142,23 @@ def chain(tree):
     operators = [run.getChild(2 * k + 1).getText() for k in range(len(operands) - 1)]
     writer = ExpressionWriter(cpp=True)
     return [writer.visit(operand) for operand in operands], operators
+
+
+def checked_comparison(name, tree):
+    """The Rust that leaves in a local whether a comparison holds, None past i64"""
+    writer = CheckedWriter()
+    left, right = (writer.visit(side) for side in tree.additive())
+    return writer.computed(name, f'{left} {tree.compare().getText()} {right}')
+
+
+# Each comparison's negation, exact over integers
+NEGATED = {'<=': '>', '<': '>=', '==': '!=', '>=': '<', '>': '<=', '!=': '=='}
+
+
+def comparison(tree):
+    """The Rust that holds where one comparison of a constraint does not"""
+    # Literals alone would compute in i32, so each is i64
+    named = Trees.findAllTokenNodes(tree, IDLV2ExprParser.COMPUTATIONAL)
+    writer = ExpressionWriter() if named else TypedWriter()
+    left, right = tree.additive()
+    return f'{writer.visit(left)} {NEGATED[tree.compare().getText()]} {writer.visit(right)}'

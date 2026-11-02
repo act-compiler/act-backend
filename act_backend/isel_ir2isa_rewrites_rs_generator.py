@@ -6,7 +6,7 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
-from .expression_writer import source
+from .expression_writer import NEGATED, checked_comparison, comparison, computes, source
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
 from .operand_sizes import generate_size_checks
 from .semantics_visitor import OperandVisitor
@@ -394,7 +394,49 @@ def generate_constant_checks(assignments, templates):
     return checks
 
 
-def generate_precond_function(instruction_name, semantics_data, attributes, expressions, templates):
+def generate_constraint_checks(constraints, templates):
+    """The Rust that checks each constraint over the attributes, as rustfmt lays it out
+
+    A comparison that computes holds only where its arithmetic stays in i64.
+    """
+    checks = ''
+    for tree in constraints:
+        lets = ''
+        comparisons = []
+        # Each comparison negated, so none holding returns false
+        for position, conjunction in enumerate(tree.conjunction()):
+            parsed = conjunction.comparison(0)
+            if computes(parsed):
+                lets += checked_comparison(f'holds_{position}', parsed)
+                comparisons.append(f'holds_{position} != Some(true)')
+                continue
+            text = comparison(parsed)
+            named = Trees.findAllTokenNodes(parsed, IDLV2ExprParser.COMPUTATIONAL)
+            # A wide comparison's sides computed first, an attribute typing them
+            if named and not fits(f'    && {text}'):
+                left, right = parsed.additive()
+                lets += value_lets(f'left_{position}', left)
+                lets += value_lets(f'right_{position}', right)
+                text = f'left_{position} {NEGATED[parsed.compare().getText()]} right_{position}'
+            comparisons.append(text)
+        # The brace below the condition where it leaves no room
+        check = templates.render_fitting(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
+            condition=' && '.join(comparisons),
+        )
+        if not fits(check):
+            # Too wide for one line: a comparison to a line
+            check = templates.render(
+                'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check_wrapped.txt',
+                condition='\n    && '.join(comparisons),
+            )
+        checks += f'{lets}{check}\n'
+    return checks
+
+
+def generate_precond_function(
+    instruction_name, semantics_data, attributes, expressions, constraints, templates
+):
     assignments = semantics_data['assignments']
 
     num_assignments = len(assignments)
@@ -431,6 +473,9 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
 
     # Attributes are compared once the shapes hold
     attr_checks = generate_attr_checks(assignments, expressions, templates)
+    checks = attr_checks + generate_constant_checks(assignments, templates)
+    # The constraints, once the attributes they read hold
+    checks += generate_constraint_checks(constraints, templates)
 
     return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.precond.txt',
@@ -439,7 +484,7 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
         num_assignments=str(num_assignments),
         comp_attr_code=comp_attr_code,
         shape_checks=shape_checks_code,
-        attr_checks=attr_checks + generate_constant_checks(assignments, templates),
+        attr_checks=checks,
     )
 
 
@@ -544,7 +589,12 @@ def generate_ir2isa_rust_functions(metadata, templates):
 
     attributes = metadata.attributes
     precond = generate_precond_function(
-        metadata.name, semantics_data, attributes, metadata.expressions, templates
+        metadata.name,
+        semantics_data,
+        attributes,
+        metadata.expressions,
+        metadata.constraints,
+        templates,
     )
     metadata_func = generate_metadata_function(
         metadata.name,

@@ -347,23 +347,46 @@ def check_operands(instructions):
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")
 
 
+# Tokens a constraint the selector checks may not hold
+CONSTRAINT_TOKENS = (
+    IDLV2ExprParser.AND,
+    IDLV2ExprParser.SLASH,
+    IDLV2ExprParser.PERCENT,
+    IDLV2ExprParser.ADDRESSING,
+    IDLV2ExprParser.STATE,
+)
+
+
+def selector_checks(constraint):
+    """Whether a constraint is comparisons of integers and computational attributes, joined by or"""
+    if any(Trees.findAllTokenNodes(constraint, token) for token in CONSTRAINT_TOKENS):
+        return False
+    # Each conjunction one comparison, never a bracketed condition
+    comparisons = [conjunction.comparison(0) for conjunction in constraint.conjunction()]
+    if any(comparison.LPAREN() for comparison in comparisons):
+        return False
+    # Each side's literals, which the selector holds in 64 bits
+    sides = [side for comparison in comparisons for side in comparison.additive()]
+    return not any(past_64_bits(side) for side in sides)
+
+
 def check_constraints(instructions):
-    """Refuse an instruction that has a constraint: the backend would emit calls outside it"""
+    """Refuse a constraint the selector cannot check: the backend would emit calls outside it"""
     for instruction in instructions:
-        if not instruction.constraints:
-            continue
-        text, tree = instruction.constraints[0], instruction.constraint_asts[0]
-        # A placement mark's constraint is named by its mark
-        marks = [
-            method
-            for method, placed in instruction.placed.items()
-            if any(tree is constraint for constraint in placed)
-        ]
-        origin = f'{marks[0]} gives it' if marks else 'it declares'
-        raise ValueError(
-            f"{instruction.instruction}: {origin} the constraint '{text}', "
-            'which the backend does not support'
-        )
+        for text, tree in zip(instruction.constraints, instruction.constraint_asts):
+            if selector_checks(tree):
+                continue
+            # A placement mark's constraint is named by its mark
+            marks = [
+                method
+                for method, placed in instruction.placed.items()
+                if any(tree is constraint for constraint in placed)
+            ]
+            origin = f'{marks[0]} gives it' if marks else 'it declares'
+            raise ValueError(
+                f"{instruction.instruction}: {origin} the constraint '{text}', "
+                'which the backend does not support'
+            )
 
 
 def check_state(instructions):

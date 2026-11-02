@@ -38,6 +38,8 @@ class InstructionMetadata:
     # Every operand's size, as parsed
     sizes: list
     rhs_size: int
+    # The constraints the selector checks, as parsed
+    constraints: list
 
 
 def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
@@ -55,6 +57,7 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
                 for size in sizes
             ],
             rhs_size=len(instruction.instr_inputs) + 1,
+            constraints=instruction.constraint_asts,
         )
         metadata_list.append(metadata)
     return metadata_list
