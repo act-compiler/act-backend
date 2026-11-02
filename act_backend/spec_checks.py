@@ -249,19 +249,21 @@ def check_operands(instructions, data_models):
         parsed = [*instruction.instr_output_asts, *instruction.instr_input_asts]
         for (buffer, addresses, sizes), (_, starts, extents) in zip(written, parsed):
             what = f"{name}: its operand on '{buffer}'"
-            if access_dimensions[buffer] != 1:
+            if not access_dimensions[buffer]:
                 raise ValueError(
-                    f'{what} is addressed along {access_dimensions[buffer]} dimensions, '
-                    'and the allocator addresses one'
+                    f'{what} is addressed along 0 dimensions, '
+                    'and the allocator addresses one or more'
                 )
-            address = address_attribute(starts[0])
-            if address is None:
-                raise ValueError(
-                    f"{what} has the address '{addresses[0]}', "
-                    'which is not one address attribute of the instruction'
-                )
-            check_size(what, sizes[0], extents[0])
-            read.add(address)
+            # Each addressed dimension's start and size
+            for text, size, start, extent in zip(addresses, sizes, starts, extents):
+                address = address_attribute(start)
+                if address is None:
+                    raise ValueError(
+                        f"{what} has the address '{text}', "
+                        'which is not one address attribute of the instruction'
+                    )
+                check_size(what, size, extent)
+                read.add(address)
         for attribute in instruction.parameters:
             if attribute not in read:
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")

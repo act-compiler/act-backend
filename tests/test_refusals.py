@@ -331,16 +331,23 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
         ),
         # An instruction that never gives its outputs
         ({'outputs': False}, 'the instruction has 0 outputs, and the allocator places one'),
+        # A size refused along the second dimension
         (
             {
-                'inputs': [['d3', ['@a.addr_1', '0'], ['64', '4']], SECOND],
+                'inputs': [['d3', ['@a.addr_1', '@a.addr_2'], ['64', '4 % 3']], SECOND],
                 'models': [('d3', [64, 4], [64], 'bf16')],
             },
-            "its operand on 'd3' is addressed along 2 dimensions, and the allocator addresses one",
+            (
+                "its operand on 'd3' has the size '4 % 3', which is not integers and "
+                "computational attributes joined by '*', '/', '+' and '-'"
+            ),
         ),
         (
             {'inputs': [['d3', [], []], SECOND], 'models': [('d3', [], [64, 64], 'bf16')]},
-            "its operand on 'd3' is addressed along 0 dimensions, and the allocator addresses one",
+            (
+                "its operand on 'd3' is addressed along 0 dimensions, "
+                'and the allocator addresses one or more'
+            ),
         ),
         (
             {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
