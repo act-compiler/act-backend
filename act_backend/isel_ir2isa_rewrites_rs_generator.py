@@ -15,7 +15,7 @@ from .expression_writer import (
     source,
 )
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
-from .malloc_instructions_h_generator import known_integers
+from .malloc_instructions_h_generator import divides, known_integers
 from .operand_sizes import generate_size_checks
 from .semantics_visitor import OperandVisitor
 from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
@@ -416,6 +416,12 @@ def generate_constraint_checks(constraints, templates):
             parsed = conjunction.comparison(0)
             if computes(parsed):
                 lets += checked_comparison(f'holds_{position}', parsed)
+                if divides(parsed):
+                    # By zero the oracle refuses the call, so the whole constraint fails
+                    lets += templates.render_lines(
+                        'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
+                        condition=f'holds_{position}.is_none()',
+                    )
                 comparisons.append(f'holds_{position} != Some(true)')
                 continue
             text = comparison(parsed)
@@ -655,7 +661,7 @@ def generate_ir2isa_rust_functions(metadata, templates):
 
 
 # Each helper a rewrite function may call, by its name
-HELPERS = ('computed', 'size_quotient', 'size_remainder')
+HELPERS = ('computed', 'quotient', 'remainder')
 
 
 def generate_helpers(functions, templates):
