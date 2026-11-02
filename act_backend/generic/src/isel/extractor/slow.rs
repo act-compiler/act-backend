@@ -7,6 +7,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::ir::pii::PiiGraph;
 
 use crate::ir::buffer::buffer_assignment as get_bufs;
+use crate::isel::extractor::inplace_fix::fix_inplace;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
 /// Slow extraction: repeat-free pii graphs of up to `limit` e-nodes
@@ -16,7 +17,7 @@ pub fn extract_slow(
   inputs: &HashSet<Id>,
   hbm_offsets: &[(Option<Id>, i32)],
   limit: usize,
-) -> Vec<PiiGraph> {
+) -> Vec<Result<PiiGraph, String>> {
   // Bottom-up traversal to detect compile-time constants
   let constants = detect_constants(egraph, inputs);
   // Annotate the e-graph with DetectedConst nodes and mark analysis data.
@@ -232,7 +233,7 @@ fn extraction_to_piigraph(
   extraction: &Extraction,
   hbm_offsets: &[(Option<Id>, i32)],
   egraph: &EGraph<TensorOp, TensorInfo>,
-) -> PiiGraph {
+) -> Result<PiiGraph, String> {
   let mut pii = PiiGraph::default();
 
   // A postorder from root 0, by the extraction's children map
@@ -272,8 +273,11 @@ fn extraction_to_piigraph(
     let ec_id = egraph.lookup(op.clone()).unwrap();
     let info = egraph[ec_id].data.clone();
     let node_id = pii.add_node(op, info, child_node_ids, get_hbm_offset(hbm_offsets, ec_id));
+    pii.root = node_id;
     idx_map.insert(idx, node_id);
   }
 
-  pii
+  // Value numbering shares subtrees, an overwritten operand among them
+  fix_inplace(&mut pii)?;
+  Ok(pii)
 }

@@ -266,17 +266,6 @@ def check_operands(instructions, data_models):
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")
 
 
-def check_inplace(instructions):
-    """Refuse an input marked in place: the allocator keeps every input"""
-    for instruction in instructions:
-        for number, marked in enumerate(instruction.inplace):
-            if marked:
-                raise ValueError(
-                    f'{instruction.instruction}: its input {number} is marked in place, '
-                    'which the backend does not support'
-                )
-
-
 def check_constraints(instructions):
     """Refuse an instruction that has a constraint: the backend would emit calls outside it"""
     for instruction in instructions:

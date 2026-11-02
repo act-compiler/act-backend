@@ -133,6 +133,7 @@ ENTRY {
 instr = mini_trn_double.add_instruction('softmax', ['n'], ['addr'])
 instr.set_inputs([['d2', ['@a.addr'], ['@c.n']]])  # bf16[@c.n, 64]
 instr.set_outputs([['d2', ['@a.addr'], ['@c.n']]])  # bf16[@c.n, 64]
+instr.set_inplace([True])  # overwrites its input
 instr.add_semantics("""
 ENTRY {
     %In0 = bf16[`@c.n`,64] parameter(0);

@@ -1,6 +1,7 @@
 import os
 
 from .instruction_info import (
+    ARRAY_WIDTH,
     InstructionInfo,
     extract_instruction_info,
     get_graph_name,
@@ -12,6 +13,7 @@ from .template_loader import (
     fill_placeholders,
     fits,
     get_backend_template_loader,
+    packed,
 )
 
 
@@ -31,6 +33,19 @@ def built_node(variant_name, arguments):
         lines = lines.replace('\n', '\n  ')
         return f'\n          {callee}(\n  {lines}        ),\n        '
     return f'{callee}(\n{lines}        )'
+
+
+def flag_list(flags):
+    """An in-place arm's flags as rustfmt lays them out"""
+    items = ['true' if flag else 'false' for flag in flags]
+    # rustfmt's array width holds the items, not the brackets
+    if len(', '.join(items)) <= ARRAY_WIDTH:
+        return ', '.join(items)
+    lines = packed(' ' * 8, items, ',', 8)
+    # Multi-line arrays packed one column narrower
+    if len(lines) > 1:
+        lines = [line[1:] for line in packed(' ' * 9, items, ',', 9)]
+    return '\n' + '\n'.join(lines) + '\n      '
 
 
 def from_op_arm(rewrite_word):
@@ -76,6 +91,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
     children_mut_arms = []
     from_op_arms = []
     display_arms = []
+    inplace_arms = []
 
     for info in instructions_info:
         variant_name = info.type_name
@@ -147,6 +163,15 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
         # Display arms
         display_arms.append(display_arm(info, templates))
 
+        # In-place arms: one flag per input
+        inplace_arms.append(
+            templates.render_fitting(
+                'egraph.rs.ISA_INPLACE_MATCH_ARMS.arm.txt',
+                variant_name=variant_name,
+                flags=flag_list(info.inplace),
+            )
+        )
+
     return {
         'enum_variants': enum_variants,
         'num_children_arms': num_children_arms,
@@ -155,6 +180,7 @@ def generate_instruction_variants(instructions_info: list[InstructionInfo], temp
         'children_mut_arms': children_mut_arms,
         'from_op_arms': from_op_arms,
         'display_arms': display_arms,
+        'inplace_arms': inplace_arms,
     }
 
 
@@ -177,6 +203,7 @@ def generate_egraph_rs_file(act_dest_dir, instructions):
         'ISA_CHILDREN_MUT_MATCH_ARMS': '\n'.join(instruction_parts['children_mut_arms']),
         'ISA_FROM_OP_MATCH_ARMS': '\n'.join(instruction_parts['from_op_arms']),
         'ISA_DISPLAY_MATCH_ARMS': '\n'.join(instruction_parts['display_arms']),
+        'ISA_INPLACE_MATCH_ARMS': '\n'.join(instruction_parts['inplace_arms']),
     }
 
     content = fill_placeholders(content, replacements, egraph_file)

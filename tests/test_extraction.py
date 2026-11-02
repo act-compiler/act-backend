@@ -2,11 +2,12 @@
 
 import os
 import re
+from collections import Counter
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, bf16, compiled, extracted, simulated
+from conftest import add_moves, add_on_d1, bf16, compiled, extracted, instruction_calls, simulated
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
@@ -139,15 +140,11 @@ ENTRY {
 """)
 
 
-def two_loads():
-    """Moves, a load into d2, and an add across buffers"""
-    acc = Accelerator('TWO_LOADS')
-    acc.add_data_model('d1', [128], [64], 'bf16')
-    acc.add_data_model('d2', [128], [64], 'bf16')
-    add_moves(acc)
-    instr = acc.add_instruction('load_d2', ['n'], ['addr_in', 'addr_out'])
+def add_load(acc, name, model):
+    """A load of rows into a buffer"""
+    instr = acc.add_instruction(name, ['n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
-    instr.set_outputs([['d2', ['@a.addr_out'], ['@c.n']]])
+    instr.set_outputs([[model, ['@a.addr_out'], ['@c.n']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = u8[`@c.n * 128`] parameter(0);
@@ -155,6 +152,16 @@ ENTRY {
     ROOT %Out0 = bf16[`@c.n`,64] bitcast_convert(%a);
 }
 """)
+    return instr
+
+
+def two_loads():
+    """Moves, a load into d2, and an add across buffers"""
+    acc = Accelerator('TWO_LOADS')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_moves(acc)
+    add_load(acc, 'load_d2', 'd2')
     add_across(acc)
     return acc
 
@@ -358,3 +365,194 @@ def test_fast_extraction_copies_a_value_needed_in_two_buffers(copying_dir, tmp_p
     # numpy's exponential, rounded to bf16 like the kernel
     expected = bf16(2 * bf16(np.exp(np.asarray(x, np.float64))))
     assert np.allclose(np.asarray(result, np.float64), expected, rtol=2**-7, atol=0)
+
+
+# The sum of an add's two inputs
+SUM_LINES = [
+    '%In0 = bf16[64,64] parameter(0)',
+    '%In1 = bf16[64,64] parameter(1)',
+    'ROOT %Out0 = bf16[64,64] add(%In0, %In1)',
+]
+
+
+def exp_in_place(acc):
+    """An exponential of 64 rows of d1 that overwrites its input"""
+    instr = acc.add_instruction('exp_in_place', [], ['addr'])
+    instr.set_inputs([['d1', ['@a.addr'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr'], ['64']]])
+    instr.set_inplace([True])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    ROOT %Out0 = bf16[64,64] exponential(%In0);
+}
+""")
+
+
+def in_place():
+    """Moves, an in-place exponential and add, and a plain add"""
+    acc = Accelerator('IN_PLACE')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    add_moves(acc)
+    exp_in_place(acc)
+    # Declared first, so its e-class holds it first
+    instr = acc.add_instruction('add_in_place', [], ['addr_1', 'addr_2'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d1', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_1'], ['64']]])
+    instr.set_inplace([True, False])
+    instr.add_semantics('ENTRY {\n' + ''.join(f'    {line};\n' for line in SUM_LINES) + '}\n')
+    add_on_d1(acc, 'add_d1', ['64', '64', '64'], SUM_LINES)
+    return acc
+
+
+@pytest.fixture(scope='module')
+def in_place_dir(tmp_path_factory):
+    """Generate the oracle and the backend of the spec whose instructions overwrite an input"""
+    work_dir = str(tmp_path_factory.mktemp('in_place'))
+    acc = in_place()
+    generate_oracle(acc, work_dir)
+    generate_backend(acc, work_dir)
+    return work_dir
+
+
+# A sum added to its first input
+RESUMMED = """HloModule resummed, entry_computation_layout={(bf16[64,64]{1,0}, bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %y = bf16[64,64] parameter(1)
+  %s = bf16[64,64] add(%x, %y)
+  ROOT %t = bf16[64,64] add(%s, %x)
+}
+"""
+
+
+def test_fast_extraction_offers_a_plain_enode_before_an_in_place_one(in_place_dir, tmp_path):
+    output = fast_compiled(in_place_dir, 'IN_PLACE', tmp_path, RESUMMED)
+    # Plain adds, so x is loaded once and read twice
+    assert instruction_calls(output) == {'load_rm': 2, 'add_d1': 2, 'store_rm': 1}
+    result = simulated(in_place_dir, 'IN_PLACE', output, ROWS, 2 * ROWS)
+    assert np.array_equal(np.asarray(result), np.asarray(4 * ROWS))
+
+
+# An exponential added to its own input
+RAISED = """HloModule raised, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %e = bf16[64,64] exponential(%x)
+  ROOT %y = bf16[64,64] add(%e, %x)
+}
+"""
+
+
+def test_fast_extraction_copies_a_shared_operand_for_the_instruction_overwriting_it(
+    in_place_dir, tmp_path
+):
+    output = fast_compiled(in_place_dir, 'IN_PLACE', tmp_path, RAISED)
+    # exp_in_place overwrites one load of x, add_d1 reads the other
+    calls = {'load_rm': 2, 'exp_in_place': 1, 'add_d1': 1, 'store_rm': 1}
+    assert instruction_calls(output) == calls
+    x = ROWS / 64
+    result = simulated(in_place_dir, 'IN_PLACE', output, x)
+    # numpy's exponential and sum, rounded to bf16 like the kernel
+    x = np.asarray(x, np.float64)
+    expected = bf16(bf16(np.exp(x)) + x)
+    assert np.allclose(np.asarray(result, np.float64), expected, rtol=2**-7, atol=0)
+
+
+# Each in-place instruction and the operand it overwrites
+OVERWRITES = {'instr_exp_in_place': 0, 'instr_add_in_place': 0}
+
+
+def rereads(pii):
+    """Whether a candidate reads an operand an instruction overwrites again"""
+    nodes = [NODE.fullmatch(line).groups() for line in pii.read_text().splitlines()]
+    operands = {number: re.findall(r't(\d+)', children) for number, _, _, children in nodes}
+    readers = Counter(child for children in operands.values() for child in children)
+    return any(
+        readers[operands[number][OVERWRITES[operation]]] > 1
+        for number, _, operation, _ in nodes
+        if operation in OVERWRITES
+    )
+
+
+def test_no_candidate_reads_an_overwritten_operand_again(in_place_dir, tmp_path):
+    backend = os.path.join(in_place_dir, 'backends', 'IN_PLACE')
+    run, _ = compiled(backend, tmp_path, RAISED)
+    assert run.returncode == 0, run.stderr
+    # Every logged candidate, the fast one and the slow ones
+    piis = sorted((tmp_path / 'log').glob('*.pii'))
+    assert len(piis) > 1
+    assert [pii.name for pii in piis if rereads(pii)] == []
+
+
+def pinned():
+    """Two loads, one in place, and an add into HBM"""
+    acc = Accelerator('PINNED')
+    acc.add_data_model('d1', [128], [64], 'bf16')
+    acc.add_data_model('d2', [128], [64], 'bf16')
+    add_load(acc, 'load_d1', 'd1')
+    add_load(acc, 'load_d2', 'd2').set_inplace([True])
+    # No store, so no candidate copies x through HBM
+    instr = acc.add_instruction('add_out', [], ['addr_1', 'addr_2', 'addr_out'])
+    instr.set_inputs([['d1', ['@a.addr_1'], ['64']], ['d2', ['@a.addr_2'], ['64']]])
+    instr.set_outputs([['d0', ['@a.addr_out'], ['8192']]])
+    instr.add_semantics("""
+ENTRY {
+    %In0 = bf16[64,64] parameter(0);
+    %In1 = bf16[64,64] parameter(1);
+    %a = bf16[64,64] add(%In0, %In1);
+    %b = u8[64,64,2] bitcast_convert(%a);
+    ROOT %Out0 = u8[8192] reshape(%b);
+}
+""")
+    return acc
+
+
+@pytest.fixture(scope='module')
+def pinned_backend(tmp_path_factory):
+    """Generate the backend of the spec whose every candidate is dropped"""
+    work_dir = str(tmp_path_factory.mktemp('pinned'))
+    generate_backend(pinned(), work_dir)
+    return os.path.join(work_dir, 'backends', 'PINNED')
+
+
+def dropped_first(backend, tmp_path, kernel):
+    """Return why a failing compile dropped its first candidate"""
+    run, output = compiled(backend, tmp_path, kernel)
+    assert run.returncode == 1
+    assert not output.exists()
+    # One stderr line, the first dropped candidate's reason last
+    (line,) = run.stderr.splitlines()
+    ended, reason = line.split(', and every candidate was dropped, the first because ')
+    assert ended.startswith('Error: no assembly found: ')
+    return reason
+
+
+def test_overwritten_operand_pinned_in_hbm_drops_the_candidate(pinned_backend, tmp_path):
+    # x loaded into d1 and, overwriting it, into d2
+    reason = dropped_first(pinned_backend, tmp_path, SIBLINGS)
+    assert reason == 'an overwritten operand has another reader and is pinned in HBM'
+
+
+# An exponential of a concatenate, added to the concatenate
+VIEWED = """HloModule viewed, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %ab = bf16[64,64] concatenate(%a, %b), dimensions={0}
+  %e = bf16[64,64] exponential(%ab)
+  ROOT %y = bf16[64,64] add(%e, %ab)
+}
+"""
+
+
+def test_overwritten_view_of_shared_storage_drops_the_candidate(in_place_dir, tmp_path):
+    backend = os.path.join(in_place_dir, 'backends', 'IN_PLACE')
+    run, _ = compiled(backend, tmp_path, VIEWED, flags=['--verbose'])
+    number = first_fast(run.stdout)
+    # A copy of the concatenate would view the same loads
+    reason = 'an overwritten operand views storage that has another reader'
+    assert f'PII #{number} dropped: {reason}\n' in run.stdout

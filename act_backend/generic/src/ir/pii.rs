@@ -19,6 +19,8 @@ pub struct PiiNode {
 #[derive(Debug, Clone, Default)]
 pub struct PiiGraph {
   pub nodes: Vec<PiiNode>,
+  // The graph's result, its last node in topological order
+  pub root: usize,
 }
 
 impl PiiGraph {

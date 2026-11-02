@@ -1,4 +1,5 @@
 mod fast;
+mod inplace_fix;
 mod lib;
 mod slow;
 mod utils;

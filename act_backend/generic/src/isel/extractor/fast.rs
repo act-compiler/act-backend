@@ -6,6 +6,7 @@ use crate::ir::egraph::{TensorInfo, TensorOp};
 use crate::ir::pii::PiiGraph;
 
 use crate::ir::buffer::buffer_assignment as get_bufs;
+use crate::isel::extractor::inplace_fix::fix_inplace;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
 /// Fast extraction: one pii graph, each e-class once per buffer
@@ -14,7 +15,7 @@ pub fn extract_fast(
   root: Id,
   inputs: &HashSet<Id>,
   hbm_offsets: &[(Option<Id>, i32)],
-) -> Vec<PiiGraph> {
+) -> Vec<Result<PiiGraph, String>> {
   // Bottom-up traversal to detect compile-time constants
   let constants = detect_constants(egraph, inputs);
   // Annotate the e-graph with DetectedConst nodes and mark analysis data.
@@ -59,17 +60,32 @@ fn get_pii_graph(
     }
   }
 
-  'en_loop: for en in &egraph[eclass].nodes {
-    // A snapshot to roll back to if this e-node fails
-    let snapshot = selected.clone();
-    // Base case: input e-node
-    if inputs.contains(&eclass) && target_buf == Buffer::HBM {
+  // Base case: an input e-class offers its Var
+  if inputs.contains(&eclass) && target_buf == Buffer::HBM {
+    if let Some(en) = egraph[eclass]
+      .nodes
+      .iter()
+      .find(|en| matches!(en, TensorOp::Var(_)))
+    {
       selected.insert(
         (en.clone(), target_buf),
         (eclass, egraph[eclass].data.clone()),
       );
       return true;
     }
+  }
+
+  // In-place e-nodes overwrite storage, so an e-class offers them last
+  let nodes = &egraph[eclass].nodes;
+  let plain = nodes
+    .iter()
+    .filter(|en| !en.inplace_children().contains(&true));
+  let inplace = nodes
+    .iter()
+    .filter(|en| en.inplace_children().contains(&true));
+  'en_loop: for en in plain.chain(inplace) {
+    // A snapshot to roll back to if this e-node fails
+    let snapshot = selected.clone();
     // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
       selected.insert(
@@ -115,7 +131,7 @@ fn get_pii_graph(
 fn select2pii_graph(
   selected: &BTreeMap<(TensorOp, Buffer), (Id, TensorInfo)>,
   hbm_offsets: &[(Option<Id>, i32)],
-) -> PiiGraph {
+) -> Result<PiiGraph, String> {
   let mut pii_graph = PiiGraph::default();
 
   let mut to_remove: Vec<(TensorOp, Buffer)> = vec![];
@@ -164,6 +180,7 @@ fn select2pii_graph(
           get_hbm_offset(hbm_offsets, *ec_id),
         );
         eclass_map.insert((*ec_id, *buf), new_id);
+        pii_graph.root = new_id;
         to_remove.push(key.clone());
         progress = true;
         break;
@@ -176,7 +193,8 @@ fn select2pii_graph(
     }
   }
 
-  pii_graph
+  fix_inplace(&mut pii_graph)?;
+  Ok(pii_graph)
 }
 
 /// Where an e-node selected in `buf` needs its `i`th child
