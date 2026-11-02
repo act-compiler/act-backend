@@ -316,10 +316,44 @@ Instruction *create_instruction(const ParsedLine &pl,
   return panic("unknown instruction: " + op_name);
 }
 
+// The elements a shape holds
+static int64 count(const std::vector<int64> &shape) {
+  int64 elements = 1;
+  for (int64 dim : shape)
+    elements *= dim;
+  return elements;
+}
+
+// A shape as a line writes it
+static std::string written(const std::vector<int64> &shape) {
+  std::string dims;
+  for (int64 dim : shape)
+    dims += (dims.empty() ? "" : ",") + std::to_string(dim);
+  return "[" + dims + "]";
+}
+
 bool hold_tensors(Instruction *instr, std::string &why) {
-  // Its tensor in a buffer, held in its own shape
+  // Its tensor in a buffer, held in its region's shape where that holds its elements
   Tensor *y = instr->get_lhs();
-  return y->is_held() || hold(y, y->get_value(), why);
+  if (!y->is_held()) {
+    std::vector<int64> region = instr->get_region(0);
+    std::vector<int64> value = y->get_value();
+    if (!hold(y, count(region) == count(value) ? region : value, why))
+      return false;
+  }
+
+  // Each operand read as held: a read of its elements in another shape would move them
+  std::vector<Tensor *> X = instr->get_rhs();
+  for (size_t i = 0; i < X.size(); i++) {
+    std::vector<int64> region = instr->get_region(i + 1);
+    std::vector<int64> held = X[i]->get_shape();
+    if (region != held && count(region) == count(X[i]->get_value())) {
+      why = "the tensor " + X[i]->get_name() + " lies in " + X[i]->get_storage()->get_name() +
+            " as " + written(held) + ", where " + y->get_name() + " reads it as " + written(region);
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace parser
