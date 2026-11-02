@@ -345,6 +345,18 @@ def kernel(*lines, header=HEADER, regions=''):
     )
 
 
+# Each extractor's report of one pass, the fast one first
+REPORT = re.compile(
+    r'(Fast|Slow) Extractor Algorithm over #nodes=\d+\n(?:Limit used: \d+\n)?'
+    r'Number of PII graphs extracted: (\d+)'
+)
+
+
+def extracted(stdout):
+    """Return a compile's extractor reports, each a name and count"""
+    return [(extractor, int(count)) for extractor, count in REPORT.findall(stdout)]
+
+
 @pytest.fixture(scope='module')
 def accelerator():
     """One instruction with a computational attribute, load_rm, and one without, gemm"""

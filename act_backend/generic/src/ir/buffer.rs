@@ -1,6 +1,6 @@
 use crate::ir::egraph::TensorOp;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum Buffer {
   HBM,
   // {{BUFFER_VARIANTS}}

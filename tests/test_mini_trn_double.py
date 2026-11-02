@@ -8,6 +8,8 @@ import pytest
 from conftest import (
     EXAMPLES_DIR,
     attention_reference,
+    compiled,
+    extracted,
     instruction_calls,
     load_golden,
     unfilled_sources,
@@ -53,3 +55,12 @@ def test_compiled_kernel_calls(assembly):
         'mov_23': 1,
         'store_10': 1,
     }
+
+
+def test_fast_extraction_gives_one_graph(work_dir, tmp_path):
+    # Each mov's e-node sits in the e-class it copies
+    backend = os.path.join(work_dir, 'backends', 'mini_trn_double')
+    with open(os.path.join(EXAMPLE_DIR, 'kernels', 'attention.hlo')) as f:
+        run, _ = compiled(backend, tmp_path, f.read(), flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    assert ('Fast', 1) in extracted(run.stdout)
