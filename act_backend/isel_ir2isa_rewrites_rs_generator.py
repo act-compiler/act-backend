@@ -6,8 +6,16 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser
 
-from .expression_writer import NEGATED, checked_comparison, comparison, computes, source
+from .expression_writer import (
+    NEGATED,
+    checked_comparison,
+    checked_value,
+    comparison,
+    computes,
+    source,
+)
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
+from .malloc_instructions_h_generator import known_integers
 from .operand_sizes import generate_size_checks
 from .semantics_visitor import OperandVisitor
 from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
@@ -434,8 +442,34 @@ def generate_constraint_checks(constraints, templates):
     return checks
 
 
+def generate_known_integer_checks(constraints, starts, templates):
+    """The Rust that fails a constraint over addresses, or a start, where a known integer leaves i64"""
+    parts = [
+        part
+        for tree in constraints
+        for conjunction in tree.conjunction()
+        for part in known_integers(conjunction.comparison(0))
+    ]
+    parts += [part for start in starts for part in known_integers(start)]
+    checks = ''
+    for part in parts:
+        checks += checked_value('known', part)
+        checks += templates.render_lines(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
+            condition='known.is_none()',
+        )
+    return checks
+
+
 def generate_precond_function(
-    instruction_name, semantics_data, attributes, expressions, constraints, templates
+    instruction_name,
+    semantics_data,
+    attributes,
+    expressions,
+    constraints,
+    address_constraints,
+    starts,
+    templates,
 ):
     assignments = semantics_data['assignments']
 
@@ -476,6 +510,8 @@ def generate_precond_function(
     checks = attr_checks + generate_constant_checks(assignments, templates)
     # The constraints, once the attributes they read hold
     checks += generate_constraint_checks(constraints, templates)
+    # The allocator's known integers, so its C++ only computes what fits
+    checks += generate_known_integer_checks(address_constraints, starts, templates)
 
     return templates.render_lines(
         'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.precond.txt',
@@ -594,6 +630,8 @@ def generate_ir2isa_rust_functions(metadata, templates):
         attributes,
         metadata.expressions,
         metadata.constraints,
+        metadata.address_constraints,
+        metadata.starts,
         templates,
     )
     metadata_func = generate_metadata_function(

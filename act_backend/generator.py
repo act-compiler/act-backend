@@ -16,7 +16,7 @@ from .isel_ir2isa_rewrites_rs_generator import generate_ir2isa_rewrites_rs_file
 from .isel_ir2isa_rewrites_txt_generator import generate_ir2isa_rewrites_txt_file
 from .malloc_act_malloc_cc_generator import generate_act_malloc_file
 from .malloc_globals_cc_generator import generate_globals_file
-from .malloc_instructions_h_generator import generate_instructions_file
+from .malloc_instructions_h_generator import generate_instructions_file, names_address
 from .malloc_parser_cc_generator import generate_parser_file
 from .spec_checks import (
     check_constraints,
@@ -40,6 +40,10 @@ class InstructionMetadata:
     rhs_size: int
     # The constraints the selector checks, as parsed
     constraints: list
+    # The constraints the allocator holds, whose known integers the selector computes
+    address_constraints: list
+    # The operands' starts, whose known integers the selector computes
+    starts: list
 
 
 def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
@@ -57,7 +61,16 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
                 for size in sizes
             ],
             rhs_size=len(instruction.instr_inputs) + 1,
-            constraints=instruction.constraint_asts,
+            # One naming an address is the allocator's
+            constraints=[tree for tree in instruction.constraint_asts if not names_address(tree)],
+            address_constraints=[
+                tree for tree in instruction.constraint_asts if names_address(tree)
+            ],
+            starts=[
+                start
+                for _, starts, _ in [*instruction.instr_output_asts, *instruction.instr_input_asts]
+                for start in starts
+            ],
         )
         metadata_list.append(metadata)
     return metadata_list

@@ -7,7 +7,7 @@ from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
 from taidl.antlr4 import IDLV2ExprParser, IDLV2ExprVisitor
 
-from .expression_writer import chain, source
+from .expression_writer import chain, computes, source
 from .instruction_info import get_attribute_name, get_type_names
 from .template_loader import call_lines, fill_placeholders, fits, get_backend_template_loader
 
@@ -79,12 +79,6 @@ def divides(tree):
     return any(Trees.findAllTokenNodes(tree, token) for token in tokens)
 
 
-def negates(tree):
-    """Whether a parsed value negates"""
-    nodes = Trees.descendants(tree)
-    return any(isinstance(node, IDLV2ExprParser.UnaryContext) and node.MINUS() for node in nodes)
-
-
 def literal(tree):
     """An operand's integer literal, brackets aside; else None"""
     tokens = [
@@ -121,7 +115,7 @@ SOLVER_OPERATORS = {
 class SolverWriter(IDLV2ExprVisitor):
     """A value as the solver's C++, each operand naming no address a known integer
 
-    An operand that divides or negates is the solver's to compute, as the language does.
+    An operand that divides is the solver's to compute, rounded down as the language does.
     """
 
     def __init__(self):
@@ -130,8 +124,8 @@ class SolverWriter(IDLV2ExprVisitor):
         self.known = []
 
     def visit(self, tree):
-        # An operand naming no address, dividing and negating nothing, is a known integer
-        if names_address(tree) or divides(tree) or negates(tree):
+        # An operand naming no address and dividing nothing is a known integer
+        if names_address(tree) or divides(tree):
             return super().visit(tree)
         self.known.append(tree)
         return f'MAKE_INT_KNOWN({source(tree, cpp=True)})'
@@ -218,6 +212,14 @@ def solver_locals(name, tree, target=None):
     return lines
 
 
+def known_integers(tree):
+    """The known integers of a start, or of a comparison the solver takes, that hold an operator"""
+    writer = SolverWriter()
+    for value in tree.additive() if isinstance(tree, IDLV2ExprParser.ComparisonContext) else [tree]:
+        writer.visit(value)
+    return [part for part in writer.known if computes(part)]
+
+
 def generate_start(address, name):
     """A scaled start's local as clang-format lays it out: on one line, after its =, or after ("""
     for local in (
@@ -268,6 +270,52 @@ def generate_get_h_method(index, starts, sizes, templates):
         locals='\n'.join(lines),
         ranges=generate_ranges(list(zip(firsts, names))),
     )
+
+
+# Each comparison's solver constraint, and its flag inside an or
+COMPARISONS = {
+    '==': ('MakeEquality', 'MakeIsEqualVar'),
+    '!=': ('MakeNonEquality', 'MakeIsDifferentVar'),
+    '<': ('MakeLess', 'MakeIsLessVar'),
+    '<=': ('MakeLessOrEqual', 'MakeIsLessOrEqualVar'),
+    '>': ('MakeGreater', 'MakeIsGreaterVar'),
+    '>=': ('MakeGreaterOrEqual', 'MakeIsGreaterOrEqualVar'),
+}
+
+
+def generate_constraints(constraints):
+    """The C++ that pushes each constraint to the solver, as clang-format lays it out
+
+    A comparison is the solver's own; an or is its comparisons' flags, at least one set.
+    """
+    lines = ''
+    position = 0
+    for index, tree in enumerate(constraints):
+        comparisons = [conjunction.comparison(0) for conjunction in tree.conjunction()]
+        # An or's flags gather in a vector of their own
+        either = len(comparisons) > 1
+        if either:
+            lines += f'    std::vector<IntVar *> holds{index};\n'
+        for comparison in comparisons:
+            plain, flag = COMPARISONS[comparison.compare().getText()]
+            lead = f'holds{index}' if either else 'constraints'
+            call = f'{lead}.push_back(solver->{flag if either else plain}('
+            trees = comparison.additive()
+            sides = [SolverWriter().visit(side) for side in trees]
+            # A line too wide computes its wider side first, then the other
+            for k in sorted((0, 1), key=lambda k: -len(sides[k])):
+                if fits(f'    {call}{", ".join(sides)}));'):
+                    break
+                name = f'{("left", "right")[k]}{position}'
+                lines += solver_locals(name, trees[k])
+                sides[k] = name
+            lines += f'    {call}{", ".join(sides)}));\n'
+            position += 1
+        if either:
+            # At least one comparison holds: their flags' sum
+            least = f'solver->MakeGreaterOrEqual(solver->MakeSum(holds{index}), int64_t(1))'
+            lines += f'    constraints.push_back({least});\n'
+    return lines
 
 
 def generate_constructor_packed(class_name, op_name, attributes):
@@ -328,10 +376,10 @@ def generate_instruction_class(instruction, class_name, templates):
     # A blank line parts the two kinds of member
     addr_var_members = '\n' if comp_attrs else ''
     for param in params:
-        member = f'  IntVar *{names[param]} = MAKE_INT_VAR(INT64_MIN, INT64_MAX);'
+        member = f'  IntVar *{names[param]} = MAKE_INT_VAR(0, INT64_MAX);'
         if not fits(member):
             # Broken after its =
-            member = f'  IntVar *{names[param]} =\n      MAKE_INT_VAR(INT64_MIN, INT64_MAX);'
+            member = f'  IntVar *{names[param]} =\n      MAKE_INT_VAR(0, INT64_MAX);'
         addr_var_members += member + '\n'
 
     # get_h methods: the output's first (get_h0), then the inputs'
@@ -381,6 +429,9 @@ def generate_instruction_class(instruction, class_name, templates):
         )
         str_pieces += '\n'
 
+    # The constraints naming an address, the selector checking the rest
+    constraints = [tree for tree in instruction.constraint_asts if names_address(tree)]
+
     # Address variables on one line, else pushed a line each
     variables = [names[param] for param in params]
     get_int_var = templates.render_lines(
@@ -418,6 +469,7 @@ def generate_instruction_class(instruction, class_name, templates):
         CONSTRUCTOR=constructor,
         STR_PIECES=str_pieces,
         GET_H_CASES=get_h_cases,
+        CONSTRAINTS=generate_constraints(constraints),
         GET_INT_VAR=get_int_var,
         GET_REGION_CASES=get_region_cases,
     )

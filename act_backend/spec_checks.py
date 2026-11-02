@@ -15,7 +15,6 @@ from .isel_ir2isa_rewrites_rs_generator import (
     slice_ranges,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
-from .malloc_instructions_h_generator import names_address
 from .semantics_visitor import OperandVisitor
 
 
@@ -250,8 +249,8 @@ def check_semantics(instructions):
 def start_refusal(start):
     """Why the allocator cannot place a start, None where it can
 
-    A start adds and subtracts integers and attributes, each term times known integers, and
-    divides or takes a remainder by a positive integer.
+    A start adds, subtracts and multiplies integers and attributes, and divides or takes a
+    remainder by a positive integer.
     """
     named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
     if named:
@@ -266,8 +265,6 @@ def start_refusal(start):
         for position, operand in enumerate(operands[1:], 1):
             operator = run.getChild(2 * position - 1).getText()
             if operator == '*':
-                if any(map(names_address, operands[:position])) and names_address(operand):
-                    return 'multiplies two address attributes'
                 continue
             verb = 'divides' if operator == '/' else 'takes a remainder'
             if names_attribute(operand):
@@ -347,34 +344,33 @@ def check_operands(instructions):
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")
 
 
-# Tokens a constraint the selector checks may not hold
+# Tokens no constraint the backend holds may hold
 CONSTRAINT_TOKENS = (
     IDLV2ExprParser.AND,
     IDLV2ExprParser.SLASH,
     IDLV2ExprParser.PERCENT,
-    IDLV2ExprParser.ADDRESSING,
     IDLV2ExprParser.STATE,
 )
 
 
-def selector_checks(constraint):
-    """Whether a constraint is comparisons of integers and computational attributes, joined by or"""
+def honoured(constraint):
+    """Whether a constraint is comparisons of integers and attributes, joined by or"""
     if any(Trees.findAllTokenNodes(constraint, token) for token in CONSTRAINT_TOKENS):
         return False
     # Each conjunction one comparison, never a bracketed condition
     comparisons = [conjunction.comparison(0) for conjunction in constraint.conjunction()]
     if any(comparison.LPAREN() for comparison in comparisons):
         return False
-    # Each side's literals, which the selector holds in 64 bits
+    # Each side's literals, which the backend holds in 64 bits
     sides = [side for comparison in comparisons for side in comparison.additive()]
     return not any(past_64_bits(side) for side in sides)
 
 
 def check_constraints(instructions):
-    """Refuse a constraint the selector cannot check: the backend would emit calls outside it"""
+    """Refuse a constraint the backend cannot hold: it would emit calls outside it"""
     for instruction in instructions:
         for text, tree in zip(instruction.constraints, instruction.constraint_asts):
-            if selector_checks(tree):
+            if honoured(tree):
                 continue
             # A placement mark's constraint is named by its mark
             marks = [

@@ -117,20 +117,15 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
     auto vars = instr->get_int_var();
     all_vars.insert(all_vars.end(), vars.begin(), vars.end());
   }
-  // Each address variable at 0 or above
-  for (auto *instr : scheduled) {
-    for (auto *var : instr->get_int_var())
-      solver->AddConstraint(solver->MakeGreaterOrEqual(var, int64_t(0)));
-  }
   all_vars.insert(all_vars.end(), new_vars.begin(), new_vars.end());
 
-  // Narrowest domains first: the tightest variables lead
+  // Address variables first, their domains open above, then the narrowest domains
   std::vector<operations_research::IntVar *> ordered_vars = all_vars;
   std::sort(ordered_vars.begin(), ordered_vars.end(),
             [](operations_research::IntVar *a, operations_research::IntVar *b) {
               // By domain width, then by lower bound
-              int64 w_a = a->Max() - a->Min();
-              int64 w_b = b->Max() - b->Min();
+              int64 w_a = a->Max() == INT64_MAX ? -1 : a->Max() - a->Min();
+              int64 w_b = b->Max() == INT64_MAX ? -1 : b->Max() - b->Min();
               if (w_a != w_b)
                 return w_a < w_b;
               return a->Min() < b->Min();

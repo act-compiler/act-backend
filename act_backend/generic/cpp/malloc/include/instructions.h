@@ -131,7 +131,7 @@ public:
 
     rhs_sizes = X[0]->get_sizes();
     for (size_t i = 0; i < rhs_sizes.size(); i++) {
-      rhs_addrs.push_back(MAKE_INT_VAR(INT64_MIN, INT64_MAX));
+      rhs_addrs.push_back(MAKE_INT_VAR(0, INT64_MAX));
     }
   }
 
@@ -265,7 +265,7 @@ public:
     rhs1_sizes = X[0]->get_sizes();
     rhs2_sizes = X[1]->get_sizes();
     for (size_t i = 0; i < rhs1_sizes.size(); i++) {
-      rhs1_addrs.push_back(MAKE_INT_VAR(INT64_MIN, INT64_MAX));
+      rhs1_addrs.push_back(MAKE_INT_VAR(0, INT64_MAX));
     }
   }
 
