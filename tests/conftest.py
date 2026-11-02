@@ -477,6 +477,14 @@ def work_dir(request):
 
 
 @pytest.fixture(scope='module')
+def plain_dir(request, tmp_path_factory):
+    """Generate the module's oracle and backend with no construct added"""
+    plain_dir = str(tmp_path_factory.mktemp('plain'))
+    generate_oracle_and_backend(request.module.EXAMPLE_DIR, plain_dir)
+    return plain_dir
+
+
+@pytest.fixture(scope='module')
 def assembly(request, work_dir):
     """Compile the module's attention kernel and return the assembly's path"""
     return compile_hlo(work_dir, request.module.EXAMPLE_DIR)

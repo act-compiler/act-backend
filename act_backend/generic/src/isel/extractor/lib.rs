@@ -19,9 +19,15 @@ pub fn extract(
   limit: usize,
 ) -> Vec<Result<PiiGraph, String>> {
   let nodes = egraph.total_number_of_nodes();
+  // Resolve the root and the offsets to their leaders
+  let root = egraph.find(root);
+  let hbm_offsets: Vec<_> = hbm_offsets
+    .iter()
+    .map(|&(buf_ec, offset)| (buf_ec.map(|id| egraph.find(id)), offset))
+    .collect();
 
   let start = Instant::now();
-  let mut piis_fast = extract_fast(egraph, root, inputs, hbm_offsets);
+  let mut piis_fast = extract_fast(egraph, root, inputs, &hbm_offsets);
 
   report!("Fast Extractor Algorithm over #nodes={}", nodes);
   report!("Number of PII graphs extracted: {}", piis_fast.len());
@@ -32,7 +38,7 @@ pub fn extract(
   let mut piis_slow: Vec<Result<PiiGraph, String>> = vec![];
   if limit <= SLOW_LIMIT_CUTOFF {
     let start = Instant::now();
-    piis_slow = extract_slow(egraph, root, inputs, hbm_offsets, limit);
+    piis_slow = extract_slow(egraph, root, inputs, &hbm_offsets, limit);
 
     report!("Slow Extractor Algorithm over #nodes={}", nodes);
     report!("Limit used: {}", limit);

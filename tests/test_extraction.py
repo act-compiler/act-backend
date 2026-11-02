@@ -7,11 +7,22 @@ from collections import Counter
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from conftest import add_moves, add_on_d1, bf16, compiled, extracted, instruction_calls, simulated
+from conftest import (
+    EXAMPLES_DIR,
+    add_moves,
+    add_on_d1,
+    bf16,
+    compiled,
+    extracted,
+    instruction_calls,
+    simulated,
+)
 from taidl import Accelerator
 from taidl_to import generate_oracle
 
 from act_backend import generate_backend
+
+EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, 'mini_trn_double')
 
 
 def add_copy(acc, name, source, target):
@@ -556,3 +567,41 @@ def test_overwritten_view_of_shared_storage_drops_the_candidate(in_place_dir, tm
     # A copy of the concatenate would view the same loads
     reason = 'an overwritten operand views storage that has another reader'
     assert f'PII #{number} dropped: {reason}\n' in run.stdout
+
+
+# A product by a constant, then a merging round trip
+ROUND_TRIPPED = """HloModule round_tripped, entry_computation_layout={(bf16[64,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %k = bf16[64,64] constant(3)
+  %w = bf16[64,64] dot(%x, %k), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %t = bf16[4096,1] reshape(%w)
+  %n = bf16[1,4096] reshape(%t)
+  %m = bf16[1,4096] broadcast(%n), dimensions={0,1}
+  %u = bf16[4096,1] reshape(%m)
+  ROOT %c = bf16[64,64] reshape(%u)
+}
+"""
+
+
+def test_output_keeps_its_hbm_offset_once_its_eclass_merges(plain_dir, tmp_path):
+    backend = os.path.join(plain_dir, 'backends', 'mini_trn_double')
+    run, output = compiled(backend, tmp_path, ROUND_TRIPPED, flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    # The slow candidates themselves, whichever the search reached
+    slow = [tmp_path / 'log' / f'{number}.pii' for number in slow_numbers(run.stdout)]
+    # Unreached candidates have no graph
+    assert [pii for pii in slow if pii.exists()], 'no slow candidate was logged'
+    # Every candidate reached, however many the search allowed
+    for pii in (tmp_path / 'log').glob('*.pii'):
+        lines = pii.read_text().splitlines()
+        # The output's offset on the root alone
+        assert [line for line in lines if ': HBM[8192] = ' in line] == lines[-1:]
+    # Each element its own value, so a misplaced read shows
+    x = jnp.array(np.random.default_rng(0).normal(size=(64, 64)), dtype=jnp.bfloat16)
+    result = np.asarray(simulated(plain_dir, 'mini_trn_double', output, x), np.float64)
+    reference = bf16(np.asarray(x, np.float64) @ np.full((64, 64), 3.0))
+    # Two bf16 ulps at max|reference| bound every output
+    tol = 2 * 2.0 ** (np.floor(np.log2(np.abs(reference).max())) - 7)
+    assert np.max(np.abs(result - reference)) <= tol

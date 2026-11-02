@@ -403,14 +403,6 @@ def work_dir(tmp_path_factory):
     return work_dir
 
 
-@pytest.fixture(scope='module')
-def plain_dir(tmp_path_factory):
-    """Generate mini_trn's oracle and backend with no construct added"""
-    plain_dir = str(tmp_path_factory.mktemp('plain'))
-    generate_oracle_and_backend(EXAMPLE_DIR, plain_dir)
-    return plain_dir
-
-
 def test_backend_compiles_with_the_constructs(work_dir, tmp_path):
     # Every rewrite loads; the kernel compiles as on mini_trn
     run, output_path = run_backend(
