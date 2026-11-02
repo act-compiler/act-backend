@@ -312,6 +312,17 @@ def check_size(what, text, size):
         raise ValueError(f"{what} has the size '{text}', which 64 bits cannot hold")
 
 
+def check_data_models(data_models):
+    """Refuse a dimension 64 bits cannot hold: the allocator's capacities are int64"""
+    for model in data_models:
+        for dim in model.var_dim:
+            if dim > INT64_MAX:
+                raise ValueError(
+                    f"{model.var_name}: the data model has the dimension '{dim}', "
+                    'which 64 bits cannot hold'
+                )
+
+
 def check_operands(instructions):
     """Refuse an operand the allocator cannot address"""
     for instruction in instructions:
