@@ -32,8 +32,6 @@ public:
       // The tensor fits: offset at most capacity - size
       int64 cap = storage->get_capacity(i)->Max();
       int64 max_off = cap - sizes[i];
-      if (max_off < 0)
-        max_off = 0;
       offsets.push_back(MAKE_INT_VAR(0, max_off));
     }
 

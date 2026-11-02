@@ -185,6 +185,15 @@ Instruction *create_instruction(const ParsedLine &pl,
                   ", where its storage " + storage_name + " has rank " +
                   std::to_string(storage->get_total_dims()));
 
+  // A tensor fits its storage along each addressing dimension
+  for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
+    int64 cap = storage->get_capacity(i)->Max();
+    if (shape_vec[i] > cap)
+      return refuse("the tensor " + lhs + " has " + std::to_string(shape_vec[i]) +
+                    " along dimension " + std::to_string(i) + ", where its storage " +
+                    storage_name + " holds " + std::to_string(cap));
+  }
+
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
 
@@ -197,6 +206,12 @@ Instruction *create_instruction(const ParsedLine &pl,
       return refuse("only HBM storage supports fixed offset specification");
     if (offset < 0)
       return refuse("storage offset must be non-negative");
+    // A fixed offset leaves room for the tensor
+    int64 cap = storage->get_capacity(0)->Max();
+    if (offset > cap - shape_vec[0])
+      return refuse("the tensor " + lhs + " of " + std::to_string(shape_vec[0]) + " at offset " +
+                    std::to_string(offset) + " of " + storage_name +
+                    " does not fit its capacity of " + std::to_string(cap));
     known_offsets[lhs_tensor] = offset;
   }
 
