@@ -33,8 +33,8 @@ Instruction *create_instruction(const ParsedLine &pl,
                                 std::map<Tensor *, std::string, ByName> &known_constants,
                                 std::string &why);
 
-// Hold the tensor create_instruction leaves to its instruction, its region's shape where that
-// holds its elements, and read each operand as held, else why not
+// Hold the tensor create_instruction leaves to its instruction in its region's shape, and read
+// each operand as held, each region of its value's elements, else why not
 bool hold_tensors(Instruction *instr, std::string &why);
 
 } // namespace parser

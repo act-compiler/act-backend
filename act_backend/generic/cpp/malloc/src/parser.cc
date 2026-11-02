@@ -333,23 +333,33 @@ static std::string written(const std::vector<int64> &shape) {
 }
 
 bool hold_tensors(Instruction *instr, std::string &why) {
-  // Its tensor in a buffer, held in its region's shape where that holds its elements
+  // Its region of its elements, as the oracle takes it, and its tensor in a buffer held so
   Tensor *y = instr->get_lhs();
-  if (!y->is_held()) {
-    std::vector<int64> region = instr->get_region(0);
-    std::vector<int64> value = y->get_value();
-    if (!hold(y, count(region) == count(value) ? region : value, why))
-      return false;
+  std::vector<int64> region = instr->get_region(0);
+  int64 elements = count(y->get_value());
+  if (count(region) != elements) {
+    why = "the tensor " + y->get_name() + " has " + std::to_string(elements) +
+          " elements, where its region " + written(region) + " in " + y->get_storage()->get_name() +
+          " has " + std::to_string(count(region));
+    return false;
   }
+  if (!y->is_held() && !hold(y, region, why))
+    return false;
 
-  // Each operand read as held: a read of its elements in another shape would move them
+  // Each operand read of its elements as held: in another shape a read would move them
   std::vector<Tensor *> X = instr->get_rhs();
   for (size_t i = 0; i < X.size(); i++) {
-    std::vector<int64> region = instr->get_region(i + 1);
+    std::vector<int64> read = instr->get_region(i + 1);
     std::vector<int64> held = X[i]->get_shape();
-    if (region != held && count(region) == count(X[i]->get_value())) {
+    int64 has = count(X[i]->get_value());
+    if (count(read) != has) {
+      why = "the tensor " + X[i]->get_name() + " has " + std::to_string(has) + " elements, where " +
+            y->get_name() + " reads " + std::to_string(count(read)) + " of it as " + written(read);
+      return false;
+    }
+    if (read != held) {
       why = "the tensor " + X[i]->get_name() + " lies in " + X[i]->get_storage()->get_name() +
-            " as " + written(held) + ", where " + y->get_name() + " reads it as " + written(region);
+            " as " + written(held) + ", where " + y->get_name() + " reads it as " + written(read);
       return false;
     }
   }
