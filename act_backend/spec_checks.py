@@ -15,6 +15,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
     slice_ranges,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
+from .malloc_instructions_h_generator import names_address
 from .semantics_visitor import OperandVisitor
 
 
@@ -204,12 +205,40 @@ def check_semantics(instructions):
                 )
 
 
-def address_attribute(start):
-    """Return the address attribute a start is, alone, or None"""
-    token = start.start
-    if token is start.stop and token.type == IDLV2ExprParser.ADDRESSING:
-        return token.text[3:]
+def start_refusal(start):
+    """Why the allocator cannot place a start, None where it can
+
+    A start adds and subtracts integers and attributes, each term times known integers, and
+    divides or takes a remainder by a positive integer.
+    """
+    named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
+    if named:
+        return f"reads the state variable '{named[0].getText()}', which the backend does not model"
+    for run in Trees.descendants(start):
+        if not isinstance(run, IDLV2ExprParser.MultiplicativeContext):
+            continue
+        operands = run.unary()
+        for position, operand in enumerate(operands[1:], 1):
+            operator = run.getChild(2 * position - 1).getText()
+            if operator == '*':
+                if any(map(names_address, operands[:position])) and names_address(operand):
+                    return 'multiplies two address attributes'
+                continue
+            verb = 'divides' if operator == '/' else 'takes a remainder'
+            if names_attribute(operand):
+                return f'{verb} by an attribute'
+            divisor = integer(operand)
+            if not divisor:
+                return f'{verb} by zero'
+            if divisor < 0:
+                return f'{verb} by {divisor}, a negative integer'
     return None
+
+
+def names_attribute(value):
+    """Whether a parsed value names an address or a computational attribute"""
+    tokens = (IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.COMPUTATIONAL)
+    return any(Trees.findAllTokenNodes(value, token) for token in tokens)
 
 
 # Tokens a size may not hold, beside a negation
@@ -256,14 +285,15 @@ def check_operands(instructions, data_models):
                 )
             # Each addressed dimension's start and size
             for text, size, start, extent in zip(addresses, sizes, starts, extents):
-                address = address_attribute(start)
-                if address is None:
+                # A start the allocator places, else the reason it cannot
+                if start_refusal(start) is not None:
                     raise ValueError(
-                        f"{what} has the address '{text}', "
-                        'which is not one address attribute of the instruction'
+                        f"{what} has the address '{text}', which {start_refusal(start)}"
                     )
                 check_size(what, size, extent)
-                read.add(address)
+                # Each address attribute a start names is read
+                named = Trees.findAllTokenNodes(start, IDLV2ExprParser.ADDRESSING)
+                read.update(node.getText()[3:] for node in named)
         for attribute in instruction.parameters:
             if attribute not in read:
                 raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")

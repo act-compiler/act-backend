@@ -1,6 +1,11 @@
 """Generator for instructions.h - templates the generic file with instruction classes"""
 
 import os
+import re
+
+from antlr4.tree.Tree import TerminalNode
+from antlr4.tree.Trees import Trees
+from taidl.antlr4 import IDLV2ExprParser, IDLV2ExprVisitor
 
 from .expression_writer import chain, source
 from .instruction_info import get_attribute_name, get_type_names
@@ -63,7 +68,171 @@ def generate_ranges(ranges):
     return '\n'.join(below if len(below) <= len(after) else after)
 
 
-def generate_get_h_method(index, addresses, sizes, templates):
+def names_address(tree):
+    """Whether a parsed value or constraint names an address attribute"""
+    return bool(Trees.findAllTokenNodes(tree, IDLV2ExprParser.ADDRESSING))
+
+
+def divides(tree):
+    """Whether a parsed value divides or takes a remainder"""
+    tokens = (IDLV2ExprParser.SLASH, IDLV2ExprParser.PERCENT)
+    return any(Trees.findAllTokenNodes(tree, token) for token in tokens)
+
+
+def negates(tree):
+    """Whether a parsed value negates"""
+    nodes = Trees.descendants(tree)
+    return any(isinstance(node, IDLV2ExprParser.UnaryContext) and node.MINUS() for node in nodes)
+
+
+def literal(tree):
+    """An operand's integer literal, brackets aside; else None"""
+    tokens = [
+        node
+        for node in Trees.descendants(tree)
+        if isinstance(node, TerminalNode) and node.getText() not in ('(', ')')
+    ]
+    if len(tokens) == 1 and tokens[0].getSymbol().type == IDLV2ExprParser.INT:
+        return tokens[0].getText()
+    return None
+
+
+def solver_steps(run):
+    """A run's first operand, then each operator with its operand, a leading literal factor last"""
+    parts = list(run.getChildren())
+    first = parts[0]
+    steps = [(operator.getText(), operand) for operator, operand in zip(parts[1::2], parts[2::2])]
+    # The solver's product takes a literal second
+    if steps and steps[0][0] == '*' and literal(first) and not literal(steps[0][1]):
+        first, steps[0] = steps[0][1], ('*', first)
+    return first, steps
+
+
+# The solver's call for each arithmetic operator, a quotient and a remainder rounded down
+SOLVER_OPERATORS = {
+    '+': 'MAKE_SUM',
+    '-': 'solver->MakeDifference',
+    '*': 'MAKE_PROD',
+    '/': 'floor_div',
+    '%': 'floor_mod',
+}
+
+
+class SolverWriter(IDLV2ExprVisitor):
+    """A value as the solver's C++, each operand naming no address a known integer
+
+    An operand that divides or negates is the solver's to compute, as the language does.
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Each known integer's tree
+        self.known = []
+
+    def visit(self, tree):
+        # An operand naming no address, dividing and negating nothing, is a known integer
+        if names_address(tree) or divides(tree) or negates(tree):
+            return super().visit(tree)
+        self.known.append(tree)
+        return f'MAKE_INT_KNOWN({source(tree)})'
+
+    def visitExpression(self, ctx):
+        return self.visit(ctx.additive())
+
+    def operation(self, operator, value, operand):
+        """One operator's call on the value so far, a literal factor bare"""
+        factor = literal(operand) if operator == '*' else None
+        # Never 0, which C++ also reads as a null pointer
+        if factor == '0':
+            factor = None
+        return f'{SOLVER_OPERATORS[operator]}({value}, {factor or self.visit(operand)})'
+
+    def chain(self, ctx):
+        # Each operator a call on the value so far
+        first, steps = solver_steps(ctx)
+        value = self.visit(first)
+        for operator, operand in steps:
+            value = self.operation(operator, value, operand)
+        return value
+
+    def visitAdditive(self, ctx):
+        return self.chain(ctx)
+
+    def visitMultiplicative(self, ctx):
+        return self.chain(ctx)
+
+    def visitUnary(self, ctx):
+        if ctx.MINUS() is None:
+            return self.visit(ctx.atom())
+        return f'solver->MakeOpposite({self.visit(ctx.unary())})'
+
+    def visitAtom(self, ctx):
+        # A bracket nests as a call does, an address attribute by its generated name
+        if ctx.expression() is not None:
+            return self.visit(ctx.expression())
+        return get_attribute_name(ctx.reference().getText()[3:])
+
+
+def assigned(target, value):
+    """An assignment as clang-format lays it out, on one line or after its =; else None"""
+    for line in (f'    {target} = {value};', f'    {target} =\n        {value};'):
+        if fits(line):
+            return line + '\n'
+    return None
+
+
+def solver_locals(name, tree, target=None):
+    """The C++ that leaves a value in a local, one too wide for a line built an operand at a time"""
+    target = target or f'IntExpr *{name}'
+    value = SolverWriter().visit(tree)
+    line = assigned(target, value)
+    if line is not None:
+        return line
+    # A bracket or a lone operand stands for what it holds, a negation negated after
+    if isinstance(tree, IDLV2ExprParser.ExpressionContext):
+        return solver_locals(name, tree.additive(), target)
+    if isinstance(tree, IDLV2ExprParser.AtomContext):
+        if tree.expression() is None:
+            if '(' not in value:
+                # A bare member after its =, however wide
+                return f'    {target} =\n        {value};\n'
+            # One wide attribute, below its call's parenthesis
+            call, argument = value.split('(', 1)
+            return f'    {target} = {call}(\n        {argument};\n'
+        return solver_locals(name, tree.expression(), target)
+    if isinstance(tree, IDLV2ExprParser.UnaryContext):
+        if tree.MINUS() is None:
+            return solver_locals(name, tree.atom(), target)
+        negation = assigned(name, f'solver->MakeOpposite({name})')
+        return solver_locals(name, tree.unary(), target) + negation
+    # A sum or a product: its first operand, then each operator's call
+    first, steps = solver_steps(tree)
+    lines = solver_locals(name, first, target)
+    for position, (operator, operand) in enumerate(steps, 1):
+        line = assigned(name, SolverWriter().operation(operator, name, operand))
+        if line is None:
+            # A wide operand in a local of its own
+            lines += solver_locals(f'{name}_{position}', operand)
+            line = assigned(name, f'{SOLVER_OPERATORS[operator]}({name}, {name}_{position})')
+        lines += line
+    return lines
+
+
+def generate_start(address, name):
+    """A scaled start's local as clang-format lays it out: on one line, after its =, or after ("""
+    for local in (
+        f'    IntExpr *{name} = {address};',
+        f'    IntExpr *{name} =\n        {address};',
+    ):
+        if fits(local):
+            return local
+    # The product's arguments below its parenthesis
+    arguments = address.removeprefix('MAKE_PROD(')
+    return f'    IntExpr *{name} = MAKE_PROD(\n        {arguments};'
+
+
+def generate_get_h_method(index, starts, sizes, templates):
+    addresses = [SolverWriter().visit(start) for start in starts]
     # A range per addressed dimension: the start, then start plus size
     ranges = '}, {'.join(
         f'{address}, MAKE_SUM({address}, {source(size)})' for address, size in zip(addresses, sizes)
@@ -71,15 +240,32 @@ def generate_get_h_method(index, addresses, sizes, templates):
     method = templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=ranges
     )
-    if fits(method):
+    # A start the solver computes, beyond an attribute or one product, is a local of its own
+    computed = [
+        names_address(start) and not re.fullmatch(r'\w+|MAKE_PROD\(\w+, \d+\)', address)
+        for start, address in zip(starts, addresses)
+    ]
+    if fits(method) and not any(computed):
         return method
-    # Each size first, as a local of its own
-    names = ['size'] if len(sizes) == 1 else [f'size{k}' for k in range(len(sizes))]
+    # Each such start, each scaled one and each size first, as a local of its own
+    suffixes = [''] if len(sizes) == 1 else [str(k) for k in range(len(sizes))]
+    firsts, lines = [], []
+    for start, address, lifted, suffix in zip(starts, addresses, computed, suffixes):
+        if lifted:
+            # Built a step at a time where it is too wide for its line
+            lines.append(solver_locals(f'start{suffix}', start).rstrip('\n'))
+            address = f'start{suffix}'
+        elif address.startswith('MAKE_PROD('):
+            lines.append(generate_start(address, f'start{suffix}'))
+            address = f'start{suffix}'
+        firsts.append(address)
+    names = [f'size{suffix}' for suffix in suffixes]
+    lines += [generate_size(size, name) for size, name in zip(sizes, names)]
     return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method_wrapped.txt',
         index=index,
-        sizes='\n'.join(generate_size(size, name) for size, name in zip(sizes, names)),
-        ranges=generate_ranges(list(zip(addresses, names))),
+        locals='\n'.join(lines),
+        ranges=generate_ranges(list(zip(firsts, names))),
     )
 
 
@@ -134,9 +320,7 @@ def generate_instruction_class(instruction, class_name, templates):
     # The output's ranges first, then each input's
     operands = [*instruction.instr_output_asts, *instruction.instr_input_asts]
     for h_index, (_, starts, sizes) in enumerate(operands):
-        addresses = [source(start) for start in starts]
-
-        get_h_methods += generate_get_h_method(h_index, addresses, sizes, templates)
+        get_h_methods += generate_get_h_method(h_index, starts, sizes, templates)
         get_h_cases += templates.render_lines(
             'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
         )

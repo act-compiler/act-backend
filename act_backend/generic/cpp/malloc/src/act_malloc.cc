@@ -116,6 +116,11 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
     auto vars = instr->get_int_var();
     all_vars.insert(all_vars.end(), vars.begin(), vars.end());
   }
+  // Each address variable at 0 or above
+  for (auto *instr : scheduled) {
+    for (auto *var : instr->get_int_var())
+      solver->AddConstraint(solver->MakeGreaterOrEqual(var, int64_t(0)));
+  }
   all_vars.insert(all_vars.end(), new_vars.begin(), new_vars.end());
 
   // Narrowest domains first: the tightest variables lead
