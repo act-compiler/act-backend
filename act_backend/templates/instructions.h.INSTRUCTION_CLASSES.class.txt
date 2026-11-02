@@ -1,7 +1,7 @@
 class {{CLASS_NAME}} : public Instruction {
 private:
 {{COMP_ATTR_MEMBERS}}{{ADDR_VAR_MEMBERS}}
-{{GET_H_METHODS}}
+{{GET_H_METHODS}}{{GET_REGION_METHODS}}
 public:
 {{CONSTRUCTOR}}
   }
@@ -25,4 +25,11 @@ public:
 
   std::vector<IntVar *> get_int_var() override {
 {{GET_INT_VAR}}  }
+
+  std::vector<int64> get_region(int num) override {
+    switch (num) {
+{{GET_REGION_CASES}}    default:
+      assert(false && "Too many indices for get_region");
+    }
+  }
 };

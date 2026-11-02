@@ -1,0 +1,4 @@
+  std::vector<int64> get_region{{index}}() {
+{{locals}}
+    return {{{extents}}};
+  }
