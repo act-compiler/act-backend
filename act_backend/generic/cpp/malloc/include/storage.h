@@ -54,6 +54,6 @@ extern std::map<std::string, Storage *> g_storage;
 std::map<std::string, Storage *> build_storages();
 
 #define STORAGE_SIZE(buffer) (g_storage[buffer]->get_size())
-#define HBM_SIZE (1 << 30)
+#define HBM_SIZE (int64{96} << 30)
 
 #endif // STORAGE_H
