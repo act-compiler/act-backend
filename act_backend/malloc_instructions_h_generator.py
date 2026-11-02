@@ -14,7 +14,7 @@ from .template_loader import call_lines, fill_placeholders, fits, get_backend_te
 
 def generate_size(size, name):
     """A size's local as clang-format lays it out: on one line, after its =, or after operators"""
-    value = source(size)
+    value = source(size, cpp=True)
     for local in (f'    int64 {name} = {value};', f'    int64 {name} =\n        {value};'):
         if fits(local):
             return local
@@ -134,7 +134,7 @@ class SolverWriter(IDLV2ExprVisitor):
         if names_address(tree) or divides(tree) or negates(tree):
             return super().visit(tree)
         self.known.append(tree)
-        return f'MAKE_INT_KNOWN({source(tree)})'
+        return f'MAKE_INT_KNOWN({source(tree, cpp=True)})'
 
     def visitExpression(self, ctx):
         return self.visit(ctx.additive())
@@ -235,7 +235,8 @@ def generate_get_h_method(index, starts, sizes, templates):
     addresses = [SolverWriter().visit(start) for start in starts]
     # A range per addressed dimension: the start, then start plus size
     ranges = '}, {'.join(
-        f'{address}, MAKE_SUM({address}, {source(size)})' for address, size in zip(addresses, sizes)
+        f'{address}, MAKE_SUM({address}, {source(size, cpp=True)})'
+        for address, size in zip(addresses, sizes)
     )
     method = templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=ranges
@@ -293,7 +294,7 @@ def generate_constructor_packed(class_name, op_name, attributes):
 
 def generate_get_region_method(index, sizes, units, templates):
     """An operand's region: its size along each addressed dimension, then each unit dimension"""
-    extents = [*(source(size) for size in sizes), *map(str, units)]
+    extents = [*(source(size, cpp=True) for size in sizes), *map(str, units)]
     method = templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_region_method.txt',
         index=index,

@@ -5,8 +5,8 @@ use crate::ir::dtype::Dtype;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MetaDataInfo {
-  pub addr: i32,
-  pub shape: Vec<i32>,
+  pub addr: i64,
+  pub shape: Vec<i64>,
   pub dtype: Dtype,
 }
 

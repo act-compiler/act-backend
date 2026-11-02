@@ -12,7 +12,7 @@ pub struct PiiNode {
   pub op: TensorOp,
   pub info: TensorInfo,
   pub buffer: Buffer,
-  pub hbm_offset: Option<i32>,
+  pub hbm_offset: Option<i64>,
   pub children: Vec<usize>,
 }
 
@@ -29,7 +29,7 @@ impl PiiGraph {
     op: TensorOp,
     info: TensorInfo,
     children: Vec<usize>,
-    hbm_offset: Option<i32>,
+    hbm_offset: Option<i64>,
   ) -> usize {
     let mut buffer = match get_bufs(&op) {
       Some(bufs) => bufs[0],
@@ -61,7 +61,7 @@ impl PiiGraph {
     idx
   }
 
-  fn shape_to_string(shape: &[i32]) -> String {
+  fn shape_to_string(shape: &[i64]) -> String {
     let s: Vec<String> = shape.iter().map(|d| d.to_string()).collect();
     format!("[{}]", s.join(","))
   }

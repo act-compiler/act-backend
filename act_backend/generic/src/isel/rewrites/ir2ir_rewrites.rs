@@ -307,7 +307,12 @@ pub fn precond_3(
   if lhs_metadata[0].shape.len() <= 1 || lhs_metadata[0].dtype != Dtype::U8 {
     return false;
   }
-  true
+  // A flat view's elements within 64 bits
+  lhs_metadata[0]
+    .shape
+    .iter()
+    .try_fold(1i64, |elements, dim| elements.checked_mul(*dim))
+    .is_some()
 }
 
 pub fn metadata_3(
@@ -321,7 +326,7 @@ pub fn metadata_3(
     .map(|id| egraph[*id].data.clone())
     .collect();
   let rs2_shape = &lhs_metadata[0].shape;
-  let rs1_shape = rs2_shape.iter().product::<i32>();
+  let rs1_shape = rs2_shape.iter().product::<i64>();
 
   let mut rhs_metadata = vec![None; 3];
   rhs_metadata[1] = Some(rs1_shape.to_string());
@@ -341,7 +346,7 @@ pub fn set_shapes_3(
     .map(|id| egraph[*id].data.clone())
     .collect();
   let rs2_shape = &lhs_metadata[0].shape;
-  let rs1_shape = rs2_shape.iter().product::<i32>();
+  let rs1_shape = rs2_shape.iter().product::<i64>();
 
   egraph.set_analysis_data(
     rhs_eclasses[1],
@@ -605,7 +610,7 @@ pub fn precond_8(
   }
 
   // The identity map keeps each element in place
-  let identity: Vec<i32> = (0..lhs_metadata[0].shape.len() as i32).collect();
+  let identity: Vec<i64> = (0..lhs_metadata[0].shape.len() as i64).collect();
   TensorOp::payload_is(&lhs_enodes[1], &identity)
 }
 

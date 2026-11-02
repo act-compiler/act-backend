@@ -1,4 +1,4 @@
-pub fn shape_to_vec(shape_str: &str) -> Result<Vec<i32>, String> {
+pub fn shape_to_vec(shape_str: &str) -> Result<Vec<i64>, String> {
   let cleaned = shape_str.trim();
 
   if cleaned.is_empty() || cleaned == "[]" {
@@ -19,8 +19,8 @@ pub fn shape_to_vec(shape_str: &str) -> Result<Vec<i32>, String> {
 }
 
 // One dimension of a shape, or why it is none
-fn dimension(text: &str, shape: &str) -> Result<i32, String> {
-  text.trim().parse::<i32>().map_err(|_| {
+fn dimension(text: &str, shape: &str) -> Result<i64, String> {
+  text.trim().parse::<i64>().map_err(|_| {
     format!(
       "the shape [{}] holds '{}', which is not a dimension",
       shape.trim_matches(|c| c == '[' || c == ']'),
@@ -30,7 +30,7 @@ fn dimension(text: &str, shape: &str) -> Result<i32, String> {
 }
 
 // A shape's dimensions as a kernel writes them
-pub fn shape_text(shape: &[i32]) -> String {
+pub fn shape_text(shape: &[i64]) -> String {
   shape
     .iter()
     .map(|size| size.to_string())
@@ -39,7 +39,7 @@ pub fn shape_text(shape: &[i32]) -> String {
 }
 
 // The assembly's declared shape, a rank-0 value as ()
-pub fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
+pub fn declared_shape(tshape: &str) -> Result<Vec<i64>, String> {
   if tshape == "[]" {
     Ok(vec![])
   } else {
@@ -48,7 +48,7 @@ pub fn declared_shape(tshape: &str) -> Result<Vec<i32>, String> {
 }
 
 // A shape plus a dimension for a multi-byte element's bytes
-pub fn byte_view(tshape: &str, dtype_size: i32) -> String {
+pub fn byte_view(tshape: &str, dtype_size: i64) -> String {
   // A rank-0 value is held as one element
   let shape = if tshape == "[]" { "1" } else { tshape };
   if dtype_size == 1 {
@@ -58,17 +58,24 @@ pub fn byte_view(tshape: &str, dtype_size: i32) -> String {
   }
 }
 
-pub fn get_bytes(shape: &str, dtype: i32) -> Result<i32, String> {
-  let mut bytes = 1;
-  shape_to_vec(shape)?.iter().for_each(|dim| bytes *= dim);
-  Ok(bytes * dtype)
+// A shape's bytes, or why 64 bits cannot count them
+pub fn get_bytes(shape: &str, dtype: i64) -> Result<i64, String> {
+  shape_to_vec(shape)?
+    .iter()
+    .try_fold(dtype, |bytes, dim| bytes.checked_mul(*dim))
+    .ok_or_else(|| {
+      format!(
+        "the shape [{}] holds more bytes than 64 bits can count",
+        shape.trim_matches(|c| c == '[' || c == ']')
+      )
+    })
 }
 
 pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
   let shape_vec = shape
     .split(',')
     .map(|s| dimension(s, shape))
-    .collect::<Result<Vec<i32>, String>>()?;
+    .collect::<Result<Vec<i64>, String>>()?;
   // A tiled shape's dimensions are never negative
   if let Some(dim) = shape_vec.iter().find(|dim| **dim < 0) {
     return Err(format!(
@@ -80,7 +87,7 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
   let tile_vec = tile
     .split(',')
     .map(|s| tile_size(s, shape, tile))
-    .collect::<Result<Vec<i32>, String>>()?;
+    .collect::<Result<Vec<i64>, String>>()?;
 
   if shape_vec.len() != tile_vec.len() {
     return Err(format!(
@@ -110,7 +117,7 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
 }
 
 // Whether each dimension holds whole tiles, or why not
-fn whole_tiles(dims: &[i32], tiles: &[i32], shape: &str, tile: &str) -> Result<(), String> {
+fn whole_tiles(dims: &[i64], tiles: &[i64], shape: &str, tile: &str) -> Result<(), String> {
   if dims.iter().zip(tiles).any(|(dim, size)| dim % size != 0) {
     return Err(format!(
       "the tile ({}) does not divide the shape [{}]",
@@ -121,8 +128,8 @@ fn whole_tiles(dims: &[i32], tiles: &[i32], shape: &str, tile: &str) -> Result<(
 }
 
 // One size of a tile, or why it is none
-fn tile_size(text: &str, shape: &str, tile: &str) -> Result<i32, String> {
-  match text.trim().parse::<i32>() {
+fn tile_size(text: &str, shape: &str, tile: &str) -> Result<i64, String> {
+  match text.trim().parse::<i64>() {
     Ok(size) if size > 0 => Ok(size),
     _ => Err(format!(
       "the tile ({}) of the shape [{}] holds '{}', which is not a size",
@@ -137,11 +144,11 @@ pub fn get_result_shape(tshape: &str, ttile: &str) -> Result<String, String> {
   let dims = tshape
     .split(',')
     .map(|x| dimension(x, tshape))
-    .collect::<Result<Vec<i32>, String>>()?;
+    .collect::<Result<Vec<i64>, String>>()?;
   let tiles = ttile
     .split(',')
     .map(|x| tile_size(x, tshape, ttile))
-    .collect::<Result<Vec<i32>, String>>()?;
+    .collect::<Result<Vec<i64>, String>>()?;
 
   if dims.len() != tiles.len() {
     return Err(format!(

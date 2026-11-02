@@ -8,6 +8,10 @@ from .instruction_info import get_attribute_name
 class ExpressionWriter(IDLV2ExprVisitor):
     """A value as one expression, its operators spaced and its brackets the text's own"""
 
+    def __init__(self, cpp=False):
+        super().__init__()
+        self.cpp = cpp
+
     def visitExpression(self, ctx):
         return self.visit(ctx.additive())
 
@@ -31,23 +35,24 @@ class ExpressionWriter(IDLV2ExprVisitor):
 
     def visitAtom(self, ctx):
         if ctx.INT() is not None:
-            return ctx.INT().getText()
+            # Each an int64 in C++, so literals never compute in int
+            return f'int64{{{ctx.INT().getText()}}}' if self.cpp else ctx.INT().getText()
         if ctx.reference() is not None:
             # An attribute or state variable, by its generated name
             return get_attribute_name(ctx.reference().getText()[3:])
         return f'({self.visit(ctx.expression())})'
 
 
-def source(tree):
-    """The Rust or C++ that computes a value"""
-    return ExpressionWriter().visit(tree)
+def source(tree, cpp=False):
+    """The Rust, or with cpp the C++, that computes a value"""
+    return ExpressionWriter(cpp).visit(tree)
 
 
 def chain(tree):
-    """A value's outermost run: its operands' sources and the operators between them"""
+    """A value's outermost run: its operands' C++ and the operators between them"""
     additive = tree.additive()
     run = additive if len(additive.multiplicative()) > 1 else additive.multiplicative(0)
     operands = run.multiplicative() if run is additive else run.unary()
     operators = [run.getChild(2 * k + 1).getText() for k in range(len(operands) - 1)]
-    writer = ExpressionWriter()
+    writer = ExpressionWriter(cpp=True)
     return [writer.visit(operand) for operand in operands], operators

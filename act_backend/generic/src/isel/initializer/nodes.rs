@@ -65,7 +65,7 @@ fn keeps_type(
 pub fn bind_node(
   tsymbol: &str,
   node: Id,
-  shape: Vec<i32>,
+  shape: Vec<i64>,
   dtype: Dtype,
   is_const: bool,
   egraph: &mut EGraph<TensorOp, TensorInfo>,
@@ -349,7 +349,7 @@ pub fn add_slice(
       }
       _ => return Err(malformed(slice)),
     };
-    let (Ok(start), Ok(limit)) = (start.parse::<i32>(), limit.parse::<i32>()) else {
+    let (Ok(start), Ok(limit)) = (start.parse::<i64>(), limit.parse::<i64>()) else {
       return Err(malformed(slice));
     };
     if start < 0 || start >= limit || limit > dim {
@@ -361,7 +361,7 @@ pub fn add_slice(
     bounds.push((start, limit));
   }
   // The result's shape is each range's length
-  let sizes: Vec<i32> = bounds.iter().map(|(start, limit)| limit - start).collect();
+  let sizes: Vec<i64> = bounds.iter().map(|(start, limit)| limit - start).collect();
   if sizes != shape {
     return Err(format!(
       "{} gives the shape [{}] to a slice of the shape [{}]",
@@ -417,11 +417,17 @@ pub fn add_concatenate(
       axis
     ));
   }
-  let mut joined = lhs_shape.clone();
-  joined[axis] += rhs_shape.get(axis).copied().unwrap_or(0);
+  // The joined shape, none where the sum passes i64
+  let joined = lhs_shape[axis]
+    .checked_add(rhs_shape.get(axis).copied().unwrap_or(0))
+    .map(|sum| {
+      let mut joined = lhs_shape.clone();
+      joined[axis] = sum;
+      joined
+    });
   let alike = lhs_shape.len() == rhs_shape.len()
     && (0..lhs_shape.len()).all(|d| d == axis || lhs_shape[d] == rhs_shape[d]);
-  if !alike || joined != shape {
+  if !alike || joined.as_ref() != Some(&shape) {
     return Err(format!(
       "{} concatenates [{}] and [{}] along dimension {}, which does not give its shape [{}]",
       tsymbol,
