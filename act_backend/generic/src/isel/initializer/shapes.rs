@@ -13,20 +13,20 @@ pub fn shape_to_vec(shape_str: &str) -> Result<Vec<i64>, String> {
 
   trimmed
     .split(',')
-    .filter(|s| !s.trim().is_empty())
     .map(|x| dimension(x, shape_str))
     .collect()
 }
 
 // One dimension of a shape, or why it is none
 fn dimension(text: &str, shape: &str) -> Result<i64, String> {
-  text.trim().parse::<i64>().map_err(|_| {
-    format!(
+  match text.trim().parse::<i64>() {
+    Ok(dim) if dim >= 0 => Ok(dim),
+    _ => Err(format!(
       "the shape [{}] holds '{}', which is not a dimension",
       shape.trim_matches(|c| c == '[' || c == ']'),
       text.trim()
-    )
-  })
+    )),
+  }
 }
 
 // A shape's dimensions as a kernel writes them
@@ -76,13 +76,6 @@ pub fn get_tiled_shape(shape: &str, tile: &str) -> Result<String, String> {
     .split(',')
     .map(|s| dimension(s, shape))
     .collect::<Result<Vec<i64>, String>>()?;
-  // A tiled shape's dimensions are never negative
-  if let Some(dim) = shape_vec.iter().find(|dim| **dim < 0) {
-    return Err(format!(
-      "the shape [{}] holds '{}', which is not a dimension",
-      shape, dim
-    ));
-  }
 
   let tile_vec = tile
     .split(',')
