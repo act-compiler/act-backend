@@ -71,4 +71,11 @@ public:
   }
 };
 
+// Tensors in the order of their names
+struct ByName {
+  bool operator()(const Tensor *a, const Tensor *b) const {
+    return a->get_name() < b->get_name();
+  }
+};
+
 #endif // TENSOR_H

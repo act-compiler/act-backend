@@ -1,6 +1,7 @@
 #ifndef CONSTRAINT_H
 #define CONSTRAINT_H
 
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -11,6 +12,8 @@
 #include "tensor.h"
 
 using LiveRange = std::pair<size_t, size_t>;
+// Each tensor's live range, in the order of their names
+using LiveRanges = std::map<Tensor *, LiveRange, ByName>;
 using InterferenceGraph = std::vector<std::pair<Tensor *, Tensor *>>;
 
 namespace constraint {
@@ -35,7 +38,6 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
 
 LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions,
                              Tensor *root);
-InterferenceGraph
-build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ranges);
+InterferenceGraph build_interference_graph(const LiveRanges &live_ranges);
 
 #endif // CONSTRAINT_H

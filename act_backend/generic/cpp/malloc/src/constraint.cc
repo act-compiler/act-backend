@@ -63,8 +63,7 @@ void overlap_constraints(const std::vector<Instruction *> &instructions,
                          std::vector<IntVar *> &new_vars) {
 
   // Compute live ranges for all tensors
-  std::unordered_map<Tensor *, LiveRange> live_ranges;
-  live_ranges.reserve(tensor_map.size());
+  LiveRanges live_ranges;
   for (auto &pair : tensor_map) {
     Tensor *t = pair.second;
     live_ranges[t] = compute_live_range(t, instructions, root);
@@ -188,8 +187,7 @@ LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instru
   return panic("unknown tensor type.");
 }
 
-InterferenceGraph
-build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ranges) {
+InterferenceGraph build_interference_graph(const LiveRanges &live_ranges) {
   std::vector<std::pair<Tensor *, Tensor *>> interference_graph;
 
   for (auto it1 = live_ranges.begin(); it1 != live_ranges.end(); ++it1) {
