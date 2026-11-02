@@ -35,6 +35,8 @@ class InstructionMetadata:
     semantics_ast: object
     expressions: dict
     attributes: list[str]
+    # Every operand's size, as parsed
+    sizes: list
     rhs_size: int
 
 
@@ -47,6 +49,11 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
             semantics_ast=instruction.instr_semantics_ast,
             expressions=instruction.instr_expression_asts,
             attributes=list(instruction.comp_attr),
+            sizes=[
+                size
+                for _, _, sizes in [*instruction.instr_output_asts, *instruction.instr_input_asts]
+                for size in sizes
+            ],
             rhs_size=len(instruction.instr_inputs) + 1,
         )
         metadata_list.append(metadata)
