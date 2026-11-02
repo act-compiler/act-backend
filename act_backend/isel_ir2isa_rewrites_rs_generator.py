@@ -402,6 +402,72 @@ def generate_constant_checks(assignments, templates):
     return checks
 
 
+def grouped(tree):
+    """Whether a constraint joins comparisons by and or holds a bracketed condition"""
+    bracketed = any(
+        isinstance(node, IDLV2ExprParser.ComparisonContext) and node.condition() is not None
+        for node in Trees.descendants(tree)
+    )
+    return bracketed or bool(Trees.findAllTokenNodes(tree, IDLV2ExprParser.AND))
+
+
+class ConditionWriter:
+    """A condition as Rust lets, one per comparison and per group of them, as rustfmt lays them
+    out; a comparison that computes holds only where its arithmetic stays in i64"""
+
+    def __init__(self, templates):
+        self.templates = templates
+        self.lets = ''
+        self.count = 0
+
+    def fresh(self):
+        """The number of a local not yet named"""
+        self.count += 1
+        return self.count - 1
+
+    def group(self, parts, operator):
+        """The local that joins the parts by an operator: one let where it fits, else a let each"""
+        if len(parts) == 1:
+            return parts[0]
+        name = f'holds_{self.fresh()}'
+        joined = f' {operator} '.join(parts)
+        if fits(f'    {joined};'):
+            self.lets += let_line(name, joined)
+            return name
+        self.lets += let_line(name, f'{parts[0]} {operator} {parts[1]}')
+        for part in parts[2:]:
+            self.lets += let_line(name, f'{name} {operator} {part}')
+        return name
+
+    def condition(self, ctx):
+        return self.group([self.conjunction(part) for part in ctx.conjunction()], '||')
+
+    def conjunction(self, ctx):
+        return self.group([self.comparison(part) for part in ctx.comparison()], '&&')
+
+    def comparison(self, ctx):
+        if ctx.condition() is not None:
+            return self.condition(ctx.condition())
+        k = self.fresh()
+        if computes(ctx):
+            self.lets += checked_comparison(f'holds_{k}', ctx)
+            if divides(ctx):
+                # By zero the oracle refuses the call, so the whole constraint fails
+                self.lets += self.templates.render_lines(
+                    'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
+                    condition=f'holds_{k}.is_none()',
+                )
+            return f'holds_{k} == Some(true)'
+        text = comparison(ctx, negated=False)
+        if not fits(f'    {text};'):
+            # A wide comparison's sides computed first
+            left, right = ctx.additive()
+            self.lets += value_lets(f'left_{k}', left) + value_lets(f'right_{k}', right)
+            text = f'left_{k} {ctx.compare().getText()} right_{k}'
+        self.lets += let_line(f'holds_{k}', text)
+        return f'holds_{k}'
+
+
 def generate_constraint_checks(constraints, templates):
     """The Rust that checks each constraint over the attributes, as rustfmt lays it out
 
@@ -409,6 +475,17 @@ def generate_constraint_checks(constraints, templates):
     """
     checks = ''
     for tree in constraints:
+        if grouped(tree):
+            writer = ConditionWriter(templates)
+            held = writer.condition(tree)
+            # A lone comparison that computes, negated as an ungrouped one is
+            failed = f'!{held}' if held.isidentifier() else held.replace(' == ', ' != ')
+            check = templates.render_lines(
+                'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
+                condition=failed,
+            )
+            checks += writer.lets + check
+            continue
         lets = ''
         comparisons = []
         # Each comparison negated, so none holding returns false

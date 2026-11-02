@@ -165,10 +165,11 @@ def checked_value(name, tree):
 NEGATED = {'<=': '>', '<': '>=', '==': '!=', '>=': '<', '>': '<=', '!=': '=='}
 
 
-def comparison(tree):
-    """The Rust that holds where one comparison of a constraint does not"""
+def comparison(tree, negated=True):
+    """The Rust that holds where one comparison of a constraint does not, or where it does"""
     # Literals alone would compute in i32, so each is i64
     named = Trees.findAllTokenNodes(tree, IDLV2ExprParser.COMPUTATIONAL)
     writer = ExpressionWriter() if named else TypedWriter()
     left, right = tree.additive()
-    return f'{writer.visit(left)} {NEGATED[tree.compare().getText()]} {writer.visit(right)}'
+    compare = tree.compare().getText()
+    return f'{writer.visit(left)} {NEGATED[compare] if negated else compare} {writer.visit(right)}'
