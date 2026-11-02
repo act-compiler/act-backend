@@ -9,7 +9,7 @@ use crate::ir::pii::PiiGraph;
 use crate::ir::buffer::buffer_assignment as get_bufs;
 use crate::isel::extractor::utils::{annotate_constants, detect_constants, get_hbm_offset};
 
-/// Slow extraction: every pii graph of up to `limit` e-nodes
+/// Slow extraction: repeat-free pii graphs of up to `limit` e-nodes
 pub fn extract_slow(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
@@ -23,7 +23,14 @@ pub fn extract_slow(
   annotate_constants(egraph, &constants);
 
   // Top-down traversal to perform extraction
-  let trees = get_extraction_trees(egraph, root, Buffer::HBM, limit, inputs);
+  let trees = get_extraction_trees(
+    egraph,
+    root,
+    Buffer::HBM,
+    limit,
+    inputs,
+    &mut HashSet::new(),
+  );
   let mut piis = vec![];
   if !trees.is_empty() {
     for tree in trees.iter() {
@@ -54,9 +61,15 @@ fn get_extraction_trees(
   target_buf: Buffer,
   limit: usize,
   inputs: &HashSet<Id>,
+  path: &mut HashSet<(Id, Buffer)>,
 ) -> Vec<Vec<TensorOp>> {
   let mut trees = vec![];
   if limit == 0 {
+    return trees;
+  }
+  // Stop at an e-class and buffer repeated on the path
+  let key = (egraph.find(eclass), target_buf);
+  if !path.insert(key) {
     return trees;
   }
 
@@ -91,6 +104,7 @@ fn get_extraction_trees(
             out_buf,
             limit - en.num_children(),
             inputs,
+            path,
           ));
         } else {
           child_trees = vec![vec![]];
@@ -110,6 +124,7 @@ fn get_extraction_trees(
       }
     }
   }
+  path.remove(&key);
   trees
 }
 
