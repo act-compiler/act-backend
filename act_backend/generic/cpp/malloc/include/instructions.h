@@ -55,7 +55,7 @@ public:
 
 class Slice : public Instruction {
 private:
-  // [(start, end), ...] for each dimension of the slice
+  // [(start, end), ...] for each addressed dimension of the slice
   std::vector<std::pair<int64, int64>> slices;
   std::vector<int64> rhs_sizes; // size of each dimension of rhs tensor
 
