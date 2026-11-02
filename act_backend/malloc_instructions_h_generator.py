@@ -73,6 +73,17 @@ def names_address(tree):
     return bool(Trees.findAllTokenNodes(tree, IDLV2ExprParser.ADDRESSING))
 
 
+def divisors(tree):
+    """Each operand a parsed value or constraint divides or takes a remainder by"""
+    return [
+        operand
+        for run in Trees.descendants(tree)
+        if isinstance(run, IDLV2ExprParser.MultiplicativeContext)
+        for position, operand in enumerate(run.unary()[1:], 1)
+        if run.getChild(2 * position - 1).getText() in ('/', '%')
+    ]
+
+
 def divides(tree):
     """Whether a parsed value divides or takes a remainder"""
     tokens = (IDLV2ExprParser.SLASH, IDLV2ExprParser.PERCENT)

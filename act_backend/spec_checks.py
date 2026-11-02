@@ -15,6 +15,7 @@ from .isel_ir2isa_rewrites_rs_generator import (
     slice_ranges,
 )
 from .isel_ir2isa_rewrites_txt_generator import OPERATIONS
+from .malloc_instructions_h_generator import names_address
 from .semantics_visitor import OperandVisitor
 
 
@@ -250,7 +251,7 @@ def start_refusal(start):
     """Why the allocator cannot place a start, None where it can
 
     A start adds, subtracts and multiplies integers and attributes, and divides or takes a
-    remainder by a positive integer.
+    remainder by any of them but zero or a negative integer.
     """
     named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
     if named:
@@ -258,29 +259,25 @@ def start_refusal(start):
     # Its literals, and what its integers alone compute, which the allocator holds in 64 bits
     if past_64_bits(start):
         return '64 bits cannot hold'
-    for run in Trees.descendants(start):
+    return division_refusal(start)
+
+
+def division_refusal(value):
+    """Why a value divides or takes a remainder by zero or a negative integer, else None"""
+    for run in Trees.descendants(value):
         if not isinstance(run, IDLV2ExprParser.MultiplicativeContext):
             continue
-        operands = run.unary()
-        for position, operand in enumerate(operands[1:], 1):
+        for position, operand in enumerate(run.unary()[1:], 1):
             operator = run.getChild(2 * position - 1).getText()
             if operator == '*':
                 continue
             verb = 'divides' if operator == '/' else 'takes a remainder'
-            if names_attribute(operand):
-                return f'{verb} by an attribute'
             divisor = integer(operand)
-            if not divisor:
+            if divisor == 0:
                 return f'{verb} by zero'
-            if divisor < 0:
+            if divisor is not None and divisor < 0:
                 return f'{verb} by {divisor}, a negative integer'
     return None
-
-
-def names_attribute(value):
-    """Whether a parsed value names an address or a computational attribute"""
-    tokens = (IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.COMPUTATIONAL)
-    return any(Trees.findAllTokenNodes(value, token) for token in tokens)
 
 
 # Tokens a size may not hold
@@ -339,18 +336,16 @@ def check_operands(instructions):
 
 # Tokens no constraint the backend holds may hold
 CONSTRAINT_TOKENS = (IDLV2ExprParser.AND, IDLV2ExprParser.STATE)
-# Tokens a constraint over addresses may not hold, beside those
-ADDRESS_TOKENS = (IDLV2ExprParser.SLASH, IDLV2ExprParser.PERCENT)
 
 
 def honoured(constraint):
     """Whether a constraint is comparisons of integers and attributes, joined by or
 
-    A quotient or a remainder only over the attributes, which the selector computes.
+    One over addresses divides and takes remainders by a positive integer alone.
     """
-    placed = Trees.findAllTokenNodes(constraint, IDLV2ExprParser.ADDRESSING)
-    tokens = CONSTRAINT_TOKENS + (ADDRESS_TOKENS if placed else ())
-    if any(Trees.findAllTokenNodes(constraint, token) for token in tokens):
+    if any(Trees.findAllTokenNodes(constraint, token) for token in CONSTRAINT_TOKENS):
+        return False
+    if names_address(constraint) and division_refusal(constraint) is not None:
         return False
     # Each conjunction one comparison, never a bracketed condition
     comparisons = [conjunction.comparison(0) for conjunction in constraint.conjunction()]

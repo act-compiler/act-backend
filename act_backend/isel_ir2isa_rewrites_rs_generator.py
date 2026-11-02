@@ -15,7 +15,7 @@ from .expression_writer import (
     source,
 )
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
-from .malloc_instructions_h_generator import divides, known_integers
+from .malloc_instructions_h_generator import divides, divisors, known_integers, names_address
 from .operand_sizes import generate_size_checks
 from .semantics_visitor import OperandVisitor
 from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
@@ -449,7 +449,10 @@ def generate_constraint_checks(constraints, templates):
 
 
 def generate_known_integer_checks(constraints, starts, templates):
-    """The Rust that fails a constraint over addresses, or a start, where a known integer leaves i64"""
+    """The Rust that fails a constraint over addresses, or a start, where a known integer leaves i64
+
+    A divisor of computational attributes alone is also positive, as the allocator takes it.
+    """
     parts = [
         part
         for tree in constraints
@@ -463,6 +466,19 @@ def generate_known_integer_checks(constraints, starts, templates):
         checks += templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
             condition='known.is_none()',
+        )
+    # A literal divisor is positive since generation, one of addresses held so by the solver
+    for divisor in [divisor for tree in [*constraints, *starts] for divisor in divisors(tree)]:
+        named = Trees.findAllTokenNodes(divisor, IDLV2ExprParser.COMPUTATIONAL)
+        if not named or names_address(divisor):
+            continue
+        if computes(divisor):
+            checks += checked_value('divisor', divisor)
+            condition = '!divisor.is_some_and(|value| value > 0)'
+        else:
+            condition = f'{source(divisor)} <= 0'
+        checks += templates.render_lines(
+            'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt', condition=condition
         )
     return checks
 
