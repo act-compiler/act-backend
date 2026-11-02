@@ -95,3 +95,28 @@ def test_no_candidate_passes_one_eclass_in_one_buffer_twice(round_trip_backend, 
     assert piis
     repeating = [pii.name for pii in piis if any(map(repeats, candidate_nodes(pii)))]
     assert repeating == []
+
+
+# A sum of two inputs, each loaded on its own
+SUM = """HloModule sum, entry_computation_layout={(bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[32,64]{1,0}}
+
+ENTRY main {
+  %a = bf16[32,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  ROOT %c = bf16[32,64] add(%a, %b)
+}
+"""
+
+
+def test_fast_extraction_orders_the_nodes_alike_on_every_compile(backend, tmp_path):
+    candidates = set()
+    for number in range(8):
+        run_dir = tmp_path / str(number)
+        run_dir.mkdir()
+        run, _ = compiled(backend, run_dir, SUM, flags=['--verbose'])
+        assert run.returncode == 0, run.stderr
+        # The fast candidate is extracted first, so it is 0.pii
+        assert re.search(r'graphs extracted: (\d+)', run.stdout)[1] == '1'
+        candidates.add((run_dir / 'log' / '0.pii').read_text())
+    # Two independent leaves and loads, yet one node order
+    assert len(candidates) == 1
