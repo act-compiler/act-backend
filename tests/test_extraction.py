@@ -257,6 +257,59 @@ def test_fast_extraction_gives_a_concatenate_read_in_two_buffers_a_node_in_each(
     assert np.array_equal(np.asarray(result), np.asarray(2 * jnp.concatenate([A, B])))
 
 
+def slow_numbers(stdout):
+    """Return the numbers of a compile's slow candidates"""
+    numbers, start = [], 0
+    # Numbered as extracted, a run per report
+    for extractor, count in extracted(stdout):
+        if extractor == 'Slow':
+            numbers += range(start, start + count)
+        start += count
+    return numbers
+
+
+def slow_diffs(work_dir, tmp_path, kernel, expected, *inputs):
+    """Compile a kernel; return each slow candidate's largest difference"""
+    backend = os.path.join(work_dir, 'backends', 'TWO_LOADS')
+    run, _ = compiled(backend, tmp_path, kernel, flags=['--verbose'])
+    assert run.returncode == 0, run.stderr
+    # The slow candidates themselves, whichever candidate the output is
+    candidates = [tmp_path / 'log' / f'{number}.py' for number in slow_numbers(run.stdout)]
+    # Dropped or unreached candidates have no assembly
+    candidates = [candidate for candidate in candidates if candidate.exists()]
+    assert candidates, 'no slow candidate was allocated'
+    results = [simulated(work_dir, 'TWO_LOADS', candidate, *inputs) for candidate in candidates]
+    return {float(jnp.max(jnp.abs(result - expected))) for result in results}
+
+
+def test_slow_extraction_gives_a_concatenate_read_in_two_buffers_a_node_in_each(
+    two_loads_dir, tmp_path
+):
+    expected = 2 * jnp.concatenate([A, B])
+    assert slow_diffs(two_loads_dir, tmp_path, REPEATED, expected, A, B) == {0}
+
+
+# One slice under two concatenates, read from d1 and d2
+SLICED = """HloModule sliced, entry_computation_layout={(bf16[64,64]{1,0}, bf16[32,64]{1,0}, bf16[32,64]{1,0})->bf16[64,64]{1,0}}
+
+ENTRY main {
+  %x = bf16[64,64] parameter(0)
+  %b = bf16[32,64] parameter(1)
+  %c = bf16[32,64] parameter(2)
+  %s = bf16[32,64] slice(%x), slice={[0:32], [0:64]}
+  %sb = bf16[64,64] concatenate(%s, %b), dimensions={0}
+  %sc = bf16[64,64] concatenate(%s, %c), dimensions={0}
+  ROOT %y = bf16[64,64] add(%sb, %sc)
+}
+"""
+
+
+def test_slow_extraction_gives_a_slice_read_in_two_buffers_a_node_in_each(two_loads_dir, tmp_path):
+    # The slice's rows are A
+    expected = jnp.concatenate([A, B]) + jnp.concatenate([A, C])
+    assert slow_diffs(two_loads_dir, tmp_path, SLICED, expected, ROWS, B, C) == {0}
+
+
 def copying():
     """Moves, a copy to d2, an exponential, an add across buffers"""
     acc = Accelerator('COPYING')

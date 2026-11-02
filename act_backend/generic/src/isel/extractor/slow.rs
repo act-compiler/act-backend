@@ -49,12 +49,12 @@ pub fn extract_slow(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Extraction {
-  tree: Vec<TensorOp>,
+  tree: Vec<(TensorOp, Buffer)>,
   children: HashMap<usize, Vec<usize>>,
   parent: HashMap<usize, Option<usize>>,
 }
 
-/// Pre-order extraction: each extraction, a set of e-nodes
+/// Pre-order extraction trees of e-nodes with their buffers
 fn get_extraction_trees(
   egraph: &EGraph<TensorOp, TensorInfo>,
   eclass: Id,
@@ -62,7 +62,7 @@ fn get_extraction_trees(
   limit: usize,
   inputs: &HashSet<Id>,
   path: &mut HashSet<(Id, Buffer)>,
-) -> Vec<Vec<TensorOp>> {
+) -> Vec<Vec<(TensorOp, Buffer)>> {
   let mut trees = vec![];
   if limit == 0 {
     return trees;
@@ -76,12 +76,12 @@ fn get_extraction_trees(
   for en in &egraph[eclass].nodes {
     // Base case: input e-node
     if inputs.contains(&eclass) && target_buf == Buffer::HBM {
-      trees.push(vec![en.clone()]);
+      trees.push(vec![(en.clone(), target_buf)]);
       break;
     }
     // Base case: detected constant e-node
     if egraph[eclass].data.is_const && en.is_detected_const() && target_buf == Buffer::HBM {
-      trees.push(vec![en.clone()]);
+      trees.push(vec![(en.clone(), target_buf)]);
       break;
     }
     // Only consider instruction e-nodes
@@ -114,8 +114,8 @@ fn get_extraction_trees(
       // merge all combinations of child extractions and add en
       if child_trees.iter().all(|x| !x.is_empty()) {
         for combination in child_trees.into_iter().multi_cartesian_product() {
-          let child_trees: Vec<TensorOp> = combination.into_iter().flatten().collect();
-          let mut tree = vec![en.clone()];
+          let child_trees: Vec<(TensorOp, Buffer)> = combination.into_iter().flatten().collect();
+          let mut tree = vec![(en.clone(), target_buf)];
           tree.extend(child_trees);
           if tree.len() <= limit {
             trees.push(tree);
@@ -129,7 +129,9 @@ fn get_extraction_trees(
 }
 
 /// The parent and child edges of a preorder extraction tree
-fn get_edges(tree: &[TensorOp]) -> (HashMap<usize, Vec<usize>>, HashMap<usize, Option<usize>>) {
+fn get_edges(
+  tree: &[(TensorOp, Buffer)],
+) -> (HashMap<usize, Vec<usize>>, HashMap<usize, Option<usize>>) {
   let mut children = HashMap::new();
   let mut parent = HashMap::new();
   let mut stack = vec![];
@@ -145,9 +147,9 @@ fn get_edges(tree: &[TensorOp]) -> (HashMap<usize, Vec<usize>>, HashMap<usize, O
       *parent.get_mut(&i).unwrap() = Some(*top);
     }
     stack.push(i);
-    if tree[i].is_leaf() {
+    if tree[i].0.is_leaf() {
       while let Some(top) = stack.last() {
-        if children[top].len() == tree[*top].num_children() {
+        if children[top].len() == tree[*top].0.num_children() {
           stack.pop();
         } else {
           break;
@@ -160,19 +162,19 @@ fn get_edges(tree: &[TensorOp]) -> (HashMap<usize, Vec<usize>>, HashMap<usize, O
 
 /// Perform GVN on an extraction tree to collapse equivalent subtrees.
 fn get_extractions(
-  tree: &[TensorOp],
+  tree: &[(TensorOp, Buffer)],
   child_map: &mut HashMap<usize, Vec<usize>>,
   parent_map: &mut HashMap<usize, Option<usize>>,
 ) -> Vec<Extraction> {
   let mut extractions = vec![];
-  let mut gvn_map = HashMap::new(); // node -> num
-  let mut idx_map = HashMap::new(); // node -> index in tree
+  let mut gvn_map = HashMap::new(); // e-node and buffer -> num
+  let mut idx_map = HashMap::new(); // e-node and buffer -> index in tree
   let mut num = 0;
   let mut processed = vec![false; tree.len()];
 
   // all duplicate leaf nodes must be collapsed
   for (i, node) in tree.iter().enumerate() {
-    if node.is_leaf() {
+    if node.0.is_leaf() {
       if !gvn_map.contains_key(node) {
         gvn_map.insert(node.clone(), num);
         num += 1;
@@ -258,7 +260,7 @@ fn extraction_to_piigraph(
   let mut idx_map: HashMap<usize, usize> = HashMap::new();
 
   for idx in postorder.into_iter() {
-    let op = extraction.tree[idx].clone();
+    let (op, _) = extraction.tree[idx].clone();
     let child_tree_idxs = extraction.children.get(&idx).cloned().unwrap_or_default();
     let mut child_node_ids: Vec<usize> = Vec::with_capacity(child_tree_idxs.len());
     for ti in child_tree_idxs.iter() {
