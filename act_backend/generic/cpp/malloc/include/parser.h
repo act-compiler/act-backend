@@ -33,6 +33,9 @@ Instruction *create_instruction(const ParsedLine &pl,
                                 std::map<Tensor *, std::string, ByName> &known_constants,
                                 std::string &why);
 
+// Hold the tensor create_instruction leaves to its instruction, else why not
+bool hold_tensors(Instruction *instr, std::string &why);
+
 } // namespace parser
 
 #endif // PARSER_H

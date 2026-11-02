@@ -142,6 +142,34 @@ bool parse_line(const std::string &line, ParsedLine &pl, std::string &why) {
   return true;
 }
 
+// Hold a tensor in a shape its storage takes, else why not
+static bool hold(Tensor *tensor, const std::vector<int64> &shape, std::string &why) {
+  std::string name = tensor->get_name();
+  Storage *storage = tensor->get_storage();
+
+  // A shape of each of its storage's dimensions
+  if (shape.size() != storage->get_total_dims()) {
+    why = "the tensor " + name + " has a shape of rank " + std::to_string(shape.size()) +
+          ", where its storage " + storage->get_name() + " has rank " +
+          std::to_string(storage->get_total_dims());
+    return false;
+  }
+
+  // A tensor fits its storage along each addressing dimension
+  for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
+    int64 cap = storage->get_capacity(i)->Max();
+    if (shape[i] > cap) {
+      why = "the tensor " + name + " has " + std::to_string(shape[i]) + " along dimension " +
+            std::to_string(i) + ", where its storage " + storage->get_name() + " holds " +
+            std::to_string(cap);
+      return false;
+    }
+  }
+
+  tensor->hold(shape);
+  return true;
+}
+
 Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<std::string, Tensor *> &tensor_map,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
@@ -180,26 +208,17 @@ Instruction *create_instruction(const ParsedLine &pl,
   if (tensor_map.count(lhs))
     return refuse("the tensor " + lhs + " is defined twice");
 
-  // A shape of each of its storage's dimensions
-  if (shape_vec.size() != storage->get_total_dims())
-    return refuse("the tensor " + lhs + " has a shape of rank " + std::to_string(shape_vec.size()) +
-                  ", where its storage " + storage_name + " has rank " +
-                  std::to_string(storage->get_total_dims()));
-
-  // A tensor fits its storage along each addressing dimension
-  for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
-    int64 cap = storage->get_capacity(i)->Max();
-    if (shape_vec[i] > cap)
-      return refuse("the tensor " + lhs + " has " + std::to_string(shape_vec[i]) +
-                    " along dimension " + std::to_string(i) + ", where its storage " +
-                    storage_name + " holds " + std::to_string(cap));
-  }
-
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
 
   // insert into tensor_map
   tensor_map[lhs] = lhs_tensor;
+
+  // Held in its own shape now, an instruction's in a buffer by hold_tensors once built
+  bool declared = op_name.rfind("Var", 0) == 0 || op_name.rfind("DCC", 0) == 0;
+  bool view = op_name == "slice" || op_name == "concat";
+  if ((storage_name == "HBM" || declared || view) && !hold(lhs_tensor, shape_vec, why))
+    return nullptr;
 
   // if offset is known, insert into known_offsets
   if (offset != -1) {
@@ -295,6 +314,12 @@ Instruction *create_instruction(const ParsedLine &pl,
   }
 
   return panic("unknown instruction: " + op_name);
+}
+
+bool hold_tensors(Instruction *instr, std::string &why) {
+  // Its tensor in a buffer, held in its own shape
+  Tensor *y = instr->get_lhs();
+  return y->is_held() || hold(y, y->get_value(), why);
 }
 
 } // namespace parser

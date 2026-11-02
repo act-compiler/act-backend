@@ -14,9 +14,11 @@ private:
   std::string name;
 
   Storage *storage;
+  std::vector<int64> value;
   std::vector<int64> shape;
   std::vector<int64> sizes;
   std::vector<operations_research::IntVar *> offsets;
+  bool held = false;
   Instruction *defined_by;
   std::vector<Instruction *> used_by;
 
@@ -24,8 +26,18 @@ public:
   enum node_type { INPUT, CONSTANT, INTERMEDIATE, OUTPUT };
   node_type type;
 
-  Tensor(const std::string &name, Storage *storage, const std::vector<int64> &shape)
-      : name(name), storage(storage), shape(shape) {
+  // A value's tensor, held by hold once its storage's shape for it is known
+  Tensor(const std::string &name, Storage *storage, const std::vector<int64> &value)
+      : name(name), storage(storage), value(value) {
+    defined_by = nullptr;
+    used_by.resize(0);
+  }
+
+  // Held in a shape of its storage's rank, which it fits: its sizes and offsets
+  void hold(const std::vector<int64> &extent) {
+    assert(!held && extent.size() == storage->get_total_dims());
+    held = true;
+    shape = extent;
     sizes.reserve(storage->get_addressing_dims());
     offsets.reserve(storage->get_addressing_dims());
     for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
@@ -35,9 +47,10 @@ public:
       int64 max_off = cap - sizes[i];
       offsets.push_back(MAKE_INT_VAR(0, max_off));
     }
+  }
 
-    defined_by = nullptr;
-    used_by.resize(0);
+  bool is_held() const {
+    return held;
   }
 
   std::string get_name() const {
@@ -47,6 +60,10 @@ public:
     return storage;
   }
 
+  // Its value's shape, as its line gives it
+  std::vector<int64> get_value() const {
+    return value;
+  }
   // Its extent along every dimension, the unit ones too
   std::vector<int64> get_shape() const {
     return shape;
