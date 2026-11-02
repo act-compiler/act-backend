@@ -3,7 +3,7 @@
 from .expression_writer import CheckedWriter, computes
 
 # The helper each dividing operator of a size calls
-DIVIDING = {'/': 'size_quotient'}
+DIVIDING = {'/': 'size_quotient', '%': 'size_remainder'}
 
 
 class SizeWriter(CheckedWriter):

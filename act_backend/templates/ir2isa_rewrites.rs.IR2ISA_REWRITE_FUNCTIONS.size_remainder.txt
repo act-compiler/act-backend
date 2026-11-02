@@ -1,0 +1,7 @@
+// A size's remainder where the allocator's truncation is the oracle's floor, else None
+fn size_remainder(value: i64, divisor: i64) -> Option<i64> {
+  if value < 0 || divisor <= 0 {
+    return None;
+  }
+  Some(value % divisor)
+}

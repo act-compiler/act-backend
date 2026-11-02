@@ -287,11 +287,11 @@ def names_attribute(value):
 
 
 # Tokens a size may not hold, beside a negation
-SIZE_TOKENS = (IDLV2ExprParser.PERCENT, IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.STATE)
+SIZE_TOKENS = (IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.STATE)
 
 
 def beyond_allocator(size):
-    """Whether a size holds a remainder, a negation, an address attribute or a state variable"""
+    """Whether a size holds a negation, an address attribute or a state variable"""
     if isinstance(size, TerminalNode):
         return size.getSymbol().type in SIZE_TOKENS
     if isinstance(size, IDLV2ExprParser.UnaryContext) and size.MINUS():
@@ -299,15 +299,33 @@ def beyond_allocator(size):
     return any(beyond_allocator(part) for part in size.getChildren())
 
 
+def remainder_by_other(size):
+    """Whether a parsed size takes a remainder by anything but a positive integer"""
+    for node in Trees.descendants(size):
+        if isinstance(node, IDLV2ExprParser.MultiplicativeContext):
+            for position, operand in enumerate(node.unary()[1:]):
+                if node.getChild(2 * position + 1).getText() != '%':
+                    continue
+                divisor = integer(operand)
+                if divisor is None or divisor < 1:
+                    return True
+    return False
+
+
 def check_size(what, text, size):
     """Refuse a size the allocator's C++ cannot take as it is written"""
     if beyond_allocator(size):
         raise ValueError(
             f"{what} has the size '{text}', which is not integers and computational attributes "
-            "joined by '*', '/', '+' and '-'"
+            "joined by '*', '/', '%', '+' and '-'"
         )
     if divides_by_zero(size):
         raise ValueError(f"{what} has the size '{text}', which divides by zero")
+    # A remainder whose divisor the allocator's C++ and the oracle read alike
+    if remainder_by_other(size):
+        raise ValueError(
+            f"{what} has the size '{text}', which takes a remainder by other than a positive integer"
+        )
     if past_64_bits(size):
         raise ValueError(f"{what} has the size '{text}', which 64 bits cannot hold")
 

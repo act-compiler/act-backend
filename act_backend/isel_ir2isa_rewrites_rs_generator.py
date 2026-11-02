@@ -567,7 +567,7 @@ def generate_ir2isa_rust_functions(metadata, templates):
 
 
 # Each helper a rewrite function may call, by its name
-HELPERS = ('computed', 'size_quotient')
+HELPERS = ('computed', 'size_quotient', 'size_remainder')
 
 
 def generate_helpers(functions, templates):

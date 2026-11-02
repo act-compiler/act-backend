@@ -334,12 +334,12 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
         # A size refused along the second dimension
         (
             {
-                'inputs': [['d3', ['@a.addr_1', '@a.addr_2'], ['64', '4 % 3']], SECOND],
+                'inputs': [['d3', ['@a.addr_1', '@a.addr_2'], ['64', '-4']], SECOND],
                 'models': [('d3', [64, 4], [64], 'bf16')],
             },
             (
-                "its operand on 'd3' has the size '4 % 3', which is not integers and "
-                "computational attributes joined by '*', '/', '+' and '-'"
+                "its operand on 'd3' has the size '-4', which is not integers and "
+                "computational attributes joined by '*', '/', '%', '+' and '-'"
             ),
         ),
     ],
@@ -348,13 +348,13 @@ def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path
     assert refusal(with_operands(**operands), tmp_path) == f'gemm: {reason}'
 
 
-@pytest.mark.parametrize('size', ['-64', '64 % 48', '@a.addr_out', '@s.rows', '64 * (2 - -1)'])
+@pytest.mark.parametrize('size', ['-64', '@a.addr_out', '@s.rows', '64 * (2 - -1)'])
 def test_size_the_allocator_cannot_read_refused(size, tmp_path):
     acc = with_operands(outputs=[['d2', ['@a.addr_out'], [size]]], state=['rows'])
     message = refusal(acc, tmp_path)
     assert message == (
         f"gemm: its operand on 'd2' has the size '{size}', which is not integers and "
-        "computational attributes joined by '*', '/', '+' and '-'"
+        "computational attributes joined by '*', '/', '%', '+' and '-'"
     )
 
 

@@ -117,6 +117,7 @@ def computes(tree):
         IDLV2ExprParser.MINUS,
         IDLV2ExprParser.STAR,
         IDLV2ExprParser.SLASH,
+        IDLV2ExprParser.PERCENT,
     )
     return any(Trees.findAllTokenNodes(tree, token) for token in tokens)
 
