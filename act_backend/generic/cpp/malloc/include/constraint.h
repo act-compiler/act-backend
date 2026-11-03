@@ -27,14 +27,15 @@ bool initial_constraints(const std::unordered_map<Tensor *, int64> &known_offset
 
 // CSP4: NON_OVERLAP(h(0), h'(0))
 bool overlap_constraints(const std::vector<Instruction *> &instructions,
-                         const std::unordered_map<std::string, Tensor *> &tensor_map,
+                         const std::unordered_map<std::string, Tensor *> &tensor_map, Tensor *root,
                          std::vector<IntVar *> &new_vars, std::string &why);
 
 } // namespace constraint
 
 /* Helper functions for CSP4 */
 
-LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions);
+LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions,
+                             Tensor *root);
 InterferenceGraph
 build_interference_graph(const std::unordered_map<Tensor *, LiveRange> &live_ranges);
 

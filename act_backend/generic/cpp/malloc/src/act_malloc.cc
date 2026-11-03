@@ -37,6 +37,8 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
   std::unordered_map<Tensor *, int64> known_offsets;
   std::unordered_map<Tensor *, std::string> known_constants;
   std::vector<Instruction *> instructions;
+  // The candidate's result, its last line
+  Tensor *root_tensor = nullptr;
 
   std::string line;
   while (std::getline(pii_file, line)) {
@@ -57,7 +59,12 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
                          "the allocator cannot read the line `" + line + "`: " + why);
     if (instr)
       instructions.push_back(instr);
+    root_tensor = tensor_map.at(pl.lhs_variable_name);
   }
+
+  // A candidate of no line is dropped
+  if (!root_tensor)
+    return no_assembly(reason, reason_size, "the candidate holds no line");
 
   // Each constant's value, else the candidate is dropped
   std::unordered_map<Tensor *, std::string> constant_values;
@@ -67,8 +74,10 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
       return no_assembly(reason, reason_size, why);
   }
 
-  Instruction *root = instructions.back();
-  root->get_lhs()->type = Tensor::node_type::OUTPUT;
+  // The root's instruction, none for a declaration
+  Instruction *root = root_tensor->get_defined_by();
+  if (root)
+    root_tensor->type = Tensor::node_type::OUTPUT;
 
   progress << "Starting Phase 2 Module 4: Topological Ordering Generator..." << std::endl;
 
@@ -88,7 +97,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
   if (!constraint::initial_constraints(known_offsets, why))
     return no_assembly(reason, reason_size, why);
   std::vector<operations_research::IntVar *> new_vars;
-  if (!constraint::overlap_constraints(scheduled, tensor_map, new_vars, why))
+  if (!constraint::overlap_constraints(scheduled, tensor_map, root_tensor, new_vars, why))
     return no_assembly(reason, reason_size, why);
 
   std::vector<operations_research::IntVar *> all_vars;

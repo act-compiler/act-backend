@@ -501,12 +501,18 @@ bool assembly_dump(char *outpath, const std::vector<Instruction *> &instructions
   outfile << indent1 << "def " << kernel_name << "_" << "():" << std::endl;
 
   // Assembly code
+  bool any_call = false;
   for (auto *instr : instructions) {
     // An in-place slice or concatenate has no text
     std::string text = instr->str();
-    if (!text.empty())
+    if (!text.empty()) {
       outfile << indent2 << "api." << text << std::endl;
+      any_call = true;
+    }
   }
+  // A body of no call is a pass
+  if (!any_call)
+    outfile << indent2 << "pass" << std::endl;
 
   outfile << std::endl;
   outfile << indent1 << "return " << kernel_name << "_" << std::endl;

@@ -66,7 +66,7 @@ bool initial_constraints(const std::unordered_map<Tensor *, int64> &known_offset
 }
 
 bool overlap_constraints(const std::vector<Instruction *> &instructions,
-                         const std::unordered_map<std::string, Tensor *> &tensor_map,
+                         const std::unordered_map<std::string, Tensor *> &tensor_map, Tensor *root,
                          std::vector<IntVar *> &new_vars, std::string &why) {
 
   // Compute live ranges for all tensors
@@ -74,7 +74,7 @@ bool overlap_constraints(const std::vector<Instruction *> &instructions,
   live_ranges.reserve(tensor_map.size());
   for (auto &pair : tensor_map) {
     Tensor *t = pair.second;
-    live_ranges[t] = compute_live_range(t, instructions);
+    live_ranges[t] = compute_live_range(t, instructions, root);
   }
 
   // Build interference graph
@@ -119,7 +119,8 @@ bool overlap_constraints(const std::vector<Instruction *> &instructions,
 } // namespace constraint
 
 // Times 1 to N are the instructions, 0 before them
-LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions) {
+LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instructions,
+                             Tensor *root) {
   // Panic with an error message
   auto panic = [&](const std::string &msg) -> LiveRange {
     std::cerr << "live_range error: " << msg << std::endl;
@@ -132,8 +133,10 @@ LiveRange compute_live_range(Tensor *a, const std::vector<Instruction *> &instru
     return {0, instructions.size()};
   }
 
-  // A constant lives over [0, b], b its last use
+  // A constant lives over [0, b], b its last use; the root to the end
   if (a->type == Tensor::node_type::CONSTANT) {
+    if (a == root)
+      return {0, instructions.size()};
     auto uses = a->get_used_by();
     if (uses.empty())
       return panic("constant tensor has no uses");
