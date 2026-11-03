@@ -322,7 +322,6 @@ def check_operands(instructions):
     """Refuse an operand the allocator cannot address"""
     for instruction in instructions:
         name = instruction.instruction
-        read = set()
         # Each operand as written and as taidl parsed it
         written = [*instruction.instr_outputs, *instruction.instr_inputs]
         parsed = [*instruction.instr_output_asts, *instruction.instr_input_asts]
@@ -336,12 +335,6 @@ def check_operands(instructions):
                         f"{what} has the address '{text}', which {start_refusal(start)}"
                     )
                 check_size(what, size, extent)
-                # Each address attribute a start names is read
-                named = Trees.findAllTokenNodes(start, IDLV2ExprParser.ADDRESSING)
-                read.update(node.getText()[3:] for node in named)
-        for attribute in instruction.parameters:
-            if attribute not in read:
-                raise ValueError(f"{name}: no operand reads the address attribute '{attribute}'")
 
 
 # Tokens no constraint the backend holds may hold

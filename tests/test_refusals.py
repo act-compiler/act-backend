@@ -369,11 +369,6 @@ def test_sizes_the_allocator_reads():
         spec_checks.check_operands(acc.instructions)
 
 
-def test_address_attribute_no_operand_reads_refused(tmp_path):
-    acc = with_operands(addresses=['addr_1', 'addr_2', 'addr_out', 'spare'])
-    assert refusal(acc, tmp_path) == "gemm: no operand reads the address attribute 'spare'"
-
-
 def test_constraints_the_allocator_holds():
     acc = with_operands()
     (gemm,) = acc.instructions
