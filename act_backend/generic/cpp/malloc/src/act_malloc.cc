@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -35,7 +36,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
 
   std::unordered_map<std::string, Tensor *> tensor_map;
   std::unordered_map<Tensor *, int64> known_offsets;
-  std::unordered_map<Tensor *, std::string> known_constants;
+  std::map<Tensor *, std::string, ByName> known_constants;
   std::vector<Instruction *> instructions;
   // The candidate's result, its last line
   Tensor *root_tensor = nullptr;
@@ -66,7 +67,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
   if (!root_tensor)
     return no_assembly(reason, reason_size, "the candidate holds no line");
 
-  // Each constant's value, else the candidate is dropped
+  // Each constant's value in the order of their names, else the candidate is dropped
   std::unordered_map<Tensor *, std::string> constant_values;
   for (const auto &[tensor, expr] : known_constants) {
     std::string why;

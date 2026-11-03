@@ -1,6 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,7 +30,7 @@ bool parse_line(const std::string &line, ParsedLine &pl, std::string &why);
 Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<std::string, Tensor *> &tensor_map,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
-                                std::unordered_map<Tensor *, std::string> &known_constants,
+                                std::map<Tensor *, std::string, ByName> &known_constants,
                                 std::string &why);
 
 } // namespace parser
