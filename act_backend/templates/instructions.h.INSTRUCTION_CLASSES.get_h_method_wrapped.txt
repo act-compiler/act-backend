@@ -1,4 +1,4 @@
   std::vector<std::pair<IntExpr *, IntExpr *>> get_h{{index}}() {
-{{sizes}}
+{{locals}}
 {{ranges}}
   }

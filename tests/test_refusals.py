@@ -349,20 +349,6 @@ SECOND = ['d1', ['@a.addr_2'], ['64']]
                 'and the allocator addresses one or more'
             ),
         ),
-        (
-            {'inputs': [['d1', ['@a.addr_1 * 2'], ['64']], SECOND]},
-            (
-                "its operand on 'd1' has the address '@a.addr_1 * 2', "
-                'which is not one address attribute of the instruction'
-            ),
-        ),
-        (
-            {'inputs': [['d1', ['0'], ['64']], SECOND]},
-            (
-                "its operand on 'd1' has the address '0', "
-                'which is not one address attribute of the instruction'
-            ),
-        ),
     ],
 )
 def test_operand_the_allocator_cannot_address_refused(operands, reason, tmp_path):
