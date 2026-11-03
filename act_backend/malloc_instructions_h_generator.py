@@ -7,22 +7,22 @@ from .instruction_info import get_attribute_name, get_type_names
 from .template_loader import call_lines, fill_placeholders, fits, get_backend_template_loader
 
 
-def generate_size(size):
+def generate_size(size, name):
     """A size's local as clang-format lays it out: on one line, after its =, or after operators"""
     value = source(size)
-    for local in (f'    int64 size = {value};', f'    int64 size =\n        {value};'):
+    for local in (f'    int64 {name} = {value};', f'    int64 {name} =\n        {value};'):
         if fits(local):
             return local
     # Each operand on the line it fits, an operator ending a line
     operands, operators = chain(size)
     afters = [*(f' {operator}' for operator in operators), ';']
-    first = f'    int64 size = {operands[0]}{afters[0]}'
+    first = f'    int64 {name} = {operands[0]}{afters[0]}'
     if fits(first):
         # The rest aligned after the =
-        lines, indent = [first], ' ' * 17
+        lines, indent = [first], ' ' * len(f'    int64 {name} = ')
     else:
         # All at the continuation indent below it
-        lines, indent = ['    int64 size =', f'        {operands[0]}{afters[0]}'], ' ' * 8
+        lines, indent = [f'    int64 {name} =', f'        {operands[0]}{afters[0]}'], ' ' * 8
     for operand, after in zip(operands[1:], afters[1:]):
         if fits(f'{lines[-1]} {operand}{after}'):
             lines[-1] += f' {operand}{after}'
@@ -31,37 +31,55 @@ def generate_size(size):
     return '\n'.join(lines)
 
 
-def generate_range(address):
-    """A range's return as clang-format lays it out, each layout tried until one fits"""
-    for lines in (
-        [f'    return {{{{{address}, MAKE_SUM({address}, size)}}}};'],
-        ['    return {', f'        {{{address}, MAKE_SUM({address}, size)}}}};'],
-        [f'    return {{{{{address},', f'             MAKE_SUM({address}, size)}}}};'],
-        ['    return {', f'        {{{address},', f'         MAKE_SUM({address}, size)}}}};'],
-        [
-            f'    return {{{{{address},',
-            f'             MAKE_SUM({address},',
-            '                      size)}};',
-        ],
-    ):
-        if fits('\n'.join(lines)):
-            break
-    return '\n'.join(lines)
+def generate_ranges(ranges):
+    """The ranges' return as clang-format lays it out: on one line, else a range to a line
+
+    The first range after the return's brace, or every one below it where their breaks are
+    fewer, each range broken only as far as it must.
+    """
+    # Every range on the return's line where they fit
+    pairs = ', '.join(f'{{{address}, MAKE_SUM({address}, {size})}}' for address, size in ranges)
+    if fits(f'    return {{{pairs}}};'):
+        return f'    return {{{pairs}}};'
+    layouts = []
+    for below in (False, True):
+        # Each range's brace after the return's, else at the continuation indent
+        column = 8 if below else 12
+        lines = ['    return {'] if below else []
+        for k, (address, size) in enumerate(ranges):
+            lead = '    return {' if k == 0 and not below else ' ' * column
+            tail = '};' if k == len(ranges) - 1 else ','
+            # On one line, broken after its start, then inside its sum
+            opening, pad = f'{lead}{{{address},', ' ' * (column + 1)
+            forms = [
+                [f'{lead}{{{address}, MAKE_SUM({address}, {size})}}{tail}'],
+                [opening, f'{pad}MAKE_SUM({address}, {size})}}{tail}'],
+                [opening, f'{pad}MAKE_SUM({address},', f'{pad}         {size})}}{tail}'],
+            ]
+            lines += next((form for form in forms if fits('\n'.join(form))), forms[-1])
+        layouts.append(lines)
+    # Below where it takes no more lines, its ranges breaking less
+    after, below = layouts
+    return '\n'.join(below if len(below) <= len(after) else after)
 
 
-def generate_get_h_method(index, addr_var, size, templates):
-    range_pair = f'{addr_var}, MAKE_SUM({addr_var}, {source(size)})'
+def generate_get_h_method(index, addresses, sizes, templates):
+    # A range per addressed dimension: the start, then start plus size
+    ranges = '}, {'.join(
+        f'{address}, MAKE_SUM({address}, {source(size)})' for address, size in zip(addresses, sizes)
+    )
     method = templates.render_lines(
-        'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=range_pair
+        'instructions.h.INSTRUCTION_CLASSES.get_h_method.txt', index=index, ranges=ranges
     )
     if fits(method):
         return method
-    # The size first, as a local of its own
+    # Each size first, as a local of its own
+    names = ['size'] if len(sizes) == 1 else [f'size{k}' for k in range(len(sizes))]
     return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.get_h_method_wrapped.txt',
         index=index,
-        size=generate_size(size),
-        range=generate_range(addr_var),
+        sizes='\n'.join(generate_size(size, name) for size, name in zip(sizes, names)),
+        ranges=generate_ranges(list(zip(addresses, names))),
     )
 
 
@@ -113,12 +131,12 @@ def generate_instruction_class(instruction, class_name, templates):
     get_h_methods = ''
     get_h_cases = ''
 
-    # The output's range first, then each input's
+    # The output's ranges first, then each input's
     operands = [*instruction.instr_output_asts, *instruction.instr_input_asts]
     for h_index, (_, starts, sizes) in enumerate(operands):
-        addr_var = source(starts[0])
+        addresses = [source(start) for start in starts]
 
-        get_h_methods += generate_get_h_method(h_index, addr_var, sizes[0], templates)
+        get_h_methods += generate_get_h_method(h_index, addresses, sizes, templates)
         get_h_cases += templates.render_lines(
             'instructions.h.INSTRUCTION_CLASSES.get_h_case.txt', index=h_index
         )
