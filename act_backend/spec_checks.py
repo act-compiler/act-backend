@@ -145,10 +145,7 @@ INT64_MAX = 2**63 - 1
 
 
 def past_64_bits(value):
-    """Whether a parsed value's literals, or what its integers alone compute, pass 64 signed bits"""
-    literals = Trees.findAllTokenNodes(value, IDLV2ExprParser.INT)
-    if any(int(literal.getText()) > INT64_MAX for literal in literals):
-        return True
+    """Whether what a parsed value's integers alone compute passes 64 signed bits"""
     # Every value integers alone compute, as C++ and Rust do
     runs = (IDLV2ExprParser.AdditiveContext, IDLV2ExprParser.MultiplicativeContext)
     values = []
@@ -213,18 +210,14 @@ def check_semantics(instructions):
                 raise ValueError(
                     f"{name}: its semantics divides by zero in '{written.getText()[1:-1]}'"
                 )
-        # A dimension's literals, which the selector holds in 64 bits
+        # A dimension's expression, which the selector computes in 64 bits
         for dim in Trees.descendants(instruction.instr_semantics_ast):
-            if not isinstance(dim, IDLV2Parser.DimContext):
+            if not isinstance(dim, IDLV2Parser.DimContext) or dim.INT():
                 continue
-            if dim.INT():
-                text, past = dim.getText(), int(dim.getText()) > INT64_MAX
-            else:
-                tree = instruction.instr_expression_asts[dim.EXPRESSION()]
-                text, past = dim.getText()[1:-1], past_64_bits(tree)
-            if past:
+            if past_64_bits(instruction.instr_expression_asts[dim.EXPRESSION()]):
                 raise ValueError(
-                    f"{name}: its semantics has the dimension '{text}', which 64 bits cannot hold"
+                    f"{name}: its semantics has the dimension '{dim.getText()[1:-1]}', "
+                    'which 64 bits cannot hold'
                 )
         # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
@@ -256,7 +249,7 @@ def start_refusal(start):
     named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
     if named:
         return f"reads the state variable '{named[0].getText()}', which the backend does not model"
-    # Its literals, and what its integers alone compute, which the allocator holds in 64 bits
+    # What its integers alone compute, which the allocator holds in 64 bits
     if past_64_bits(start):
         return '64 bits cannot hold'
     return division_refusal(start)
@@ -350,7 +343,7 @@ def honoured(constraint):
         for node in Trees.descendants(constraint)
         if isinstance(node, IDLV2ExprParser.ComparisonContext)
     ]
-    # Each side's literals, which the backend holds in 64 bits
+    # What each side's integers alone compute, which the backend holds in 64 bits
     sides = [side for comparison in comparisons for side in comparison.additive()]
     return not any(past_64_bits(side) for side in sides)
 
