@@ -22,6 +22,7 @@ from .spec_checks import (
     check_constraints,
     check_operands,
     check_outputs,
+    check_regions,
     check_semantics,
     check_state,
 )
@@ -102,6 +103,7 @@ def generate_backend(
     check_operands(instructions, accelerator.data_model)
     check_constraints(instructions)
     check_state(instructions)
+    check_regions(instructions)
 
     # Setup directories
     Path(target_dir).mkdir(parents=True, exist_ok=True)

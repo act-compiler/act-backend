@@ -1,5 +1,6 @@
 """What a backend cannot be generated for: each refused by name, before anything is written"""
 
+import math
 import re
 
 from antlr4.tree.Tree import TerminalNode
@@ -301,3 +302,36 @@ def check_state(instructions):
                     f"{name}: its semantics reads the state variable '{read[0].getText()}', "
                     'which the backend does not model'
                 )
+
+
+def literal_product(parts):
+    """The product of parsed sizes or dimensions, all integer literals, else None"""
+    texts = [part.getText() for part in parts]
+    return math.prod(map(int, texts)) if all(map(str.isdigit, texts)) else None
+
+
+def check_regions(instructions):
+    """Refuse a value with more elements than its region holds"""
+    for instruction in instructions:
+        # Each value's result type, by its name
+        lines = instruction.instr_semantics_ast.instruction()
+        types = {line.IDENTIFIER().getText(): line.result_type() for line in lines}
+        regions = [
+            ('In', 'input', instruction.instr_input_asts),
+            ('Out', 'output', instruction.instr_output_asts),
+        ]
+        for kind, where, given in regions:
+            for k, (buffer, _, sizes) in enumerate(given):
+                value, model = f'%{kind}{k}', instruction.find_data_model(buffer)
+                shape = types[value].shape()
+                tile = literal_product(shape.dim() if shape else [])
+                region = literal_product(sizes)
+                # Counted only where every dimension and size is a literal
+                if None in (tile, region):
+                    continue
+                room = region * math.prod(model.unit_dim)
+                if tile > room:
+                    raise ValueError(
+                        f"{instruction.instruction}: '{value}' is {types[value].getText()}, "
+                        f'more elements than the {room} of its {where} region in {buffer}'
+                    )
