@@ -251,7 +251,7 @@ def start_refusal(start):
     """Why the allocator cannot place a start, None where it can
 
     A start adds, subtracts and multiplies integers and attributes, and divides or takes a
-    remainder by any of them but zero or a negative integer.
+    remainder by any of them but zero.
     """
     named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
     if named:
@@ -263,7 +263,7 @@ def start_refusal(start):
 
 
 def division_refusal(value):
-    """Why a value divides or takes a remainder by zero or a negative integer, else None"""
+    """Why a value divides or takes a remainder by zero, else None"""
     for run in Trees.descendants(value):
         if not isinstance(run, IDLV2ExprParser.MultiplicativeContext):
             continue
@@ -272,11 +272,8 @@ def division_refusal(value):
             if operator == '*':
                 continue
             verb = 'divides' if operator == '/' else 'takes a remainder'
-            divisor = integer(operand)
-            if divisor == 0:
+            if integer(operand) == 0:
                 return f'{verb} by zero'
-            if divisor is not None and divisor < 0:
-                return f'{verb} by {divisor}, a negative integer'
     return None
 
 
@@ -341,7 +338,7 @@ CONSTRAINT_TOKENS = (IDLV2ExprParser.AND, IDLV2ExprParser.STATE)
 def honoured(constraint):
     """Whether a constraint is comparisons of integers and attributes, joined by or
 
-    One over addresses divides and takes remainders by a positive integer alone.
+    One over addresses divides and takes remainders by anything but zero.
     """
     if any(Trees.findAllTokenNodes(constraint, token) for token in CONSTRAINT_TOKENS):
         return False

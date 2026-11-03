@@ -451,7 +451,7 @@ def generate_constraint_checks(constraints, templates):
 def generate_known_integer_checks(constraints, starts, templates):
     """The Rust that fails a constraint over addresses, or a start, where a known integer leaves i64
 
-    A divisor of computational attributes alone is also positive, as the allocator takes it.
+    A divisor of computational attributes alone is also other than 0, which the oracle refuses.
     """
     parts = [
         part
@@ -467,16 +467,16 @@ def generate_known_integer_checks(constraints, starts, templates):
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt',
             condition='known.is_none()',
         )
-    # A literal divisor is positive since generation, one of addresses held so by the solver
+    # A literal divisor is other than 0 since generation, one of addresses held so by the solver
     for divisor in [divisor for tree in [*constraints, *starts] for divisor in divisors(tree)]:
         named = Trees.findAllTokenNodes(divisor, IDLV2ExprParser.COMPUTATIONAL)
         if not named or names_address(divisor):
             continue
         if computes(divisor):
             checks += checked_value('divisor', divisor)
-            condition = '!divisor.is_some_and(|value| value > 0)'
+            condition = '!divisor.is_some_and(|value| value != 0)'
         else:
-            condition = f'{source(divisor)} <= 0'
+            condition = f'{source(divisor)} == 0'
         checks += templates.render_lines(
             'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.constraint_check.txt', condition=condition
         )
