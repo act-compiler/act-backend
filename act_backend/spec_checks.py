@@ -265,11 +265,8 @@ def check_size(what, text, size):
         raise ValueError(f"{what} has the size '{text}', which divides by zero")
 
 
-def check_operands(instructions, data_models):
+def check_operands(instructions):
     """Refuse an operand the allocator cannot address"""
-    access_dimensions = {model.var_name: len(model.access_dim) for model in data_models}
-    # The HBM is addressed along one dimension, its bytes
-    access_dimensions['d0'] = 1
     for instruction in instructions:
         name = instruction.instruction
         read = set()
@@ -278,11 +275,6 @@ def check_operands(instructions, data_models):
         parsed = [*instruction.instr_output_asts, *instruction.instr_input_asts]
         for (buffer, addresses, sizes), (_, starts, extents) in zip(written, parsed):
             what = f"{name}: its operand on '{buffer}'"
-            if not access_dimensions[buffer]:
-                raise ValueError(
-                    f'{what} is addressed along 0 dimensions, '
-                    'and the allocator addresses one or more'
-                )
             # Each addressed dimension's start and size
             for text, size, start, extent in zip(addresses, sizes, starts, extents):
                 # A start the allocator places, else the reason it cannot

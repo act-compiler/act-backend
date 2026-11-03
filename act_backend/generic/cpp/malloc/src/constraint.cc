@@ -98,20 +98,22 @@ bool overlap_constraints(const std::vector<Instruction *> &instructions,
       return false;
     }
 
-    // Non-overlapping constraint: (Ie(x1) <= Is(x2)) or (Ie(x2) <= Is(x1))
-
+    // Non-overlapping along some dimension: (Ie(x1) <= Is(x2)) or (Ie(x2) <= Is(x1))
+    std::vector<IntVar *> apart;
     for (size_t i = 0; i < dims; ++i) {
       auto end1 = MAKE_SUM(offsets1[i], sizes1[i]);
       auto end2 = MAKE_SUM(offsets2[i], sizes2[i]);
 
-      // One range ends first: b1 + b2 >= 1
+      // Whether one range ends first along this dimension
       IntVar *b1 = solver->MakeIsLessOrEqualVar(end1, offsets2[i]);
       IntVar *b2 = solver->MakeIsLessOrEqualVar(end2, offsets1[i]);
-      solver->AddConstraint(
-          solver->MakeGreaterOrEqual(solver->MakeSum(std::vector<IntVar *>{b1, b2}), int64_t(1)));
+      apart.push_back(b1);
+      apart.push_back(b2);
       new_vars.push_back(b1);
       new_vars.push_back(b2);
     }
+    // One flag holds: their sum >= 1, unmet with no dimension
+    solver->AddConstraint(solver->MakeGreaterOrEqual(solver->MakeSum(apart), int64_t(1)));
   }
   return true;
 }

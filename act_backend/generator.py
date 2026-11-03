@@ -100,7 +100,7 @@ def generate_backend(
     # The refusals, outputs counted first: each output is a semantics line
     check_outputs(instructions)
     check_semantics(instructions)
-    check_operands(instructions, accelerator.data_model)
+    check_operands(instructions)
     check_constraints(instructions)
     check_state(instructions)
     check_regions(instructions)
