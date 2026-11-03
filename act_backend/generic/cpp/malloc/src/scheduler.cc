@@ -19,7 +19,9 @@ std::vector<Instruction *> topological(const std::vector<Instruction *> &instruc
   for (auto *instr : instructions)
     visited[instr] = false;
 
-  dfs(root, visited, topological_order, cost_map);
+  // No root orders nothing
+  if (root)
+    dfs(root, visited, topological_order, cost_map);
 
   return topological_order;
 }
