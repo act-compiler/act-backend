@@ -548,7 +548,7 @@ fn main() {
       report!("Info: Reached time limit. No further extraction.");
     }
     StopReason::Other(_) => {
-      eprintln!("Error: Stopped for an unexpected reason. Requires investigation.");
+      eprintln!("Error: stopped for an unexpected reason");
       process::exit(1);
     }
   }
