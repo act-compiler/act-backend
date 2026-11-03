@@ -379,7 +379,9 @@ def test_long_data_model_names_are_laid_out_as_clang_format_lays_them(length, te
     acc.add_data_model(('the_staging_buffer_' * 5)[:length].rstrip('_'), [512], [64], 'bf16')
     acc.add_data_model(('the_result_buffer_' * 5)[:length].rstrip('_'), [128, 64], [64], 'bf16')
     models = '\n'.join(generate_globals_models(acc.data_model))
-    storages = f'std::map<std::string, Storage *> g_storage = {{\n{models}\n}};'
+    storages = (
+        f'std::map<std::string, Storage *> build_storages() {{\n  return {{\n{models}\n  }};\n}}'
+    )
     order = f'void schedule() {{\n{generate_topological_order(acc.data_model, templates)}\n}}'
     for source in (storages, order):
         # Every line within the width, as clang-format lays it out

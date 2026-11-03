@@ -27,6 +27,12 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
   if (!pii_file)
     return no_assembly(reason, reason_size, std::string("the allocator cannot read ") + pii_path);
 
+  // Each candidate's own solver and storages, the previous freed
+  solver = std::make_unique<operations_research::Solver>("sched_alloc");
+  for (const auto &[name, storage] : g_storage)
+    delete storage;
+  g_storage = build_storages();
+
   std::unordered_map<std::string, Tensor *> tensor_map;
   std::unordered_map<Tensor *, int64> known_offsets;
   std::unordered_map<Tensor *, std::string> known_constants;
@@ -117,37 +123,37 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
   progress << "Starting Google OR-Tools constraint solver..." << std::endl;
 
   auto decision_builder =
-      solver.MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
-                       operations_research::Solver::ASSIGN_MIN_VALUE);
+      solver->MakePhase(ordered_vars, operations_research::Solver::CHOOSE_FIRST_UNBOUND,
+                        operations_research::Solver::ASSIGN_MIN_VALUE);
 
   // A 0.5 s time limit against long hangs
-  auto time_limit = solver.MakeTimeLimit(absl::Milliseconds(SOLVER_TIME_LIMIT_MS));
-  solver.NewSearch(decision_builder, time_limit);
-  if (solver.NextSolution()) {
+  auto time_limit = solver->MakeTimeLimit(absl::Milliseconds(SOLVER_TIME_LIMIT_MS));
+  solver->NewSearch(decision_builder, time_limit);
+  if (solver->NextSolution()) {
     progress << "Found a solution!" << std::endl;
 
     progress << "Starting Phase 2 Module 6: Code Emitter..." << std::endl;
 
     std::ifstream metadata_file(metadata_path);
     if (!metadata_file) {
-      solver.EndSearch();
+      solver->EndSearch();
       return no_assembly(reason, reason_size,
                          std::string("the allocator cannot read ") + metadata_path);
     }
     emitter::MetaData metadata(metadata_file, tensor_map, constant_values);
     if (!metadata.why.empty()) {
-      solver.EndSearch();
+      solver->EndSearch();
       return no_assembly(reason, reason_size, metadata.why);
     }
 
     if (emitter::assembly_dump(asm_path, scheduled, metadata, why)) {
       progress << "New ASM candidate generated: " << asm_path << std::endl << std::endl;
-      solver.EndSearch();
+      solver->EndSearch();
       return 0;
     }
 
     progress << "No ASM candidate generated." << std::endl << std::endl;
-    solver.EndSearch();
+    solver->EndSearch();
     return no_assembly(reason, reason_size, why);
 
   } else {
@@ -157,7 +163,7 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
 
     // Whether the solver's time limit stopped the search
     bool timed_out = time_limit->crossed();
-    solver.EndSearch();
+    solver->EndSearch();
     if (timed_out)
       return no_assembly(reason, reason_size,
                          "the solver found no placement within its time limit of " +

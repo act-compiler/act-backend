@@ -50,6 +50,9 @@ public:
 
 extern std::map<std::string, Storage *> g_storage;
 
+// Each buffer's storage, on the candidate's solver
+std::map<std::string, Storage *> build_storages();
+
 #define STORAGE_SIZE(buffer) (g_storage[buffer]->get_size())
 #define HBM_SIZE (1 << 30)
 
