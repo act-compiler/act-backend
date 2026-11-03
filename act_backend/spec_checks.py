@@ -299,19 +299,6 @@ def beyond_allocator(size):
     return any(beyond_allocator(part) for part in size.getChildren())
 
 
-def remainder_by_other(size):
-    """Whether a parsed size takes a remainder by anything but a positive integer"""
-    for node in Trees.descendants(size):
-        if isinstance(node, IDLV2ExprParser.MultiplicativeContext):
-            for position, operand in enumerate(node.unary()[1:]):
-                if node.getChild(2 * position + 1).getText() != '%':
-                    continue
-                divisor = integer(operand)
-                if divisor is None or divisor < 1:
-                    return True
-    return False
-
-
 def check_size(what, text, size):
     """Refuse a size the allocator's C++ cannot take as it is written"""
     if beyond_allocator(size):
@@ -321,11 +308,6 @@ def check_size(what, text, size):
         )
     if divides_by_zero(size):
         raise ValueError(f"{what} has the size '{text}', which divides by zero")
-    # A remainder whose divisor the allocator's C++ and the oracle read alike
-    if remainder_by_other(size):
-        raise ValueError(
-            f"{what} has the size '{text}', which takes a remainder by other than a positive integer"
-        )
     if past_64_bits(size):
         raise ValueError(f"{what} has the size '{text}', which 64 bits cannot hold")
 

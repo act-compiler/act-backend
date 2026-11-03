@@ -7,7 +7,7 @@ DIVIDING = {'/': 'size_quotient', '%': 'size_remainder'}
 
 
 class SizeWriter(CheckedWriter):
-    """A size as Rust lets of a closure, dividing only where truncation is the oracle's floor"""
+    """A size as Rust lets of a closure, each quotient and remainder as the oracle's"""
 
     def operation(self, operator, left, right):
         if operator in DIVIDING:

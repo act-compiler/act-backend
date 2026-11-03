@@ -6,6 +6,9 @@ from taidl.antlr4 import IDLV2ExprParser, IDLV2ExprVisitor
 from .instruction_info import get_attribute_name
 from .template_loader import CALL_WIDTH, fits
 
+# The allocator's call for each operator that divides, rounding down as the oracle does
+ROUNDED_CALLS = {'/': 'floor_div', '%': 'floor_mod'}
+
 
 class ExpressionWriter(IDLV2ExprVisitor):
     """A value as one expression, its operators spaced and its brackets the text's own"""
@@ -18,10 +21,14 @@ class ExpressionWriter(IDLV2ExprVisitor):
         return self.visit(ctx.additive())
 
     def chain(self, ctx, operands):
-        """A run of operands, the operators between them"""
+        """A run of operands, the operators between them, a C++ quotient or remainder a call"""
         source = self.visit(operands[0])
         for k, operand in enumerate(operands[1:]):
-            source += f' {ctx.getChild(2 * k + 1).getText()} {self.visit(operand)}'
+            operator = ctx.getChild(2 * k + 1).getText()
+            if self.cpp and operator in ROUNDED_CALLS:
+                source = f'{ROUNDED_CALLS[operator]}({source}, {self.visit(operand)})'
+            else:
+                source += f' {operator} {self.visit(operand)}'
         return source
 
     def visitAdditive(self, ctx):
@@ -125,7 +132,10 @@ def computes(tree):
 def chain(tree):
     """A value's outermost run: its operands' C++ and the operators between them"""
     additive = tree.additive()
-    run = additive if len(additive.multiplicative()) > 1 else additive.multiplicative(0)
+    product = additive.multiplicative(0)
+    # A product that divides is one call, never broken at its operators
+    divides = {part.getText() for part in product.getChildren()} & ROUNDED_CALLS.keys()
+    run = additive if len(additive.multiplicative()) > 1 or divides else product
     operands = run.multiplicative() if run is additive else run.unary()
     operators = [run.getChild(2 * k + 1).getText() for k in range(len(operands) - 1)]
     writer = ExpressionWriter(cpp=True)

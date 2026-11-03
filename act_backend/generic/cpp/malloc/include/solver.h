@@ -45,4 +45,16 @@ inline operations_research::IntExpr *floor_mod(operations_research::IntExpr *a,
   return floor_division(a, b).second;
 }
 
+// An integer's quotient rounded down, as the language's
+inline int64 floor_div(int64 a, int64 b) {
+  int64 quotient = a / b;
+  return a % b != 0 && (a < 0) != (b < 0) ? quotient - 1 : quotient;
+}
+
+// Its remainder, of the divisor's sign as the language's; the least integer by -1 leaves 0
+inline int64 floor_mod(int64 a, int64 b) {
+  int64 remainder = b == -1 ? 0 : a % b;
+  return remainder != 0 && (remainder < 0) != (b < 0) ? remainder + b : remainder;
+}
+
 #endif // SOLVER_H
