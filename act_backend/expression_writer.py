@@ -40,7 +40,9 @@ class ExpressionWriter(IDLV2ExprVisitor):
     def visitUnary(self, ctx):
         if ctx.MINUS() is None:
             return self.visit(ctx.atom())
-        return f'-{self.visit(ctx.unary())}'
+        negated = self.visit(ctx.unary())
+        # Two minuses in C++ would decrement
+        return f'-({negated})' if self.cpp and negated.startswith('-') else f'-{negated}'
 
     def visitAtom(self, ctx):
         if ctx.INT() is not None:
