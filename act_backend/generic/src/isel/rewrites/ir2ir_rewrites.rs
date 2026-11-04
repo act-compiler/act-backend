@@ -81,7 +81,8 @@ pub fn metadata_0(
   rhs_metadata[7] = Some(format!("{}:{}", (i / 2) * 16, i * 16));
   rhs_metadata[8] = Some(payload.clone());
   rhs_metadata[9] = Some(format!("{}:{}", (i / 2) * 16, i * 16));
-  rhs_metadata[11] = Some("1".to_string());
+  // The halves joined along the first dimension
+  rhs_metadata[11] = Some("0".to_string());
   rhs_metadata
 }
 
