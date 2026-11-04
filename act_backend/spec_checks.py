@@ -5,7 +5,7 @@ import re
 
 from antlr4.tree.Tree import TerminalNode
 from antlr4.tree.Trees import Trees
-from taidl.antlr4 import IDLV2ExprParser
+from taidl.antlr4 import IDLV2ExprParser, IDLV2Parser
 
 from .isel_ir2isa_rewrites_rs_generator import (
     ELEMENT_TYPES,
@@ -139,6 +139,35 @@ def integer(value):
     return result
 
 
+# The least and largest integers int64 and i64 hold
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+
+
+def past_64_bits(value):
+    """Whether a parsed value's literals, or what its integers alone compute, pass 64 signed bits"""
+    literals = Trees.findAllTokenNodes(value, IDLV2ExprParser.INT)
+    if any(int(literal.getText()) > INT64_MAX for literal in literals):
+        return True
+    # Every value integers alone compute, as C++ and Rust do
+    runs = (IDLV2ExprParser.AdditiveContext, IDLV2ExprParser.MultiplicativeContext)
+    values = []
+    for node in Trees.descendants(value):
+        if isinstance(node, IDLV2ExprParser.UnaryContext):
+            # A negation of integers alone, valued exactly
+            values.append(integer(node))
+        elif isinstance(node, runs):
+            # A sum's or product's leading integers, an operator at a time
+            parts = list(node.getChildren())
+            values.append(integer(parts[0]))
+            for operator, operand in zip(parts[1::2], parts[2::2]):
+                right = integer(operand)
+                if values[-1] is None or right is None:
+                    break
+                values.append(ARITHMETIC[operator.getText()](values[-1], right))
+    return any(not INT64_MIN <= number <= INT64_MAX for number in values if number is not None)
+
+
 def divides_by_zero(expression):
     """Whether a parsed value divides, or takes a remainder, by a constant zero"""
     for node in Trees.descendants(expression):
@@ -184,6 +213,19 @@ def check_semantics(instructions):
                 raise ValueError(
                     f"{name}: its semantics divides by zero in '{written.getText()[1:-1]}'"
                 )
+        # A dimension's literals, which the selector holds in 64 bits
+        for dim in Trees.descendants(instruction.instr_semantics_ast):
+            if not isinstance(dim, IDLV2Parser.DimContext):
+                continue
+            if dim.INT():
+                text, past = dim.getText(), int(dim.getText()) > INT64_MAX
+            else:
+                tree = instruction.instr_expression_asts[dim.EXPRESSION()]
+                text, past = dim.getText()[1:-1], past_64_bits(tree)
+            if past:
+                raise ValueError(
+                    f"{name}: its semantics has the dimension '{text}', which 64 bits cannot hold"
+                )
         # A computational attribute is read from a shape naming it
         visitor = RustGeneratorVisitor(instruction.instr_expression_asts)
         lines = visitor.visit(instruction.instr_semantics_ast)
@@ -214,6 +256,9 @@ def start_refusal(start):
     named = Trees.findAllTokenNodes(start, IDLV2ExprParser.STATE)
     if named:
         return f"reads the state variable '{named[0].getText()}', which the backend does not model"
+    # Its literals, and what its integers alone compute, which the allocator holds in 64 bits
+    if past_64_bits(start):
+        return '64 bits cannot hold'
     for run in Trees.descendants(start):
         if not isinstance(run, IDLV2ExprParser.MultiplicativeContext):
             continue
@@ -263,6 +308,19 @@ def check_size(what, text, size):
         )
     if divides_by_zero(size):
         raise ValueError(f"{what} has the size '{text}', which divides by zero")
+    if past_64_bits(size):
+        raise ValueError(f"{what} has the size '{text}', which 64 bits cannot hold")
+
+
+def check_data_models(data_models):
+    """Refuse a dimension 64 bits cannot hold: the allocator's capacities are int64"""
+    for model in data_models:
+        for dim in model.var_dim:
+            if dim > INT64_MAX:
+                raise ValueError(
+                    f"{model.var_name}: the data model has the dimension '{dim}', "
+                    'which 64 bits cannot hold'
+                )
 
 
 def check_operands(instructions):

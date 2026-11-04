@@ -124,7 +124,7 @@ fn op_repr_en(
   Some(format!("{}({})", label, parts.join(", ")))
 }
 
-pub fn get_hbm_offset(hbm_offsets: &[(Option<Id>, i32)], eclass: Id) -> Option<i32> {
+pub fn get_hbm_offset(hbm_offsets: &[(Option<Id>, i64)], eclass: Id) -> Option<i64> {
   for (buf_ec, offset) in hbm_offsets.iter() {
     if buf_ec.is_some() && buf_ec.unwrap() == eclass {
       return Some(*offset);

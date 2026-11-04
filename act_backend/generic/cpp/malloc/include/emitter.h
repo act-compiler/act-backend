@@ -21,7 +21,7 @@ public:
   std::string dtype;
   std::string value = ""; // Optional, for constants
 
-  MetaDataInfo(int addr, const std::vector<int64> &shape, const std::string &dtype,
+  MetaDataInfo(int64 addr, const std::vector<int64> &shape, const std::string &dtype,
                const std::string &value = "")
       : addr(addr), shape(shape), dtype(dtype), value(value) {
   }

@@ -60,7 +60,7 @@ impl TensorOp {
   }
 
   // The integers a compared operation's payload holds, in order
-  fn payload_ints(enode: &Option<TensorOp>) -> Option<Vec<i32>> {
+  fn payload_ints(enode: &Option<TensorOp>) -> Option<Vec<i64>> {
     let data = match enode {
       // A broadcast's map follows its shape
       Some(TensorOp::OpBroadcast(data, _)) => data.split_once(';')?.1,
@@ -69,7 +69,7 @@ impl TensorOp {
         let mut ints = vec![];
         for list in data.split_once(':')?.0.split(';') {
           let list = TensorOp::ints_of(list)?;
-          ints.push(list.len() as i32);
+          ints.push(list.len() as i64);
           ints.extend(list);
         }
         return Some(ints);
@@ -85,7 +85,7 @@ impl TensorOp {
   }
 
   // The integers of a payload's text, split at commas and colons
-  fn ints_of(data: &str) -> Option<Vec<i32>> {
+  fn ints_of(data: &str) -> Option<Vec<i64>> {
     data
       .split([',', ':'])
       .filter(|field| !field.trim().is_empty())
@@ -94,7 +94,7 @@ impl TensorOp {
   }
 
   // Whether a matched e-node's payload holds these integers
-  pub fn payload_is(enode: &Option<TensorOp>, ints: &[i32]) -> bool {
+  pub fn payload_is(enode: &Option<TensorOp>, ints: &[i64]) -> bool {
     TensorOp::payload_ints(enode).as_deref() == Some(ints)
   }
 
@@ -104,7 +104,7 @@ impl TensorOp {
   }
 
   // The integer at an index of a matched e-node's payload
-  pub fn payload_int(enode: &Option<TensorOp>, index: usize) -> Option<i32> {
+  pub fn payload_int(enode: &Option<TensorOp>, index: usize) -> Option<i64> {
     TensorOp::payload_ints(enode)?.get(index).copied()
   }
 
@@ -369,7 +369,7 @@ impl std::fmt::Display for TensorOp {
 // E-class metadata
 #[derive(Debug, Clone)]
 pub struct TensorInfo {
-  pub shape: Vec<i32>,
+  pub shape: Vec<i64>,
   pub dtype: Dtype,
   pub is_const: bool,
 }

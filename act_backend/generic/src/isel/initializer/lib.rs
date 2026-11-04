@@ -19,14 +19,14 @@ use crate::isel::initializer::nodes::{
   add_exponential, add_parameter, add_reduce, add_reshape, add_root_operations, add_slice,
   add_transpose,
 };
-use crate::isel::initializer::shapes::declared_shape;
+use crate::isel::initializer::shapes::{declared_shape, get_bytes};
 
 pub type EggSymbolTable = HashMap<String, Id>;
 
 // A kernel's e-graph, HBM offsets, root, inputs and metadata
 pub type ParsedModule = (
   EGraph<TensorOp, TensorInfo>,
-  Vec<(Option<Id>, i32)>,
+  Vec<(Option<Id>, i64)>,
   Id,
   HashSet<Id>,
   MetaData,
@@ -37,7 +37,7 @@ pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(path: P) -> Result<ParsedModul
   let mut egraph = EGraph::<TensorOp, TensorInfo>::default();
   let mut inputs = HashSet::default();
   let mut table = EggSymbolTable::default();
-  let mut offsets: Vec<(Option<Id>, i32)> = vec![];
+  let mut offsets: Vec<(Option<Id>, i64)> = vec![];
   let mut metadata: MetaData = MetaData::default();
 
   // Why the system cannot read a kernel
@@ -93,19 +93,18 @@ pub fn parse_hlo_module_to_egraph<P: AsRef<Path>>(path: P) -> Result<ParsedModul
 
 fn fill_offsets_from_header(
   header: &HloModuleHeader,
-  offsets: &mut Vec<(Option<Id>, i32)>,
+  offsets: &mut Vec<(Option<Id>, i64)>,
   metadata: &mut MetaData,
 ) -> Result<(), String> {
   metadata.module_name = header.module_name.clone();
 
-  let mut curr_bytes: i32 = 0;
+  let mut curr_bytes: i64 = 0;
   for shape in header.input_types.iter() {
     let (ttype, tshape, _) = parse_type_shape(shape)?;
     let dtype = Dtype::try_from(ttype.as_str())?;
     let shape_vec = declared_shape(&tshape)?;
 
-    let mut bytes: i32 = dtype.size_in_bytes();
-    shape_vec.iter().for_each(|dim| bytes *= dim);
+    let bytes = get_bytes(&tshape, dtype.size_in_bytes())?;
 
     offsets.push((None, curr_bytes));
     metadata.input.push(MetaDataInfo {
@@ -114,7 +113,10 @@ fn fill_offsets_from_header(
       dtype,
     });
 
-    curr_bytes += bytes;
+    // The next input's offset, counted in 64 bits
+    curr_bytes = curr_bytes
+      .checked_add(bytes)
+      .ok_or("the kernel's inputs hold more bytes than 64 bits can count")?;
   }
 
   let output_shape = &header.output_type;
@@ -136,7 +138,7 @@ fn add_expr_to_egraph(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   inputs: &mut HashSet<Id>,
   table: &mut EggSymbolTable,
-  offsets: &mut [(Option<Id>, i32)],
+  offsets: &mut [(Option<Id>, i64)],
   root: &mut Option<Id>,
   parsing_root: bool,
 ) -> Result<(), String> {

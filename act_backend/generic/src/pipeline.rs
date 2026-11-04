@@ -143,7 +143,7 @@ struct Search {
   metadata_path: PathBuf,
   root: Id,
   inputs: HashSet<Id>,
-  hbm_offsets: Vec<(Option<Id>, i32)>,
+  hbm_offsets: Vec<(Option<Id>, i64)>,
   best: RefCell<Option<AsmCandidate>>,
   candidates: Cell<usize>,
   first_drop: RefCell<Option<String>>,

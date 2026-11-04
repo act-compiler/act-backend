@@ -8,6 +8,7 @@ from taidl.antlr4 import IDLV2ExprParser
 
 from .expression_writer import source
 from .instruction_info import ARRAY_WIDTH, get_attribute_name
+from .operand_sizes import generate_size_checks
 from .semantics_visitor import OperandVisitor
 from .template_loader import CALL_WIDTH, fill_placeholders, fits, get_backend_template_loader
 
@@ -423,6 +424,8 @@ def generate_precond_function(instruction_name, semantics_data, attributes, expr
         )
         shape_checks.append(lets + shape_check)
 
+    # Each operand's size once the shapes hold, as the allocator's C++ computes it
+    shape_checks += generate_size_checks(semantics_data['sizes'], templates)
     shape_checks_code = '\n'.join(shape_checks)
 
     # Attributes are compared once the shapes hold
@@ -535,6 +538,8 @@ def generate_set_shapes_function(
 def generate_ir2isa_rust_functions(metadata, templates):
     visitor = RustGeneratorVisitor(metadata.expressions)
     semantics_data = visitor.visit(metadata.semantics_ast)
+    # The operands' sizes, which the precondition computes
+    semantics_data['sizes'] = metadata.sizes
 
     attributes = metadata.attributes
     precond = generate_precond_function(
@@ -560,6 +565,20 @@ def generate_ir2isa_rust_functions(metadata, templates):
     return f'{precond}\n{metadata_func}\n{set_shapes}'
 
 
+# Each helper a rewrite function may call, by its name
+HELPERS = ('computed', 'size_quotient')
+
+
+def generate_helpers(functions, templates):
+    """The helpers the rewrite functions call, each once"""
+    called = '\n'.join(functions)
+    return [
+        templates.render_lines(f'ir2isa_rewrites.rs.IR2ISA_REWRITE_FUNCTIONS.{name}.txt')
+        for name in HELPERS
+        if re.search(rf'\b{name}\(', called)
+    ]
+
+
 def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_list):
     """Template ir2isa_rewrites.rs from generic file"""
     templates = get_backend_template_loader()
@@ -576,7 +595,7 @@ def generate_ir2isa_rewrites_rs_file(backend_gen_dir: str, instruction_metadata_
         functions.append(func_code)
 
     # Functions one blank line apart, none at the end
-    all_functions = '\n'.join(functions).rstrip('\n')
+    all_functions = '\n'.join(generate_helpers(functions, templates) + functions).rstrip('\n')
 
     # Replace placeholder
     content = fill_placeholders(content, {'IR2ISA_REWRITE_FUNCTIONS': all_functions}, rust_file)

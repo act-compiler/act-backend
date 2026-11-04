@@ -1,0 +1,4 @@
+// What a closure's checked arithmetic computes, None where it leaves i64
+fn computed<T>(value: impl FnOnce() -> Option<T>) -> Option<T> {
+  value()
+}

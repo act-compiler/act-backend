@@ -20,6 +20,7 @@ from .malloc_instructions_h_generator import generate_instructions_file
 from .malloc_parser_cc_generator import generate_parser_file
 from .spec_checks import (
     check_constraints,
+    check_data_models,
     check_operands,
     check_outputs,
     check_regions,
@@ -34,6 +35,8 @@ class InstructionMetadata:
     semantics_ast: object
     expressions: dict
     attributes: list[str]
+    # Every operand's size, as parsed
+    sizes: list
     rhs_size: int
 
 
@@ -46,6 +49,11 @@ def get_instruction_metadata(instructions) -> list[InstructionMetadata]:
             semantics_ast=instruction.instr_semantics_ast,
             expressions=instruction.instr_expression_asts,
             attributes=list(instruction.comp_attr),
+            sizes=[
+                size
+                for _, _, sizes in [*instruction.instr_output_asts, *instruction.instr_input_asts]
+                for size in sizes
+            ],
             rhs_size=len(instruction.instr_inputs) + 1,
         )
         metadata_list.append(metadata)
@@ -101,6 +109,7 @@ def generate_backend(
     check_outputs(instructions)
     check_semantics(instructions)
     check_operands(instructions)
+    check_data_models(accelerator.data_model)
     check_constraints(instructions)
     check_state(instructions)
     check_regions(instructions)

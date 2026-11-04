@@ -394,7 +394,9 @@ def test_address_ranges(accelerator, templates):
     load_rm = squeeze(generate_instruction_class(load_rm, 'InstrLoadRm', templates))
     # Range 0 the output's, 1 the input's: address and size
     assert 'get_h0() { return {{attr_addr_out, MAKE_SUM(attr_addr_out, attr_n)}}; }' in load_rm
-    assert 'get_h1() { return {{attr_addr_in, MAKE_SUM(attr_addr_in, attr_n * 128)}}; }' in load_rm
+    assert (
+        'get_h1() { return {{attr_addr_in, MAKE_SUM(attr_addr_in, attr_n * int64{128})}}; }'
+    ) in load_rm
     # The assembly prints each attribute by the spec's name
     assert 'n = " + std::to_string(attr_n)' in load_rm
     assert 'addr_in = " + std::to_string(attr_addr_in->Value())' in load_rm
@@ -407,9 +409,10 @@ def test_size_written_from_its_tree(templates):
     instr.set_inputs([['d0', ['@a.addr_in'], ['(@c.n+1)*2-@c.n/2']]])
     instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
     load = squeeze(generate_instruction_class(instr, 'InstrLoad', templates))
-    # Operators spaced, the spec's brackets, attributes by generated name
-    assert 'MAKE_SUM(attr_addr_in, (attr_n + 1) * 2 - attr_n / 2)' in load
-    assert 'MAKE_SUM(attr_addr_out, 64)' in load
+    # Operators spaced, the spec's brackets, attributes by generated name, too wide to inline
+    assert 'int64 size = (attr_n + int64{1}) * int64{2} - attr_n / int64{2};' in load
+    assert 'MAKE_SUM(attr_addr_in, size)' in load
+    assert 'MAKE_SUM(attr_addr_out, int64{64})' in load
 
 
 def test_storages(accelerator):

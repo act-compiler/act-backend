@@ -16,7 +16,7 @@ pub enum Dtype {
 }
 
 impl Dtype {
-  pub fn size_in_bytes(&self) -> i32 {
+  pub fn size_in_bytes(&self) -> i64 {
     match self {
       Dtype::Pred => 1,
       Dtype::U8 => 1,

@@ -15,7 +15,7 @@ pub fn extract(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
   inputs: &HashSet<Id>,
-  hbm_offsets: &[(Option<Id>, i32)],
+  hbm_offsets: &[(Option<Id>, i64)],
   limit: usize,
 ) -> Vec<Result<PiiGraph, String>> {
   let nodes = egraph.total_number_of_nodes();

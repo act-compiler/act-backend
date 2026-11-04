@@ -15,7 +15,7 @@ pub fn extract_slow(
   egraph: &mut EGraph<TensorOp, TensorInfo>,
   root: Id,
   inputs: &HashSet<Id>,
-  hbm_offsets: &[(Option<Id>, i32)],
+  hbm_offsets: &[(Option<Id>, i64)],
   limit: usize,
 ) -> Vec<Result<PiiGraph, String>> {
   // Bottom-up traversal to detect compile-time constants
@@ -231,7 +231,7 @@ fn get_extractions(
 // Convert an Extraction into a PiiGraph.
 fn extraction_to_piigraph(
   extraction: &Extraction,
-  hbm_offsets: &[(Option<Id>, i32)],
+  hbm_offsets: &[(Option<Id>, i64)],
   egraph: &EGraph<TensorOp, TensorInfo>,
 ) -> Result<PiiGraph, String> {
   let mut pii = PiiGraph::default();

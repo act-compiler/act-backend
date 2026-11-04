@@ -178,7 +178,7 @@ const DOT_DIMENSIONS: [(&str, bool); 4] = [
 ];
 
 // A list of dimensions, or why an entry is not one
-fn dimension_list(tsymbol: &str, name: &str, text: &str) -> Result<Vec<i32>, String> {
+fn dimension_list(tsymbol: &str, name: &str, text: &str) -> Result<Vec<i64>, String> {
   let mut dimensions = vec![];
   for text in text
     .split(',')
@@ -186,7 +186,7 @@ fn dimension_list(tsymbol: &str, name: &str, text: &str) -> Result<Vec<i32>, Str
     .filter(|text| !text.is_empty())
   {
     match text.parse::<i32>() {
-      Ok(dimension) if dimension >= 0 => dimensions.push(dimension),
+      Ok(dimension) if dimension >= 0 => dimensions.push(dimension.into()),
       _ => {
         return Err(format!(
           "{} gives '{}' in {}, which is not a dimension",
