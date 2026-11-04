@@ -14,6 +14,7 @@ private:
   std::string name;
 
   Storage *storage;
+  std::vector<int64> shape;
   std::vector<int64> sizes;
   std::vector<operations_research::IntVar *> offsets;
   Instruction *defined_by;
@@ -24,7 +25,7 @@ public:
   node_type type;
 
   Tensor(const std::string &name, Storage *storage, const std::vector<int64> &shape)
-      : name(name), storage(storage) {
+      : name(name), storage(storage), shape(shape) {
     sizes.reserve(storage->get_addressing_dims());
     offsets.reserve(storage->get_addressing_dims());
     for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
@@ -46,6 +47,10 @@ public:
     return storage;
   }
 
+  // Its extent along every dimension, the unit ones too
+  std::vector<int64> get_shape() const {
+    return shape;
+  }
   std::vector<int64> get_sizes() const {
     return sizes;
   }

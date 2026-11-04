@@ -55,7 +55,7 @@ public:
 
 class Slice : public Instruction {
 private:
-  // [(start, end), ...] for each dimension of the slice
+  // [(start, end), ...] for each addressed dimension of the slice
   std::vector<std::pair<int64, int64>> slices;
   std::vector<int64> rhs_sizes; // size of each dimension of rhs tensor
 
@@ -231,6 +231,12 @@ public:
     std::vector<int64> sizes = y->get_sizes();
     std::vector<int64> rhs1_sizes = X[0]->get_sizes();
     std::vector<int64> rhs2_sizes = X[1]->get_sizes();
+    // The join lies along an addressed dimension
+    if ((size_t)dimension >= sizes.size()) {
+      why = "the concatenate " + name + " joins along dimension " + std::to_string(dimension) +
+            ", which its storage " + y->get_storage()->get_name() + " does not address";
+      return false;
+    }
     for (size_t i = 0; i < sizes.size(); i++) {
       bool joined = i == (size_t)dimension;
       if (joined ? sizes[i] != rhs1_sizes[i] + rhs2_sizes[i]

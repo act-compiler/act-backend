@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <algorithm>
 #include <charconv>
 
 namespace parser {
@@ -249,8 +250,8 @@ Instruction *create_instruction(const ParsedLine &pl,
       return refuse("missing slices attribute");
     std::stringstream ss(op_attr.substr(start + 1, end - start - 1));
     std::string tok;
-    // The first range, the buffer's access dimension
-    if (std::getline(ss, tok, ',')) {
+    // Each dimension's range, the addressed ones first
+    while (std::getline(ss, tok, ',')) {
       if (!tok.empty()) {
         auto colon_pos = tok.find(':');
         if (colon_pos == std::string::npos)
@@ -260,9 +261,24 @@ Instruction *create_instruction(const ParsedLine &pl,
         slices.push_back({to_int(start_str), to_int(end_str)});
       }
     }
+    // One range per addressed dimension, the unit ones apart
+    size_t dims = std::min(slices.size(), storage->get_addressing_dims());
+    std::vector<std::pair<int64, int64>> units(slices.begin() + dims, slices.end());
+    slices.resize(dims);
 
     if (!Slice::check(lhs_tensor, rhs_tensors, slices, why))
       return nullptr;
+    // A unit dimension's range spans its operand
+    std::vector<int64> shape = rhs_tensors[0]->get_shape();
+    for (size_t i = 0; i < units.size(); i++) {
+      auto [first, limit] = units[i];
+      if (first != 0 || limit != shape[dims + i])
+        return refuse("the slice " + lhs + " takes " + std::to_string(first) + ":" +
+                      std::to_string(limit) + " of the " + std::to_string(shape[dims + i]) +
+                      " of " + rhs_tensors[0]->get_name() + " along dimension " +
+                      std::to_string(dims + i) + ", which its storage " + storage_name +
+                      " does not address");
+    }
     return new Slice(lhs_tensor, rhs_tensors, slices);
   } else if (op_name == "concat") {
     // The one attribute: dimension
