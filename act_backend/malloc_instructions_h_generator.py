@@ -291,6 +291,26 @@ def generate_constructor_packed(class_name, op_name, attributes):
     return '\n'.join([declarator, *lines])
 
 
+def generate_get_region_method(index, sizes, units, templates):
+    """An operand's region: its size along each addressed dimension, then each unit dimension"""
+    extents = [*(source(size) for size in sizes), *map(str, units)]
+    method = templates.render_lines(
+        'instructions.h.INSTRUCTION_CLASSES.get_region_method.txt',
+        index=index,
+        extents=', '.join(extents),
+    )
+    if fits(method):
+        return method
+    # Each size a local of its own, named as a range's is
+    names = ['size'] if len(sizes) == 1 else [f'size{k}' for k in range(len(sizes))]
+    return templates.render_lines(
+        'instructions.h.INSTRUCTION_CLASSES.get_region_method_wrapped.txt',
+        index=index,
+        locals='\n'.join(generate_size(size, name) for size, name in zip(sizes, names)),
+        extents=', '.join([*names, *map(str, units)]),
+    )
+
+
 def generate_instruction_class(instruction, class_name, templates):
     """Generate C++ instruction class from instruction definition"""
     op_name = instruction.instruction
@@ -376,6 +396,16 @@ def generate_instruction_class(instruction, class_name, templates):
             'instructions.h.INSTRUCTION_CLASSES.get_int_var_pushed.txt', pushes=pushes
         )
 
+    # Each operand's region, numbered as its ranges are
+    get_region_methods = ''
+    get_region_cases = ''
+    for index, (buffer, _, sizes) in enumerate(operands):
+        units = instruction.find_data_model(buffer).unit_dim
+        get_region_methods += generate_get_region_method(index, sizes, units, templates)
+        get_region_cases += templates.render_lines(
+            'instructions.h.INSTRUCTION_CLASSES.get_region_case.txt', index=index
+        )
+
     # Generate complete class using template
     return templates.render_lines(
         'instructions.h.INSTRUCTION_CLASSES.class.txt',
@@ -383,10 +413,12 @@ def generate_instruction_class(instruction, class_name, templates):
         COMP_ATTR_MEMBERS=comp_attr_members,
         ADDR_VAR_MEMBERS=addr_var_members,
         GET_H_METHODS=get_h_methods,
+        GET_REGION_METHODS=get_region_methods,
         CONSTRUCTOR=constructor,
         STR_PIECES=str_pieces,
         GET_H_CASES=get_h_cases,
         GET_INT_VAR=get_int_var,
+        GET_REGION_CASES=get_region_cases,
     )
 
 

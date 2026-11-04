@@ -141,10 +141,10 @@ def matching():
         ],
         ['n'],
     )
-    # A load spelling its attribute in its result's second dimension
+    # A load spelling its attribute in its result's second dimension, held in n rows
     instr = acc.add_instruction('load_cm', ['n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.n * 128']]])
-    instr.set_outputs([['d1', ['@a.addr_out'], ['64']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.n']]])
     instr.add_semantics("""
 ENTRY {
     %In0 = u8[`@c.n * 128`] parameter(0);
@@ -155,7 +155,7 @@ ENTRY {
 """)
     # A store of the exponentials of that shape
     instr = acc.add_instruction('store_exp', ['n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d1', ['@a.addr_in'], ['64']]])
+    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.n']]])
     instr.set_outputs([['d0', ['@a.addr_out'], ['@c.n * 128']]])
     instr.add_semantics("""
 ENTRY {
@@ -198,10 +198,11 @@ ENTRY {
         ],
         ['s'],
     )
-    # A tile, m rows of n f32: loaded, exponentiated, stored
+    # A tile, m rows of n f32 held in rows of 64: loaded, exponentiated, stored
+    rows = '@c.m * @c.n / 64'
     instr = acc.add_instruction('load_tile', ['m', 'n'], ['addr_in', 'addr_out'])
     instr.set_inputs([['d0', ['@a.addr_in'], ['@c.m * @c.n * 4']]])
-    instr.set_outputs([['d1', ['@a.addr_out'], ['@c.m']]])
+    instr.set_outputs([['d1', ['@a.addr_out'], [rows]]])
     instr.add_semantics("""
 ENTRY {
     %In0 = u8[`@c.m * @c.n * 4`] parameter(0);
@@ -212,7 +213,7 @@ ENTRY {
     add_on_d1(
         acc,
         'exp_tile',
-        ['@c.m', '@c.m'],
+        [rows, rows],
         [
             '%In0 = f32[`@c.m`,`@c.n`] parameter(0)',
             'ROOT %Out0 = f32[`@c.m`,`@c.n`] exponential(%In0)',
@@ -220,7 +221,7 @@ ENTRY {
         ['m', 'n'],
     )
     instr = acc.add_instruction('store_tile', ['m', 'n'], ['addr_in', 'addr_out'])
-    instr.set_inputs([['d1', ['@a.addr_in'], ['@c.m']]])
+    instr.set_inputs([['d1', ['@a.addr_in'], [rows]]])
     instr.set_outputs([['d0', ['@a.addr_out'], ['@c.m * @c.n * 4']]])
     instr.add_semantics("""
 ENTRY {

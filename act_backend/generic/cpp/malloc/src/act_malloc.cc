@@ -55,6 +55,9 @@ extern "C" int act_malloc(char *pii_path, char *metadata_path, char *asm_path, i
     Instruction *instr = nullptr;
     if (parser::parse_line(line, pl, why))
       instr = parser::create_instruction(pl, tensor_map, known_offsets, known_constants, why);
+    // Its tensor held once its instruction is built
+    if (instr)
+      parser::hold_tensors(instr, why);
     if (!why.empty())
       return no_assembly(reason, reason_size,
                          "the allocator cannot read the line `" + line + "`: " + why);

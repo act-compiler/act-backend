@@ -170,7 +170,7 @@ UNBUILDABLE = {
     'rank': (
         2,
         "t2: Modeld1[-1] = bf16[32] instr_load_rm[rows='32'](t1)",
-        'the tensor t2 has a shape of rank 1, where its storage Modeld1 has rank 2',
+        'the tensor t2 has 32 elements, where its region [32,64] in Modeld1 has 2048',
     ),
     'slice-operands': (
         4,

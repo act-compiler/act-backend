@@ -142,6 +142,34 @@ bool parse_line(const std::string &line, ParsedLine &pl, std::string &why) {
   return true;
 }
 
+// Hold a tensor in a shape its storage takes, else why not
+static bool hold(Tensor *tensor, const std::vector<int64> &shape, std::string &why) {
+  std::string name = tensor->get_name();
+  Storage *storage = tensor->get_storage();
+
+  // A shape of each of its storage's dimensions
+  if (shape.size() != storage->get_total_dims()) {
+    why = "the tensor " + name + " has a shape of rank " + std::to_string(shape.size()) +
+          ", where its storage " + storage->get_name() + " has rank " +
+          std::to_string(storage->get_total_dims());
+    return false;
+  }
+
+  // A tensor fits its storage along each addressing dimension
+  for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
+    int64 cap = storage->get_capacity(i)->Max();
+    if (shape[i] > cap) {
+      why = "the tensor " + name + " has " + std::to_string(shape[i]) + " along dimension " +
+            std::to_string(i) + ", where its storage " + storage->get_name() + " holds " +
+            std::to_string(cap);
+      return false;
+    }
+  }
+
+  tensor->hold(shape);
+  return true;
+}
+
 Instruction *create_instruction(const ParsedLine &pl,
                                 std::unordered_map<std::string, Tensor *> &tensor_map,
                                 std::unordered_map<Tensor *, int64> &known_offsets,
@@ -180,26 +208,17 @@ Instruction *create_instruction(const ParsedLine &pl,
   if (tensor_map.count(lhs))
     return refuse("the tensor " + lhs + " is defined twice");
 
-  // A shape of each of its storage's dimensions
-  if (shape_vec.size() != storage->get_total_dims())
-    return refuse("the tensor " + lhs + " has a shape of rank " + std::to_string(shape_vec.size()) +
-                  ", where its storage " + storage_name + " has rank " +
-                  std::to_string(storage->get_total_dims()));
-
-  // A tensor fits its storage along each addressing dimension
-  for (size_t i = 0; i < storage->get_addressing_dims(); i++) {
-    int64 cap = storage->get_capacity(i)->Max();
-    if (shape_vec[i] > cap)
-      return refuse("the tensor " + lhs + " has " + std::to_string(shape_vec[i]) +
-                    " along dimension " + std::to_string(i) + ", where its storage " +
-                    storage_name + " holds " + std::to_string(cap));
-  }
-
   // Create Tensor object for lhs variable
   Tensor *lhs_tensor = new Tensor(lhs, storage, shape_vec);
 
   // insert into tensor_map
   tensor_map[lhs] = lhs_tensor;
+
+  // Held in its own shape now, an instruction's in a buffer by hold_tensors once built
+  bool declared = op_name.rfind("Var", 0) == 0 || op_name.rfind("DCC", 0) == 0;
+  bool view = op_name == "slice" || op_name == "concat";
+  if ((storage_name == "HBM" || declared || view) && !hold(lhs_tensor, shape_vec, why))
+    return nullptr;
 
   // if offset is known, insert into known_offsets
   if (offset != -1) {
@@ -295,6 +314,56 @@ Instruction *create_instruction(const ParsedLine &pl,
   }
 
   return panic("unknown instruction: " + op_name);
+}
+
+// The elements a shape holds
+static int64 count(const std::vector<int64> &shape) {
+  int64 elements = 1;
+  for (int64 dim : shape)
+    elements *= dim;
+  return elements;
+}
+
+// A shape as a line writes it
+static std::string written(const std::vector<int64> &shape) {
+  std::string dims;
+  for (int64 dim : shape)
+    dims += (dims.empty() ? "" : ",") + std::to_string(dim);
+  return "[" + dims + "]";
+}
+
+bool hold_tensors(Instruction *instr, std::string &why) {
+  // Its region of its elements, as the oracle takes it, and its tensor in a buffer held so
+  Tensor *y = instr->get_lhs();
+  std::vector<int64> region = instr->get_region(0);
+  int64 elements = count(y->get_value());
+  if (count(region) != elements) {
+    why = "the tensor " + y->get_name() + " has " + std::to_string(elements) +
+          " elements, where its region " + written(region) + " in " + y->get_storage()->get_name() +
+          " has " + std::to_string(count(region));
+    return false;
+  }
+  if (!y->is_held() && !hold(y, region, why))
+    return false;
+
+  // Each operand read of its elements as held: in another shape a read would move them
+  std::vector<Tensor *> X = instr->get_rhs();
+  for (size_t i = 0; i < X.size(); i++) {
+    std::vector<int64> read = instr->get_region(i + 1);
+    std::vector<int64> held = X[i]->get_shape();
+    int64 has = count(X[i]->get_value());
+    if (count(read) != has) {
+      why = "the tensor " + X[i]->get_name() + " has " + std::to_string(has) + " elements, where " +
+            y->get_name() + " reads " + std::to_string(count(read)) + " of it as " + written(read);
+      return false;
+    }
+    if (read != held) {
+      why = "the tensor " + X[i]->get_name() + " lies in " + X[i]->get_storage()->get_name() +
+            " as " + written(held) + ", where " + y->get_name() + " reads it as " + written(read);
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace parser

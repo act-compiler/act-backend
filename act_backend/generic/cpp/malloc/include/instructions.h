@@ -48,6 +48,11 @@ public:
   virtual std::vector<std::pair<IntExpr *, IntExpr *>> get_h(int num) = 0;
   virtual Constraints get_e() = 0;
 
+  // Operand num's region along every dimension, 0 the output's; a view's is its value's shape
+  virtual std::vector<int64> get_region(int num) {
+    return num == 0 ? y->get_value() : X[num - 1]->get_value();
+  }
+
   virtual std::vector<IntVar *> get_int_var() = 0;
 };
 
