@@ -48,6 +48,8 @@ A build that fails raises `RuntimeError` with the build's own output, and a gene
 A spec the generator refuses raises `ValueError`, which names what is refused, before anything is written, and leaves no `targets/<name>/backend/` from an earlier generation.
 ACT-Backend pins TAIDL v2.14.
 An instruction with no semantics is left out of the backend.
+Selecting an instruction computes its operands' sizes in checked signed 64-bit integers, dividing as the oracle does.
+An instruction with a size that overflows is not selected.
 
 ```bash
 ./backends/<name> --input kernel.hlo --output kernel.py

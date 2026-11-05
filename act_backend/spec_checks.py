@@ -286,16 +286,14 @@ def names_attribute(value):
     return any(Trees.findAllTokenNodes(value, token) for token in tokens)
 
 
-# Tokens a size may not hold, beside a negation
-SIZE_TOKENS = (IDLV2ExprParser.PERCENT, IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.STATE)
+# Tokens a size may not hold
+SIZE_TOKENS = (IDLV2ExprParser.ADDRESSING, IDLV2ExprParser.STATE)
 
 
 def beyond_allocator(size):
-    """Whether a size holds a remainder, a negation, an address attribute or a state variable"""
+    """Whether a size holds an address attribute or a state variable"""
     if isinstance(size, TerminalNode):
         return size.getSymbol().type in SIZE_TOKENS
-    if isinstance(size, IDLV2ExprParser.UnaryContext) and size.MINUS():
-        return True
     return any(beyond_allocator(part) for part in size.getChildren())
 
 
@@ -304,7 +302,7 @@ def check_size(what, text, size):
     if beyond_allocator(size):
         raise ValueError(
             f"{what} has the size '{text}', which is not integers and computational attributes "
-            "joined by '*', '/', '+' and '-'"
+            "joined by '*', '/', '%', '+' and '-'"
         )
     if divides_by_zero(size):
         raise ValueError(f"{what} has the size '{text}', which divides by zero")

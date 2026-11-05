@@ -411,7 +411,7 @@ def test_size_written_from_its_tree(templates):
     instr.set_outputs([['d1', [' @a.addr_out '], [64]]])
     load = squeeze(generate_instruction_class(instr, 'InstrLoad', templates))
     # Operators spaced, the spec's brackets, attributes by generated name, too wide to inline
-    assert 'int64 size = (attr_n + int64{1}) * int64{2} - attr_n / int64{2};' in load
+    assert 'int64 size = (attr_n + int64{1}) * int64{2} - floor_div(attr_n, int64{2});' in load
     assert 'MAKE_SUM(attr_addr_in, size)' in load
     assert 'MAKE_SUM(attr_addr_out, int64{64})' in load
 

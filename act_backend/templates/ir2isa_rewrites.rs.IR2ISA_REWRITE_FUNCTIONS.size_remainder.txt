@@ -1,0 +1,12 @@
+// A size's remainder of its divisor's sign, as the oracle's, None by zero
+fn size_remainder(value: i64, divisor: i64) -> Option<i64> {
+  if divisor == 0 {
+    return None;
+  }
+  // The least i64 by -1 leaves 0, which wrapping_rem gives
+  let remainder = value.wrapping_rem(divisor);
+  if remainder != 0 && (remainder < 0) != (divisor < 0) {
+    return Some(remainder + divisor);
+  }
+  Some(remainder)
+}
