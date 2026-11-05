@@ -1,6 +1,7 @@
 #ifndef SOLVER_H
 #define SOLVER_H
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
 #include <utility>
@@ -20,11 +21,33 @@ extern std::unique_ptr<operations_research::Solver> solver;
 
 #define MAKE_EQUALITY(a, b) (solver->MakeEquality((a), (b)))
 
-// A value's quotient and remainder by a known positive integer, rounded down as the language does
-inline std::pair<operations_research::IntVar *, operations_research::IntVar *>
+// A value's quotient and remainder, rounded down as the language does
+inline std::pair<operations_research::IntExpr *, operations_research::IntExpr *>
 floor_division(operations_research::IntExpr *a, operations_research::IntExpr *b) {
+  if (!b->Bound()) {
+    // A divisor of addresses, held at 1 or more as the oracle refuses 0
+    solver->AddConstraint(solver->MakeGreaterOrEqual(b, int64_t(1)));
+    // The floor: a - r == q * b, 0 <= r < b, the product alone on its side for open domains
+    operations_research::IntVar *quotient =
+        MAKE_INT_VAR(std::min(a->Min(), int64(0)), std::max(a->Max(), int64(0)));
+    operations_research::IntVar *remainder = MAKE_INT_VAR(0, INT64_MAX - 1);
+    solver->AddConstraint(solver->MakeLess(remainder, b));
+    solver->AddConstraint(
+        MAKE_EQUALITY(solver->MakeDifference(a, remainder), MAKE_PROD(quotient, b)));
+    return {quotient, remainder};
+  }
   int64 divisor = b->Min();
-  assert(b->Bound() && divisor > 0);
+  assert(divisor != 0);
+  if (divisor == INT64_MIN) {
+    // Its opposite leaves int64: the model fails, its parts unread
+    solver->AddConstraint(solver->MakeFalseConstraint());
+    return {a, a};
+  }
+  if (divisor < 0) {
+    // By its opposite: a / -k is -a / k, and a % -k is -(-a % k)
+    auto [quotient, remainder] = floor_division(solver->MakeOpposite(a), MAKE_INT_KNOWN(-divisor));
+    return {quotient, solver->MakeOpposite(remainder)};
+  }
   // The quotient's bounds, rounded down as it is
   auto down = [divisor](int64 value) { return value / divisor - (value % divisor < 0); };
   operations_research::IntVar *quotient = MAKE_INT_VAR(down(a->Min()), down(a->Max()));
