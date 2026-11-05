@@ -70,6 +70,8 @@ class TypedWriter(ExpressionWriter):
 
 # The checked call of each arithmetic operator
 CHECKED_OPERATORS = {'+': 'checked_add', '-': 'checked_sub', '*': 'checked_mul'}
+# The helper of each operator that divides, rounding down as the oracle does
+FLOORED_OPERATORS = {'/': 'quotient', '%': 'remainder'}
 # The widest operand, so two and what joins them keep a call on its line
 OPERAND_WIDTH = (CALL_WIDTH - len(' <= ')) // 2
 
@@ -89,7 +91,9 @@ class CheckedWriter(TypedWriter):
         return name
 
     def operation(self, operator, left, right):
-        """The checked Rust of one operator on two operands, None past i64"""
+        """The checked Rust of one operator on two operands, None past i64 or by zero"""
+        if operator in FLOORED_OPERATORS:
+            return f'{FLOORED_OPERATORS[operator]}({left}, {right})?'
         return f'{left}.{CHECKED_OPERATORS[operator]}({right})?'
 
     def chain(self, ctx, operands):

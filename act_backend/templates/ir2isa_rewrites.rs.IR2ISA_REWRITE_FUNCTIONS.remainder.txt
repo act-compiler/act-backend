@@ -1,5 +1,5 @@
-// A size's remainder of its divisor's sign, as the oracle's, None by zero
-fn size_remainder(value: i64, divisor: i64) -> Option<i64> {
+// A remainder of its divisor's sign, as the oracle's, None by zero
+fn remainder(value: i64, divisor: i64) -> Option<i64> {
   if divisor == 0 {
     return None;
   }

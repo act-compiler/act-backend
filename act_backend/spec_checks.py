@@ -338,17 +338,19 @@ def check_operands(instructions):
 
 
 # Tokens no constraint the backend holds may hold
-CONSTRAINT_TOKENS = (
-    IDLV2ExprParser.AND,
-    IDLV2ExprParser.SLASH,
-    IDLV2ExprParser.PERCENT,
-    IDLV2ExprParser.STATE,
-)
+CONSTRAINT_TOKENS = (IDLV2ExprParser.AND, IDLV2ExprParser.STATE)
+# Tokens a constraint over addresses may not hold, beside those
+ADDRESS_TOKENS = (IDLV2ExprParser.SLASH, IDLV2ExprParser.PERCENT)
 
 
 def honoured(constraint):
-    """Whether a constraint is comparisons of integers and attributes, joined by or"""
-    if any(Trees.findAllTokenNodes(constraint, token) for token in CONSTRAINT_TOKENS):
+    """Whether a constraint is comparisons of integers and attributes, joined by or
+
+    A quotient or a remainder only over the attributes, which the selector computes.
+    """
+    placed = Trees.findAllTokenNodes(constraint, IDLV2ExprParser.ADDRESSING)
+    tokens = CONSTRAINT_TOKENS + (ADDRESS_TOKENS if placed else ())
+    if any(Trees.findAllTokenNodes(constraint, token) for token in tokens):
         return False
     # Each conjunction one comparison, never a bracketed condition
     comparisons = [conjunction.comparison(0) for conjunction in constraint.conjunction()]

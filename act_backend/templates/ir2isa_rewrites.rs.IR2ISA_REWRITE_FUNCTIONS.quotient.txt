@@ -1,5 +1,5 @@
-// A size's quotient rounded down, as the oracle's, None by zero or past i64
-fn size_quotient(value: i64, divisor: i64) -> Option<i64> {
+// A quotient rounded down, as the oracle's, None by zero or past i64
+fn quotient(value: i64, divisor: i64) -> Option<i64> {
   let quotient = value.checked_div(divisor)?;
   if value % divisor != 0 && (value < 0) != (divisor < 0) {
     return Some(quotient - 1);
