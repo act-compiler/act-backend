@@ -294,39 +294,105 @@ COMPARISONS = {
 }
 
 
-def generate_constraints(constraints):
-    """The C++ that pushes each constraint to the solver, as clang-format lays it out
+class ConditionWriter:
+    """The C++ that pushes conditions to the solver, as clang-format lays it out
 
-    A comparison is the solver's own; an or is its comparisons' flags, at least one set.
+    A comparison is the solver's own, an and each of its comparisons; under an or each part is a
+    flag, an or's at least one set and an and's all set.
     """
-    lines = ''
-    position = 0
+
+    def __init__(self):
+        self.lines = ''
+        # Comparisons so far, naming their wide sides
+        self.position = 0
+        # The constraint's vectors of flags, each named from its base
+        self.base, self.vectors = '', []
+
+    def push(self, constraint, base):
+        """Push the constraints that hold one constraint, its vectors of flags named from base"""
+        self.base, self.vectors = base, []
+        self.hold(constraint)
+
+    def vector(self):
+        """Declare a vector of flags, named by the constraint and its count; return its name"""
+        name = self.base if not self.vectors else f'{self.base}_{len(self.vectors)}'
+        self.vectors.append(name)
+        self.lines += f'    std::vector<IntVar *> {name};\n'
+        return name
+
+    def hold(self, condition):
+        """Push the constraints that hold a condition"""
+        conjunctions = condition.conjunction()
+        if len(conjunctions) == 1:
+            for comparison in conjunctions[0].comparison():
+                if comparison.condition() is not None:
+                    self.hold(comparison.condition())
+                else:
+                    self.compare(comparison, 'constraints')
+            return
+        # At least one part holds: their flags' sum
+        flags = self.vector()
+        for conjunction in conjunctions:
+            self.flag(conjunction.comparison(), flags)
+        least = f'solver->MakeGreaterOrEqual(solver->MakeSum({flags}), int64_t(1))'
+        self.lines += f'    constraints.push_back({least});\n'
+
+    def flag(self, comparisons, flags):
+        """Push onto flags whether each of an and's comparisons holds"""
+        if len(comparisons) > 1:
+            parts = self.vector()
+            for comparison in comparisons:
+                self.flag([comparison], parts)
+            count = len(comparisons)
+            every = f'solver->MakeIsEqualCstVar(solver->MakeSum({parts}), int64_t({count}))'
+            self.push_flag(flags, every, parts)
+            return
+        (comparison,) = comparisons
+        if comparison.condition() is None:
+            self.compare(comparison, flags)
+            return
+        # A bracketed condition: its one and, else at least one of its parts
+        conjunctions = comparison.condition().conjunction()
+        if len(conjunctions) == 1:
+            self.flag(conjunctions[0].comparison(), flags)
+            return
+        parts = self.vector()
+        for conjunction in conjunctions:
+            self.flag(conjunction.comparison(), parts)
+        least = f'solver->MakeIsGreaterOrEqualCstVar(solver->MakeSum({parts}), int64_t(1))'
+        self.push_flag(flags, least, parts)
+
+    def push_flag(self, flags, value, parts):
+        """Push a flag of parts onto flags, from a local of its own where the line is too wide"""
+        line = f'    {flags}.push_back({value});'
+        if not fits(line):
+            self.lines += assigned(f'IntVar *{parts}_held', value)
+            line = f'    {flags}.push_back({parts}_held);'
+        self.lines += line + '\n'
+
+    def compare(self, comparison, lead):
+        """Push a comparison onto lead: the solver's constraint, or its flag in a vector"""
+        plain, flag = COMPARISONS[comparison.compare().getText()]
+        call = f'{lead}.push_back(solver->{plain if lead == "constraints" else flag}('
+        trees = comparison.additive()
+        sides = [SolverWriter().visit(side) for side in trees]
+        # A line too wide computes its wider side first, then the other
+        for k in sorted((0, 1), key=lambda k: -len(sides[k])):
+            if fits(f'    {call}{", ".join(sides)}));'):
+                break
+            name = f'{("left", "right")[k]}{self.position}'
+            self.lines += solver_locals(name, trees[k])
+            sides[k] = name
+        self.lines += f'    {call}{", ".join(sides)}));\n'
+        self.position += 1
+
+
+def generate_constraints(constraints):
+    """The C++ that pushes each constraint to the solver, as clang-format lays it out"""
+    writer = ConditionWriter()
     for index, tree in enumerate(constraints):
-        comparisons = [conjunction.comparison(0) for conjunction in tree.conjunction()]
-        # An or's flags gather in a vector of their own
-        either = len(comparisons) > 1
-        if either:
-            lines += f'    std::vector<IntVar *> holds{index};\n'
-        for comparison in comparisons:
-            plain, flag = COMPARISONS[comparison.compare().getText()]
-            lead = f'holds{index}' if either else 'constraints'
-            call = f'{lead}.push_back(solver->{flag if either else plain}('
-            trees = comparison.additive()
-            sides = [SolverWriter().visit(side) for side in trees]
-            # A line too wide computes its wider side first, then the other
-            for k in sorted((0, 1), key=lambda k: -len(sides[k])):
-                if fits(f'    {call}{", ".join(sides)}));'):
-                    break
-                name = f'{("left", "right")[k]}{position}'
-                lines += solver_locals(name, trees[k])
-                sides[k] = name
-            lines += f'    {call}{", ".join(sides)}));\n'
-            position += 1
-        if either:
-            # At least one comparison holds: their flags' sum
-            least = f'solver->MakeGreaterOrEqual(solver->MakeSum(holds{index}), int64_t(1))'
-            lines += f'    constraints.push_back({least});\n'
-    return lines
+        writer.push(tree, f'holds{index}')
+    return writer.lines
 
 
 def generate_constructor_packed(class_name, op_name, attributes):

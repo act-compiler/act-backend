@@ -332,11 +332,11 @@ def check_operands(instructions):
 
 
 # Tokens no constraint the backend holds may hold
-CONSTRAINT_TOKENS = (IDLV2ExprParser.AND, IDLV2ExprParser.STATE)
+CONSTRAINT_TOKENS = (IDLV2ExprParser.STATE,)
 
 
 def honoured(constraint):
-    """Whether a constraint is comparisons of integers and attributes, joined by or
+    """Whether a constraint is comparisons of integers and attributes, joined by and and or
 
     One over addresses divides and takes remainders by anything but zero.
     """
@@ -344,10 +344,12 @@ def honoured(constraint):
         return False
     if names_address(constraint) and division_refusal(constraint) is not None:
         return False
-    # Each conjunction one comparison, never a bracketed condition
-    comparisons = [conjunction.comparison(0) for conjunction in constraint.conjunction()]
-    if any(comparison.LPAREN() for comparison in comparisons):
-        return False
+    # Every comparison, a bracketed condition's among them
+    comparisons = [
+        node
+        for node in Trees.descendants(constraint)
+        if isinstance(node, IDLV2ExprParser.ComparisonContext)
+    ]
     # Each side's literals, which the backend holds in 64 bits
     sides = [side for comparison in comparisons for side in comparison.additive()]
     return not any(past_64_bits(side) for side in sides)
