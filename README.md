@@ -50,6 +50,8 @@ ACT-Backend pins TAIDL v2.14.
 An instruction with no semantics is left out of the backend.
 Selecting an instruction computes its operands' sizes in checked signed 64-bit integers, dividing as the oracle does.
 An instruction with a size that overflows is not selected.
+A constraint over its computational attributes is computed the same way.
+One whose arithmetic overflows does not hold.
 
 ```bash
 ./backends/<name> --input kernel.hlo --output kernel.py
