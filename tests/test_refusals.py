@@ -369,40 +369,38 @@ def test_sizes_the_allocator_reads():
         spec_checks.check_operands(acc.instructions)
 
 
-def test_address_attribute_no_operand_reads_refused(tmp_path):
-    acc = with_operands(addresses=['addr_1', 'addr_2', 'addr_out', 'spare'])
-    assert refusal(acc, tmp_path) == "gemm: no operand reads the address attribute 'spare'"
-
-
-def test_constraint_refused(tmp_path):
+def test_constraints_the_allocator_holds():
     acc = with_operands()
     (gemm,) = acc.instructions
     # A list of no constraints is the default
     gemm.add_constraints([])
     spec_checks.check_constraints(acc.instructions)
     gemm.add_constraints(['@a.addr_1 <= @a.addr_2'])
-    assert refusal(acc, tmp_path) == (
-        "gemm: it declares the constraint '@a.addr_1 <= @a.addr_2', which the backend does not support"
-    )
+    spec_checks.check_constraints(acc.instructions)
 
 
 @pytest.mark.parametrize(
     'mark, constraint',
     [
-        ('set_apart', '@a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1'),
+        ('set_apart', '@a.addr_1 + (128 / 2) <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1'),
         (
             'set_no_partial_overlap',
-            '@a.addr_1 == @a.addr_2 or @a.addr_1 + 64 <= @a.addr_2 or @a.addr_2 + 64 <= @a.addr_1',
+            (
+                '@a.addr_1 == @a.addr_2 or @a.addr_1 + (128 / 2) <= @a.addr_2 '
+                'or @a.addr_2 + 64 <= @a.addr_1'
+            ),
         ),
     ],
 )
-def test_placement_mark_refused(mark, constraint, tmp_path):
+def test_placement_mark_refused_where_a_size_divides(mark, constraint, tmp_path):
     # The output lies in d1, as the second input does
     acc = with_operands(outputs=[['d1', ['@a.addr_1'], ['64']]], addresses=['addr_1', 'addr_2'])
     (gemm,) = acc.instructions
     # Marking no input is the default and appends nothing
     getattr(gemm, mark)([False, False])
     spec_checks.check_constraints(acc.instructions)
+    # The output's size a quotient, which no constraint holds
+    gemm.set_outputs([['d1', ['@a.addr_1'], ['128 / 2']]])
     getattr(gemm, mark)([False, True])
     assert refusal(acc, tmp_path) == (
         f"gemm: {mark} gives it the constraint '{constraint}', which the backend does not support"

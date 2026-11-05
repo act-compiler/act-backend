@@ -151,6 +151,12 @@ def checked_comparison(name, tree):
     return writer.computed(name, f'{left} {tree.compare().getText()} {right}')
 
 
+def checked_value(name, tree):
+    """The Rust that leaves in a local what a value computes, None past i64"""
+    writer = CheckedWriter()
+    return writer.computed(name, writer.visit(tree))
+
+
 # Each comparison's negation, exact over integers
 NEGATED = {'<=': '>', '<': '>=', '==': '!=', '>=': '<', '>': '<=', '!=': '=='}
 
